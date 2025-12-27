@@ -1,0 +1,167 @@
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================
+// ENUMS
+// =====================
+
+/// Sociedad u origen de la recaudación
+enum Sociedad {
+  HOMBRES
+  MUJERES
+  CULTO_GENERAL
+}
+
+/// Tipo de servicio religioso
+enum TipoServicio {
+  CULTO
+  ORACION
+  VIGILIA
+  MATUTINO
+  ENSENANZA
+}
+
+/// Tipo de ingreso / procedencia del dinero
+enum TipoIngreso {
+  OFRENDA
+  TALENTOS
+  PROMESAS
+  DIEZMO
+  DONACION
+  HNO_AYUDA
+}
+
+/// Tipo de gasto para egresos
+enum TipoGasto {
+  COMBUSTIBLE
+  AGUA_PIPA
+  FUNERARIA
+  LUZ_ELECTRICA
+  OTROS
+}
+
+/// Moneda manejada en el sistema
+enum Moneda {
+  USD
+  GTQ
+}
+
+// =====================
+// MODELOS
+// =====================
+
+/// Usuarios del sistema con acceso al dashboard
+model Usuario {
+  id            String    @id @default(cuid())
+  nombre        String
+  apellido      String
+  correo        String    @unique
+  contrasena    String    // Hash de la contraseña
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  // Relaciones: usuario que registró ingresos y egresos
+  ingresos Ingreso[]
+  egresos  Egreso[]
+
+  @@map("usuarios")
+}
+
+/// Cajas contables - cada caja maneja su propio dinero
+model Caja {
+  id          String   @id @default(cuid())
+  nombre      String   @unique
+  descripcion String?
+  activa      Boolean  @default(true)
+  creadoEn    DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  // Relaciones
+  ingresos Ingreso[]
+  egresos  Egreso[]
+
+  @@map("cajas")
+}
+
+/// Registro de ingresos (recaudación de dinero)
+model Ingreso {
+  id              String       @id @default(cuid())
+  
+  // Clasificación del ingreso
+  sociedad        Sociedad
+  servicio        TipoServicio
+  tipoIngreso     TipoIngreso
+  
+  // Montos - separados por moneda
+  montoUSD        Decimal      @default(0) @db.Decimal(12, 2)
+  montoGTQ        Decimal      @default(0) @db.Decimal(12, 2)
+  
+  // Fecha de recaudación (editable para fechas pasadas)
+  fechaRecaudacion DateTime    @default(now())
+  
+  // Observaciones
+  comentario      String?      @db.Text
+  
+  // Timestamps
+  creadoEn        DateTime     @default(now())
+  actualizadoEn   DateTime     @updatedAt
+  
+  // Relaciones
+  cajaId          String
+  caja            Caja         @relation(fields: [cajaId], references: [id], onDelete: Restrict)
+  
+  usuarioId       String
+  usuario         Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([cajaId])
+  @@index([usuarioId])
+  @@index([fechaRecaudacion])
+  @@index([sociedad, servicio, tipoIngreso])
+  @@map("ingresos")
+}
+
+/// Registro de egresos (salidas de dinero)
+model Egreso {
+  id            String    @id @default(cuid())
+  
+  // Fecha de salida (editable para fechas pasadas)
+  fechaSalida   DateTime  @default(now())
+  
+  // Solicitante del egreso
+  solicitante   String
+  
+  // Clasificación del gasto
+  tipoGasto     TipoGasto
+  descripcionGasto String? @db.Text // Para detallar cuando es "OTROS"
+  
+  // Monto retirado
+  monto         Decimal   @db.Decimal(12, 2)
+  moneda        Moneda
+  
+  // Observaciones
+  comentario    String?   @db.Text
+  
+  // Timestamps
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+  
+  // Relaciones
+  cajaId        String
+  caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
+  
+  usuarioId     String
+  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([cajaId])
+  @@index([usuarioId])
+  @@index([fechaSalida])
+  @@index([tipoGasto])
+  @@map("egresos")
+}
