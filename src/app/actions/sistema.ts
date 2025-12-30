@@ -386,7 +386,10 @@ export async function obtenerResumenDashboard() {
 
   const egresosMap = new Map<string, number>();
   egresosAgrupados.forEach((egr) => {
-    egresosMap.set(`${egr.cajaId}-${egr.monedaId}`, Number(egr._sum.monto || 0));
+    egresosMap.set(
+      `${egr.cajaId}-${egr.monedaId}`,
+      Number(egr._sum.monto || 0)
+    );
   });
 
   // Monedas para referencia (necesitamos esto antes de construir cajasConSaldos)
@@ -407,7 +410,14 @@ export async function obtenerResumenDashboard() {
   }));
 
   // Contadores y últimos movimientos en paralelo
-  const [totalIngresos, totalEgresos, totalCajas, ultimosIngresos, ultimosEgresos, sociedades] = await Promise.all([
+  const [
+    totalIngresos,
+    totalEgresos,
+    totalCajas,
+    ultimosIngresos,
+    ultimosEgresos,
+    sociedades,
+  ] = await Promise.all([
     prisma.ingreso.count({ where: { fechaRecaudacion: { gte: inicioMes } } }),
     prisma.egreso.count({ where: { fechaSalida: { gte: inicioMes } } }),
     prisma.caja.count({ where: { activa: true } }),

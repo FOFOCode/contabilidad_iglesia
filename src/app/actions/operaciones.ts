@@ -304,7 +304,10 @@ export async function obtenerCajasConSaldos() {
   // Mapa para acceso rápido a egresos
   const egresosMap = new Map<string, number>();
   todosEgresos.forEach((egr) => {
-    egresosMap.set(`${egr.cajaId}-${egr.monedaId}`, Number(egr._sum.monto || 0));
+    egresosMap.set(
+      `${egr.cajaId}-${egr.monedaId}`,
+      Number(egr._sum.monto || 0)
+    );
   });
 
   // Construir cajas con saldos usando los mapas
