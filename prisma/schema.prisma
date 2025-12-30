@@ -28,6 +28,9 @@ model Moneda {
   egresos        Egreso[]
   ingresosMontos IngresoMonto[]
 
+  // Índice para filtrar monedas activas (consulta muy frecuente)
+  @@index([activa, orden])
+  @@index([activa, esPrincipal])
   @@map("monedas")
 }
 
@@ -44,6 +47,8 @@ model Sociedad {
   ingresos Ingreso[]
   cajas    Caja[]
 
+  // Índice para filtrar sociedades activas ordenadas
+  @@index([activa, orden])
   @@map("sociedades")
 }
 
@@ -59,6 +64,8 @@ model TipoServicio {
 
   ingresos Ingreso[]
 
+  // Índice para filtrar tipos activos ordenados
+  @@index([activo, orden])
   @@map("tipos_servicio")
 }
 
@@ -75,6 +82,8 @@ model TipoIngreso {
   ingresos Ingreso[]
   cajas    Caja[]
 
+  // Índice para filtrar tipos activos ordenados
+  @@index([activo, orden])
   @@map("tipos_ingreso")
 }
 
@@ -90,6 +99,8 @@ model TipoGasto {
 
   egresos Egreso[]
 
+  // Índice para filtrar tipos activos ordenados
+  @@index([activo, orden])
   @@map("tipos_gasto")
 }
 
@@ -111,6 +122,9 @@ model Usuario {
   ingresos Ingreso[]
   egresos  Egreso[]
 
+  // Índice para filtrar usuarios activos y login
+  @@index([activo])
+  @@index([correo, activo])
   @@map("usuarios")
 }
 
@@ -137,6 +151,9 @@ model Caja {
 
   @@index([sociedadId])
   @@index([tipoIngresoId])
+  // Índices para filtrar cajas activas
+  @@index([activa, orden])
+  @@index([activa, esGeneral])
   @@map("cajas")
 }
 
@@ -189,6 +206,11 @@ model Ingreso {
   @@index([servicioId])
   @@index([tipoIngresoId])
   @@index([fechaRecaudacion])
+  // Índices compuestos para consultas de reportes y dashboard
+  @@index([cajaId, fechaRecaudacion])
+  @@index([sociedadId, fechaRecaudacion])
+  @@index([fechaRecaudacion, cajaId, sociedadId])
+  @@index([creadoEn]) // Para ordenar últimos movimientos
   @@map("ingresos")
 }
 
@@ -221,5 +243,11 @@ model Egreso {
   @@index([tipoGastoId])
   @@index([monedaId])
   @@index([fechaSalida])
+  // Índices compuestos para consultas de reportes y dashboard
+  @@index([cajaId, fechaSalida])
+  @@index([cajaId, monedaId])
+  @@index([fechaSalida, cajaId])
+  @@index([tipoGastoId, monedaId])
+  @@index([creadoEn]) // Para ordenar últimos movimientos
   @@map("egresos")
 }
