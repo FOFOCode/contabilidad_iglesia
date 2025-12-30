@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import { Card, Button, Select, Input, Badge, Table } from "@/components/ui";
 import { obtenerDatosReporte } from "@/app/actions/operaciones";
 
@@ -113,27 +113,41 @@ export function ReportesClient({
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<MovimientoReporte | null>(null);
 
-  const sociedadOptions = [
-    { value: "", label: "Todas las Sociedades" },
-    ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-  ];
+  // Memoizar opciones de select para evitar recalcular en cada render
+  const sociedadOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las Sociedades" },
+      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
+    ],
+    [sociedades]
+  );
 
-  const cajaOptions = [
-    { value: "", label: "Todas las Cajas" },
-    ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-  ];
+  const cajaOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las Cajas" },
+      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
+    ],
+    [cajas]
+  );
 
-  const monedaOptions = [
-    { value: "", label: "Todas las Monedas" },
-    ...monedas.map((m) => ({ value: m.id, label: `${m.simbolo} ${m.codigo}` })),
-  ];
+  const monedaOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las Monedas" },
+      ...monedas.map((m) => ({
+        value: m.id,
+        label: `${m.simbolo} ${m.codigo}`,
+      })),
+    ],
+    [monedas]
+  );
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>
-  ) => {
-    const { name, value } = e.target;
-    setFiltros((prev) => ({ ...prev, [name]: value }));
-  };
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+      const { name, value } = e.target;
+      setFiltros((prev) => ({ ...prev, [name]: value }));
+    },
+    []
+  );
 
   const handleGenerarReporte = () => {
     startTransition(async () => {
@@ -194,8 +208,8 @@ export function ReportesClient({
     });
   };
 
-  // Calcular totales por moneda
-  const calcularTotales = () => {
+  // Calcular totales por moneda - memoizado
+  const calcularTotales = useCallback(() => {
     const totales: Record<
       string,
       { ingresos: number; egresos: number; simbolo: string; codigo: string }
@@ -229,9 +243,9 @@ export function ReportesClient({
     });
 
     return totales;
-  };
+  }, [resultados, monedas]);
 
-  const totales = calcularTotales();
+  const totales = useMemo(() => calcularTotales(), [calcularTotales]);
 
   // Función para exportar a Excel (CSV)
   const exportarExcel = () => {
@@ -505,10 +519,10 @@ export function ReportesClient({
   ];
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-5 lg:p-6">
       {/* Panel de Filtros */}
-      <Card className="mb-6">
-        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4 flex items-center gap-2">
+      <Card className="mb-4 md:mb-5">
+        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
           <svg
             className="w-4 h-4"
             fill="none"
@@ -525,7 +539,7 @@ export function ReportesClient({
           Configurar Reporte
         </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
           <Select
             label="Tipo de Reporte"
             name="tipoReporte"
@@ -557,7 +571,7 @@ export function ReportesClient({
         </div>
 
         {filtros.periodo === "personalizado" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
             <Input
               label="Fecha Inicio"
               name="fechaInicio"
@@ -576,7 +590,7 @@ export function ReportesClient({
         )}
 
         {filtros.tipoReporte !== "egresos" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
             <Select
               label="Sociedad"
               name="sociedadId"
@@ -617,7 +631,7 @@ export function ReportesClient({
       {mostrarResultados && (
         <>
           {/* Resumen */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
             {Object.entries(totales).map(([monedaId, data]) => {
               if (data.ingresos === 0 && data.egresos === 0) return null;
               const balance = data.ingresos - data.egresos;

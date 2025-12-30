@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { Card, Badge, Button } from "@/components/ui";
 
@@ -111,50 +112,67 @@ export function DashboardClient({
     })}`;
   };
 
-  // Calcular resúmenes por moneda
-  const resumenPorMoneda = monedas
-    .map((moneda) => {
-      const ingresos =
-        ingresosMes.find((i) => i.monedaId === moneda.id)?.total || 0;
-      const egresos =
-        egresosMes.find((e) => e.monedaId === moneda.id)?.total || 0;
-      const ingresosAnt =
-        ingresosMesAnterior.find((i) => i.monedaId === moneda.id)?.total || 0;
-      const egresosAnt =
-        egresosMesAnterior.find((e) => e.monedaId === moneda.id)?.total || 0;
-      const ingresosAnual =
-        ingresosAnio.find((i) => i.monedaId === moneda.id)?.total || 0;
-      const egresosAnual =
-        egresosAnio.find((e) => e.monedaId === moneda.id)?.total || 0;
-      return {
-        moneda,
-        ingresos,
-        egresos,
-        balance: ingresos - egresos,
-        ingresosAnt,
-        egresosAnt,
-        balanceAnt: ingresosAnt - egresosAnt,
-        ingresosAnual,
-        egresosAnual,
-        balanceAnual: ingresosAnual - egresosAnual,
-      };
-    })
-    .filter(
-      (r) =>
-        r.ingresos > 0 ||
-        r.egresos > 0 ||
-        r.ingresosAnual > 0 ||
-        r.egresosAnual > 0
-    );
-
   // Calcular porcentaje de cambio
   const calcularCambio = (actual: number, anterior: number) => {
     if (anterior === 0) return actual > 0 ? 100 : 0;
     return ((actual - anterior) / anterior) * 100;
   };
 
-  // Moneda principal para algunos cálculos
-  const monedaPrincipal = monedas.find((m) => m.esPrincipal) || monedas[0];
+  // Moneda principal para algunos cálculos - memoizado
+  const monedaPrincipal = useMemo(
+    () => monedas.find((m) => m.esPrincipal) || monedas[0],
+    [monedas]
+  );
+
+  // Calcular resúmenes por moneda - memoizado para evitar recálculos
+  const resumenPorMoneda = useMemo(
+    () =>
+      monedas
+        .map((moneda) => {
+          const ingresos =
+            ingresosMes.find((i) => i.monedaId === moneda.id)?.total || 0;
+          const egresos =
+            egresosMes.find((e) => e.monedaId === moneda.id)?.total || 0;
+          const ingresosAnt =
+            ingresosMesAnterior.find((i) => i.monedaId === moneda.id)?.total ||
+            0;
+          const egresosAnt =
+            egresosMesAnterior.find((e) => e.monedaId === moneda.id)?.total ||
+            0;
+          const ingresosAnual =
+            ingresosAnio.find((i) => i.monedaId === moneda.id)?.total || 0;
+          const egresosAnual =
+            egresosAnio.find((e) => e.monedaId === moneda.id)?.total || 0;
+          return {
+            moneda,
+            ingresos,
+            egresos,
+            balance: ingresos - egresos,
+            ingresosAnt,
+            egresosAnt,
+            balanceAnt: ingresosAnt - egresosAnt,
+            ingresosAnual,
+            egresosAnual,
+            balanceAnual: ingresosAnual - egresosAnual,
+          };
+        })
+        .filter(
+          (r) =>
+            r.ingresos > 0 ||
+            r.egresos > 0 ||
+            r.ingresosAnual > 0 ||
+            r.egresosAnual > 0
+        ),
+    [
+      monedas,
+      ingresosMes,
+      egresosMes,
+      ingresosMesAnterior,
+      egresosMesAnterior,
+      ingresosAnio,
+      egresosAnio,
+    ]
+  );
 
   if (!configurado) {
     return (
@@ -177,13 +195,13 @@ export function DashboardClient({
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="p-4 md:p-5 lg:p-6 space-y-5 md:space-y-6">
       {/* Acciones rápidas */}
-      <div>
-        <h2 className="text-lg font-semibold text-[#203b46] mb-3">
+      <section>
+        <h2 className="text-base md:text-lg font-semibold text-[#203b46] mb-2 md:mb-3">
           ⚡ Acciones rápidas
         </h2>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2 md:gap-3">
           <Link href="/dashboard/ingresos/nuevo">
             <Button>💵 Nuevo Ingreso</Button>
           </Link>
@@ -197,14 +215,14 @@ export function DashboardClient({
             <Button variant="secondary">📊 Ver Reportes</Button>
           </Link>
         </div>
-      </div>
+      </section>
 
       {/* Balance del mes por moneda */}
-      <div>
-        <h2 className="text-lg font-semibold text-[#203b46] mb-3">
+      <section>
+        <h2 className="text-base md:text-lg font-semibold text-[#203b46] mb-2 md:mb-3">
           📊 Balance del Mes
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
           {resumenPorMoneda.length > 0 ? (
             resumenPorMoneda.map(
               ({ moneda, ingresos, egresos, balance, ingresosAnt }) => {
@@ -256,10 +274,10 @@ export function DashboardClient({
             </Card>
           )}
         </div>
-      </div>
+      </section>
 
       {/* Estadísticas rápidas + Acumulado anual */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <Card className="bg-[#ebfaf8] border-[#aeeae3]">
           <div className="flex items-center gap-3">
             <div className="text-3xl">💵</div>
@@ -322,15 +340,15 @@ export function DashboardClient({
             </div>
           </Card>
         )}
-      </div>
+      </section>
 
       {/* Cajas con mayor saldo */}
       {cajasConSaldos.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold text-[#203b46] mb-3">
+        <section>
+          <h2 className="text-base md:text-lg font-semibold text-[#203b46] mb-2 md:mb-3">
             🗃️ Saldos por Caja
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {cajasConSaldos.map((caja) => (
               <Link key={caja.id} href={`/dashboard/cajas/${caja.id}`}>
                 <Card className="hover:shadow-md transition-shadow cursor-pointer">
@@ -381,11 +399,11 @@ export function DashboardClient({
               </Link>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {/* Ingresos por Sociedad y Egresos por Tipo */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
         {/* Ingresos por sociedad */}
         {ingresosPorSociedad.length > 0 && (
           <Card>
@@ -530,10 +548,10 @@ export function DashboardClient({
             </div>
           </Card>
         )}
-      </div>
+      </section>
 
       {/* Últimos movimientos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
         {/* Últimos ingresos */}
         <Card>
           <div className="flex justify-between items-center mb-4">
@@ -623,7 +641,7 @@ export function DashboardClient({
             </p>
           )}
         </Card>
-      </div>
+      </section>
     </div>
   );
 }

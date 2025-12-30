@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Card, Button, Select, Input, Badge, Table } from "@/components/ui";
 import { eliminarIngreso } from "@/app/actions/operaciones";
@@ -69,54 +69,71 @@ export function ListadoIngresosClient({
     monedaId: "",
   });
 
-  const sociedadOptions = [
-    { value: "", label: "Todas las sociedades" },
-    ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-  ];
+  // Memoizar opciones de select
+  const sociedadOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las sociedades" },
+      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
+    ],
+    [sociedades]
+  );
 
-  const tipoIngresoOptions = [
-    { value: "", label: "Todos los tipos" },
-    ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-  ];
+  const tipoIngresoOptions = useMemo(
+    () => [
+      { value: "", label: "Todos los tipos" },
+      ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
+    ],
+    [tiposIngreso]
+  );
 
-  const monedaOptions = [
-    { value: "", label: "Todas las monedas" },
-    ...monedas.map((m) => ({ value: m.id, label: `${m.simbolo} ${m.codigo}` })),
-  ];
+  const monedaOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las monedas" },
+      ...monedas.map((m) => ({
+        value: m.id,
+        label: `${m.simbolo} ${m.codigo}`,
+      })),
+    ],
+    [monedas]
+  );
 
-  // Filtrar ingresos localmente
-  const ingresosFiltrados = ingresos.filter((ingreso) => {
-    if (filtros.desde) {
-      const desde = new Date(filtros.desde);
-      if (new Date(ingreso.fechaRecaudacion) < desde) return false;
-    }
-    if (filtros.hasta) {
-      const hasta = new Date(filtros.hasta);
-      hasta.setHours(23, 59, 59);
-      if (new Date(ingreso.fechaRecaudacion) > hasta) return false;
-    }
-    if (
-      filtros.sociedadId &&
-      ingreso.sociedad.nombre !==
-        sociedades.find((s) => s.id === filtros.sociedadId)?.nombre
-    ) {
-      return false;
-    }
-    if (
-      filtros.tipoIngresoId &&
-      ingreso.tipoIngreso.nombre !==
-        tiposIngreso.find((t) => t.id === filtros.tipoIngresoId)?.nombre
-    ) {
-      return false;
-    }
-    if (
-      filtros.monedaId &&
-      !ingreso.montos.some((m) => m.moneda.id === filtros.monedaId)
-    ) {
-      return false;
-    }
-    return true;
-  });
+  // Filtrar ingresos localmente - memoizado
+  const ingresosFiltrados = useMemo(
+    () =>
+      ingresos.filter((ingreso) => {
+        if (filtros.desde) {
+          const desde = new Date(filtros.desde);
+          if (new Date(ingreso.fechaRecaudacion) < desde) return false;
+        }
+        if (filtros.hasta) {
+          const hasta = new Date(filtros.hasta);
+          hasta.setHours(23, 59, 59);
+          if (new Date(ingreso.fechaRecaudacion) > hasta) return false;
+        }
+        if (
+          filtros.sociedadId &&
+          ingreso.sociedad.nombre !==
+            sociedades.find((s) => s.id === filtros.sociedadId)?.nombre
+        ) {
+          return false;
+        }
+        if (
+          filtros.tipoIngresoId &&
+          ingreso.tipoIngreso.nombre !==
+            tiposIngreso.find((t) => t.id === filtros.tipoIngresoId)?.nombre
+        ) {
+          return false;
+        }
+        if (
+          filtros.monedaId &&
+          !ingreso.montos.some((m) => m.moneda.id === filtros.monedaId)
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [ingresos, filtros, sociedades, tiposIngreso]
+  );
 
   const handleDelete = async (id: string) => {
     setError(null);
@@ -144,18 +161,22 @@ export function ListadoIngresosClient({
     return `${simbolo} ${monto.toFixed(2)}`;
   };
 
-  // Calcular totales por moneda
-  const totalesPorMoneda = monedas
-    .map((moneda) => {
-      const total = ingresosFiltrados.reduce((acc, ingreso) => {
-        const montoEnMoneda = ingreso.montos.find(
-          (m) => m.moneda.id === moneda.id
-        );
-        return acc + (montoEnMoneda ? Number(montoEnMoneda.monto) : 0);
-      }, 0);
-      return { moneda, total };
-    })
-    .filter((t) => t.total > 0);
+  // Calcular totales por moneda - memoizado
+  const totalesPorMoneda = useMemo(
+    () =>
+      monedas
+        .map((moneda) => {
+          const total = ingresosFiltrados.reduce((acc, ingreso) => {
+            const montoEnMoneda = ingreso.montos.find(
+              (m) => m.moneda.id === moneda.id
+            );
+            return acc + (montoEnMoneda ? Number(montoEnMoneda.monto) : 0);
+          }, 0);
+          return { moneda, total };
+        })
+        .filter((t) => t.total > 0),
+    [monedas, ingresosFiltrados]
+  );
 
   const columns = [
     {
@@ -306,15 +327,15 @@ export function ListadoIngresosClient({
   ];
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-5 lg:p-6">
       {error && (
-        <div className="mb-4 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
+        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
           {error}
         </div>
       )}
 
       {/* Acciones */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row justify-between gap-3 md:gap-4 mb-4 md:mb-5">
         <div className="flex gap-2">
           <Link href="/dashboard/ingresos/nuevo">
             <Button>
@@ -341,11 +362,11 @@ export function ListadoIngresosClient({
       </div>
 
       {/* Filtros */}
-      <Card className="mb-6">
-        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+      <Card className="mb-4 md:mb-5">
+        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
           Filtros
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
           <Input
             label="Desde"
             type="date"

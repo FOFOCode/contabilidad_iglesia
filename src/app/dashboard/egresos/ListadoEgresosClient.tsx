@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import Link from "next/link";
 import { Card, Button, Select, Input, Badge, Table } from "@/components/ui";
 import { eliminarEgreso } from "@/app/actions/operaciones";
@@ -55,39 +55,53 @@ export function ListadoEgresosClient({
     monedaId: "",
   });
 
-  const tipoGastoOptions = [
-    { value: "", label: "Todos los tipos" },
-    ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-  ];
+  // Memoizar opciones de select
+  const tipoGastoOptions = useMemo(
+    () => [
+      { value: "", label: "Todos los tipos" },
+      ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
+    ],
+    [tiposGasto]
+  );
 
-  const monedaOptions = [
-    { value: "", label: "Todas las monedas" },
-    ...monedas.map((m) => ({ value: m.id, label: `${m.simbolo} ${m.codigo}` })),
-  ];
+  const monedaOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las monedas" },
+      ...monedas.map((m) => ({
+        value: m.id,
+        label: `${m.simbolo} ${m.codigo}`,
+      })),
+    ],
+    [monedas]
+  );
 
-  // Filtrar egresos localmente
-  const egresosFiltrados = egresos.filter((egreso) => {
-    if (filtros.desde) {
-      const desde = new Date(filtros.desde);
-      if (new Date(egreso.fechaSalida) < desde) return false;
-    }
-    if (filtros.hasta) {
-      const hasta = new Date(filtros.hasta);
-      hasta.setHours(23, 59, 59);
-      if (new Date(egreso.fechaSalida) > hasta) return false;
-    }
-    if (
-      filtros.tipoGastoId &&
-      egreso.tipoGasto.nombre !==
-        tiposGasto.find((t) => t.id === filtros.tipoGastoId)?.nombre
-    ) {
-      return false;
-    }
-    if (filtros.monedaId && egreso.moneda.id !== filtros.monedaId) {
-      return false;
-    }
-    return true;
-  });
+  // Filtrar egresos localmente - memoizado
+  const egresosFiltrados = useMemo(
+    () =>
+      egresos.filter((egreso) => {
+        if (filtros.desde) {
+          const desde = new Date(filtros.desde);
+          if (new Date(egreso.fechaSalida) < desde) return false;
+        }
+        if (filtros.hasta) {
+          const hasta = new Date(filtros.hasta);
+          hasta.setHours(23, 59, 59);
+          if (new Date(egreso.fechaSalida) > hasta) return false;
+        }
+        if (
+          filtros.tipoGastoId &&
+          egreso.tipoGasto.nombre !==
+            tiposGasto.find((t) => t.id === filtros.tipoGastoId)?.nombre
+        ) {
+          return false;
+        }
+        if (filtros.monedaId && egreso.moneda.id !== filtros.monedaId) {
+          return false;
+        }
+        return true;
+      }),
+    [egresos, filtros, tiposGasto]
+  );
 
   const handleDelete = async (id: string) => {
     setError(null);
@@ -115,15 +129,19 @@ export function ListadoEgresosClient({
     return `${simbolo} ${monto.toFixed(2)}`;
   };
 
-  // Calcular totales por moneda
-  const totalesPorMoneda = monedas
-    .map((moneda) => {
-      const total = egresosFiltrados
-        .filter((e) => e.moneda.id === moneda.id)
-        .reduce((acc, e) => acc + Number(e.monto), 0);
-      return { moneda, total };
-    })
-    .filter((t) => t.total > 0);
+  // Calcular totales por moneda - memoizado
+  const totalesPorMoneda = useMemo(
+    () =>
+      monedas
+        .map((moneda) => {
+          const total = egresosFiltrados
+            .filter((e) => e.moneda.id === moneda.id)
+            .reduce((acc, e) => acc + Number(e.monto), 0);
+          return { moneda, total };
+        })
+        .filter((t) => t.total > 0),
+    [monedas, egresosFiltrados]
+  );
 
   const columns = [
     {
@@ -279,15 +297,15 @@ export function ListadoEgresosClient({
   ];
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-5 lg:p-6">
       {error && (
-        <div className="mb-4 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
+        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
           {error}
         </div>
       )}
 
       {/* Acciones */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row justify-between gap-3 md:gap-4 mb-4 md:mb-5">
         <div className="flex gap-2">
           <Link href="/dashboard/egresos/nuevo">
             <Button>
@@ -314,11 +332,11 @@ export function ListadoEgresosClient({
       </div>
 
       {/* Filtros */}
-      <Card className="mb-6">
-        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+      <Card className="mb-4 md:mb-5">
+        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
           Filtros
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <Input
             label="Desde"
             type="date"
