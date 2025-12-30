@@ -1,0 +1,331 @@
+"use server";
+
+import { prisma } from "@/lib/prisma";
+
+// =====================
+// MONEDAS
+// =====================
+
+export async function getMonedas() {
+  return prisma.moneda.findMany({
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }, { nombre: "asc" }],
+  });
+}
+
+export async function createMoneda(data: {
+  codigo: string;
+  nombre: string;
+  simbolo: string;
+  tasaCambio?: number;
+  esPrincipal?: boolean;
+  orden?: number;
+}) {
+  return prisma.moneda.create({
+    data: {
+      ...data,
+      tasaCambio: data.tasaCambio ?? 1,
+    },
+  });
+}
+
+export async function updateMoneda(
+  id: string,
+  data: {
+    codigo?: string;
+    nombre?: string;
+    simbolo?: string;
+    tasaCambio?: number;
+    esPrincipal?: boolean;
+    activa?: boolean;
+    orden?: number;
+  }
+) {
+  return prisma.moneda.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteMoneda(id: string) {
+  return prisma.moneda.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// SOCIEDADES
+// =====================
+
+export async function getSociedades() {
+  return prisma.sociedad.findMany({
+    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+  });
+}
+
+export async function createSociedad(data: {
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+}) {
+  return prisma.sociedad.create({ data });
+}
+
+export async function updateSociedad(
+  id: string,
+  data: {
+    nombre?: string;
+    descripcion?: string;
+    activa?: boolean;
+    orden?: number;
+  }
+) {
+  return prisma.sociedad.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteSociedad(id: string) {
+  return prisma.sociedad.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// TIPOS DE SERVICIO
+// =====================
+
+export async function getTiposServicio() {
+  return prisma.tipoServicio.findMany({
+    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+  });
+}
+
+export async function createTipoServicio(data: {
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+}) {
+  return prisma.tipoServicio.create({ data });
+}
+
+export async function updateTipoServicio(
+  id: string,
+  data: {
+    nombre?: string;
+    descripcion?: string;
+    activo?: boolean;
+    orden?: number;
+  }
+) {
+  return prisma.tipoServicio.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteTipoServicio(id: string) {
+  return prisma.tipoServicio.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// TIPOS DE INGRESO
+// =====================
+
+export async function getTiposIngreso() {
+  return prisma.tipoIngreso.findMany({
+    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+  });
+}
+
+export async function createTipoIngreso(data: {
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+}) {
+  return prisma.tipoIngreso.create({ data });
+}
+
+export async function updateTipoIngreso(
+  id: string,
+  data: {
+    nombre?: string;
+    descripcion?: string;
+    activo?: boolean;
+    orden?: number;
+  }
+) {
+  return prisma.tipoIngreso.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteTipoIngreso(id: string) {
+  return prisma.tipoIngreso.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// TIPOS DE GASTO
+// =====================
+
+export async function getTiposGasto() {
+  return prisma.tipoGasto.findMany({
+    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+  });
+}
+
+export async function createTipoGasto(data: {
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+}) {
+  return prisma.tipoGasto.create({ data });
+}
+
+export async function updateTipoGasto(
+  id: string,
+  data: {
+    nombre?: string;
+    descripcion?: string;
+    activo?: boolean;
+    orden?: number;
+  }
+) {
+  return prisma.tipoGasto.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteTipoGasto(id: string) {
+  return prisma.tipoGasto.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// CAJAS
+// =====================
+
+export async function getCajas() {
+  return prisma.caja.findMany({
+    include: {
+      sociedad: true,
+      tipoIngreso: true,
+    },
+    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+  });
+}
+
+export async function createCaja(data: {
+  nombre: string;
+  descripcion?: string;
+  orden?: number;
+  sociedadId?: string;
+  tipoIngresoId?: string;
+}) {
+  return prisma.caja.create({ data });
+}
+
+export async function updateCaja(
+  id: string,
+  data: {
+    nombre?: string;
+    descripcion?: string;
+    activa?: boolean;
+    orden?: number;
+    sociedadId?: string | null;
+    tipoIngresoId?: string | null;
+  }
+) {
+  return prisma.caja.update({
+    where: { id },
+    data,
+  });
+}
+
+export async function deleteCaja(id: string) {
+  return prisma.caja.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// USUARIOS
+// =====================
+
+export async function getUsuarios() {
+  return prisma.usuario.findMany({
+    orderBy: [{ nombre: "asc" }, { apellido: "asc" }],
+    select: {
+      id: true,
+      nombre: true,
+      apellido: true,
+      correo: true,
+      activo: true,
+      creadoEn: true,
+      actualizadoEn: true,
+    },
+  });
+}
+
+export async function createUsuario(data: {
+  nombre: string;
+  apellido: string;
+  correo: string;
+  contrasena: string;
+}) {
+  // Hash simple para la contraseña (en producción usar bcrypt)
+  const contrasenaHash = Buffer.from(data.contrasena).toString("base64");
+  return prisma.usuario.create({
+    data: {
+      ...data,
+      contrasena: contrasenaHash,
+    },
+    select: {
+      id: true,
+      nombre: true,
+      apellido: true,
+      correo: true,
+      activo: true,
+    },
+  });
+}
+
+export async function updateUsuario(
+  id: string,
+  data: {
+    nombre?: string;
+    apellido?: string;
+    correo?: string;
+    contrasena?: string;
+    activo?: boolean;
+  }
+) {
+  const updateData: Record<string, unknown> = { ...data };
+  if (data.contrasena) {
+    updateData.contrasena = Buffer.from(data.contrasena).toString("base64");
+  }
+  return prisma.usuario.update({
+    where: { id },
+    data: updateData,
+    select: {
+      id: true,
+      nombre: true,
+      apellido: true,
+      correo: true,
+      activo: true,
+    },
+  });
+}
+
+export async function deleteUsuario(id: string) {
+  return prisma.usuario.delete({
+    where: { id },
+  });
+}

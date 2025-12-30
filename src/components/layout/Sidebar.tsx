@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useState } from "react";
+import { logout } from "@/app/actions/auth";
 
 interface NavItemProps {
   href: string;
@@ -10,6 +11,14 @@ interface NavItemProps {
   label: string;
   isActive: boolean;
   onClick?: () => void;
+}
+
+interface SidebarProps {
+  usuario?: {
+    nombre: string;
+    apellido: string;
+    correo: string;
+  } | null;
 }
 
 function NavItem({ href, icon, label, isActive, onClick }: NavItemProps) {
@@ -32,9 +41,18 @@ function NavItem({ href, icon, label, isActive, onClick }: NavItemProps) {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ usuario }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await logout();
+    router.push("/login");
+    router.refresh();
+  };
 
   const navItems = [
     {
@@ -274,16 +292,17 @@ export default function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[#101e23] truncate">
-                Usuario Demo
+                {usuario ? `${usuario.nombre} ${usuario.apellido}` : "Usuario"}
               </p>
               <p className="text-xs text-[#73a9bf] truncate">
-                demo@iglesia.com
+                {usuario?.correo || ""}
               </p>
             </div>
           </div>
-          <Link
-            href="/login"
-            className="flex items-center gap-3 px-4 py-2 text-sm text-[#e0451f] hover:bg-[#fcece9] rounded-lg transition-colors duration-200"
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="flex items-center gap-3 px-4 py-2 text-sm text-[#e0451f] hover:bg-[#fcece9] rounded-lg transition-colors duration-200 w-full disabled:opacity-50"
           >
             <svg
               className="w-5 h-5"
@@ -298,8 +317,8 @@ export default function Sidebar() {
                 d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
               />
             </svg>
-            Cerrar sesión
-          </Link>
+            {loggingOut ? "Saliendo..." : "Cerrar sesión"}
+          </button>
         </div>
       </aside>
     </>

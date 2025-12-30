@@ -1,0 +1,441 @@
+"use server";
+
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma";
+
+// =====================
+// INGRESOS
+// =====================
+
+interface MontoIngreso {
+  monedaId: string;
+  monto: number;
+}
+
+interface CrearIngresoData {
+  fechaRecaudacion: Date;
+  sociedadId: string;
+  servicioId: string;
+  tipoIngresoId: string;
+  cajaId: string;
+  usuarioId: string;
+  comentario?: string;
+  montos: MontoIngreso[];
+}
+
+export async function crearIngreso(data: CrearIngresoData) {
+  return prisma.ingreso.create({
+    data: {
+      fechaRecaudacion: data.fechaRecaudacion,
+      sociedadId: data.sociedadId,
+      servicioId: data.servicioId,
+      tipoIngresoId: data.tipoIngresoId,
+      cajaId: data.cajaId,
+      usuarioId: data.usuarioId,
+      comentario: data.comentario,
+      montos: {
+        create: data.montos.map((m) => ({
+          monedaId: m.monedaId,
+          monto: m.monto,
+        })),
+      },
+    },
+    include: {
+      montos: { include: { moneda: true } },
+      sociedad: true,
+      servicio: true,
+      tipoIngreso: true,
+      caja: true,
+    },
+  });
+}
+
+export async function crearIngresosMultiples(ingresos: CrearIngresoData[]) {
+  const resultados = [];
+  for (const ingreso of ingresos) {
+    const resultado = await crearIngreso(ingreso);
+    resultados.push(resultado);
+  }
+  return resultados;
+}
+
+interface FiltrosIngreso {
+  desde?: Date;
+  hasta?: Date;
+  sociedadId?: string;
+  tipoIngresoId?: string;
+  cajaId?: string;
+}
+
+export async function obtenerIngresos(filtros?: FiltrosIngreso) {
+  return prisma.ingreso.findMany({
+    where: {
+      fechaRecaudacion: {
+        gte: filtros?.desde,
+        lte: filtros?.hasta,
+      },
+      sociedadId: filtros?.sociedadId || undefined,
+      tipoIngresoId: filtros?.tipoIngresoId || undefined,
+      cajaId: filtros?.cajaId || undefined,
+    },
+    include: {
+      sociedad: true,
+      servicio: true,
+      tipoIngreso: true,
+      caja: true,
+      montos: { include: { moneda: true } },
+      usuario: { select: { nombre: true, apellido: true } },
+    },
+    orderBy: { fechaRecaudacion: "desc" },
+  });
+}
+
+export async function obtenerIngresoPorId(id: string) {
+  return prisma.ingreso.findUnique({
+    where: { id },
+    include: {
+      sociedad: true,
+      servicio: true,
+      tipoIngreso: true,
+      caja: true,
+      montos: { include: { moneda: true } },
+      usuario: { select: { nombre: true, apellido: true } },
+    },
+  });
+}
+
+export async function eliminarIngreso(id: string) {
+  return prisma.ingreso.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// EGRESOS
+// =====================
+
+interface CrearEgresoData {
+  fechaSalida: Date;
+  solicitante: string;
+  monto: number;
+  descripcionGasto?: string;
+  comentario?: string;
+  tipoGastoId: string;
+  monedaId: string;
+  cajaId: string;
+  usuarioId: string;
+}
+
+export async function crearEgreso(data: CrearEgresoData) {
+  return prisma.egreso.create({
+    data: {
+      fechaSalida: data.fechaSalida,
+      solicitante: data.solicitante,
+      monto: data.monto,
+      descripcionGasto: data.descripcionGasto,
+      comentario: data.comentario,
+      tipoGastoId: data.tipoGastoId,
+      monedaId: data.monedaId,
+      cajaId: data.cajaId,
+      usuarioId: data.usuarioId,
+    },
+    include: {
+      tipoGasto: true,
+      moneda: true,
+      caja: true,
+    },
+  });
+}
+
+export async function crearEgresosMultiples(egresos: CrearEgresoData[]) {
+  const resultados = [];
+  for (const egreso of egresos) {
+    const resultado = await crearEgreso(egreso);
+    resultados.push(resultado);
+  }
+  return resultados;
+}
+
+interface FiltrosEgreso {
+  desde?: Date;
+  hasta?: Date;
+  tipoGastoId?: string;
+  cajaId?: string;
+}
+
+export async function obtenerEgresos(filtros?: FiltrosEgreso) {
+  return prisma.egreso.findMany({
+    where: {
+      fechaSalida: {
+        gte: filtros?.desde,
+        lte: filtros?.hasta,
+      },
+      tipoGastoId: filtros?.tipoGastoId || undefined,
+      cajaId: filtros?.cajaId || undefined,
+    },
+    include: {
+      tipoGasto: true,
+      moneda: true,
+      caja: true,
+      usuario: { select: { nombre: true, apellido: true } },
+    },
+    orderBy: { fechaSalida: "desc" },
+  });
+}
+
+export async function obtenerEgresoPorId(id: string) {
+  return prisma.egreso.findUnique({
+    where: { id },
+    include: {
+      tipoGasto: true,
+      moneda: true,
+      caja: true,
+      usuario: { select: { nombre: true, apellido: true } },
+    },
+  });
+}
+
+export async function eliminarEgreso(id: string) {
+  return prisma.egreso.delete({
+    where: { id },
+  });
+}
+
+// =====================
+// CAJAS - SALDOS
+// =====================
+
+export async function obtenerCajasConSaldos() {
+  const cajas = await prisma.caja.findMany({
+    where: { activa: true },
+    include: {
+      sociedad: true,
+      tipoIngreso: true,
+    },
+    orderBy: { orden: "asc" },
+  });
+
+  const monedas = await prisma.moneda.findMany({
+    where: { activa: true },
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  });
+
+  // Calcular saldos por caja y moneda
+  const cajasConSaldos = await Promise.all(
+    cajas.map(async (caja) => {
+      // Ingresos agrupados por moneda
+      const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
+        by: ["monedaId"],
+        where: { ingreso: { cajaId: caja.id } },
+        _sum: { monto: true },
+      });
+
+      // Egresos agrupados por moneda
+      const egresosPorMoneda = await prisma.egreso.groupBy({
+        by: ["monedaId"],
+        where: { cajaId: caja.id },
+        _sum: { monto: true },
+      });
+
+      // Construir saldos por moneda
+      const saldos = monedas.map((moneda) => {
+        const ingresos =
+          ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
+          new Prisma.Decimal(0);
+        const egresos =
+          egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
+          new Prisma.Decimal(0);
+        const saldo = Number(ingresos) - Number(egresos);
+
+        return {
+          monedaId: moneda.id,
+          monedaCodigo: moneda.codigo,
+          monedaSimbolo: moneda.simbolo,
+          ingresos: Number(ingresos),
+          egresos: Number(egresos),
+          saldo,
+        };
+      });
+
+      return {
+        ...caja,
+        saldos,
+      };
+    })
+  );
+
+  // Serializar monedas para evitar Decimal
+  const monedasSerializadas = monedas.map(serializarMoneda);
+
+  return { cajas: cajasConSaldos, monedas: monedasSerializadas };
+}
+
+export async function obtenerDetalleCaja(cajaId: string) {
+  const caja = await prisma.caja.findUnique({
+    where: { id: cajaId },
+    include: {
+      sociedad: true,
+      tipoIngreso: true,
+    },
+  });
+
+  if (!caja) return null;
+
+  const ingresos = await prisma.ingreso.findMany({
+    where: { cajaId },
+    include: {
+      sociedad: true,
+      tipoIngreso: true,
+      servicio: true,
+      montos: { include: { moneda: true } },
+    },
+    orderBy: { fechaRecaudacion: "desc" },
+    take: 50,
+  });
+
+  const egresos = await prisma.egreso.findMany({
+    where: { cajaId },
+    include: {
+      tipoGasto: true,
+      moneda: true,
+    },
+    orderBy: { fechaSalida: "desc" },
+    take: 50,
+  });
+
+  const monedas = await prisma.moneda.findMany({
+    where: { activa: true },
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  });
+
+  // Calcular totales
+  const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
+    by: ["monedaId"],
+    where: { ingreso: { cajaId } },
+    _sum: { monto: true },
+  });
+
+  const egresosPorMoneda = await prisma.egreso.groupBy({
+    by: ["monedaId"],
+    where: { cajaId },
+    _sum: { monto: true },
+  });
+
+  const saldos = monedas.map((moneda) => {
+    const totalIngresos =
+      ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    const totalEgresos =
+      egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    return {
+      moneda: serializarMoneda(moneda),
+      ingresos: Number(totalIngresos),
+      egresos: Number(totalEgresos),
+      saldo: Number(totalIngresos) - Number(totalEgresos),
+    };
+  });
+
+  // Serializar ingresos para evitar Decimal en montos
+  const ingresosSerializados = ingresos.map((ing) => ({
+    ...ing,
+    montos: ing.montos.map((m) => ({
+      ...m,
+      monto: Number(m.monto),
+      moneda: serializarMoneda(m.moneda),
+    })),
+  }));
+
+  // Serializar egresos para evitar Decimal
+  const egresosSerializados = egresos.map((eg) => ({
+    ...eg,
+    monto: Number(eg.monto),
+    moneda: serializarMoneda(eg.moneda),
+  }));
+
+  return {
+    caja,
+    ingresos: ingresosSerializados,
+    egresos: egresosSerializados,
+    saldos,
+    monedas: monedas.map(serializarMoneda),
+  };
+}
+
+// =====================
+// DATOS PARA FORMULARIOS
+// =====================
+
+// Función auxiliar para serializar monedas (eliminar Decimal)
+function serializarMoneda(m: {
+  id: string;
+  codigo: string;
+  nombre: string;
+  simbolo: string;
+  activa: boolean;
+  esPrincipal: boolean;
+  tasaCambio: unknown;
+  orden: number;
+}) {
+  return {
+    id: m.id,
+    codigo: m.codigo,
+    nombre: m.nombre,
+    simbolo: m.simbolo,
+    activa: m.activa,
+    esPrincipal: m.esPrincipal,
+    tasaCambio: Number(m.tasaCambio),
+    orden: m.orden,
+  };
+}
+
+export async function obtenerDatosFormularioIngreso() {
+  const [sociedades, servicios, tiposIngreso, cajas, monedasRaw] =
+    await Promise.all([
+      prisma.sociedad.findMany({
+        where: { activa: true },
+        orderBy: { orden: "asc" },
+      }),
+      prisma.tipoServicio.findMany({
+        where: { activo: true },
+        orderBy: { orden: "asc" },
+      }),
+      prisma.tipoIngreso.findMany({
+        where: { activo: true },
+        orderBy: { orden: "asc" },
+      }),
+      prisma.caja.findMany({
+        where: { activa: true },
+        include: { sociedad: true, tipoIngreso: true },
+        orderBy: { orden: "asc" },
+      }),
+      prisma.moneda.findMany({
+        where: { activa: true },
+        orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+      }),
+    ]);
+
+  const monedas = monedasRaw.map(serializarMoneda);
+  return { sociedades, servicios, tiposIngreso, cajas, monedas };
+}
+
+export async function obtenerDatosFormularioEgreso() {
+  const [tiposGasto, cajas, monedasRaw] = await Promise.all([
+    prisma.tipoGasto.findMany({
+      where: { activo: true },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.caja.findMany({
+      where: { activa: true },
+      include: { sociedad: true, tipoIngreso: true },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    }),
+  ]);
+
+  const monedas = monedasRaw.map(serializarMoneda);
+  return { tiposGasto, cajas, monedas };
+}
