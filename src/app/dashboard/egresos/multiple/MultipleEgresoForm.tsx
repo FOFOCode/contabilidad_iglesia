@@ -154,16 +154,22 @@ export function MultipleEgresoForm({
 
     startTransition(async () => {
       try {
-        const egresos = filasValidas.map((row) => ({
-          fechaSalida: new Date(row.fecha),
-          solicitante: row.solicitante,
-          monto: parseFloat(row.monto),
-          tipoGastoId: row.tipoGastoId,
-          monedaId: row.monedaId,
-          cajaId: row.cajaId,
-          usuarioId,
-          descripcionGasto: row.descripcion || undefined,
-        }));
+        const egresos = filasValidas.map((row) => {
+          // Crear fecha en zona horaria local para evitar desfase
+          const [year, month, day] = row.fecha.split("-").map(Number);
+          const fechaLocal = new Date(year, month - 1, day, 12, 0, 0);
+
+          return {
+            fechaSalida: fechaLocal,
+            solicitante: row.solicitante,
+            monto: parseFloat(row.monto),
+            tipoGastoId: row.tipoGastoId,
+            monedaId: row.monedaId,
+            cajaId: row.cajaId,
+            usuarioId,
+            descripcionGasto: row.descripcion || undefined,
+          };
+        });
 
         await crearEgresosMultiples(egresos);
         setSuccess(true);

@@ -225,6 +225,7 @@ export async function getCajas() {
 export async function createCaja(data: {
   nombre: string;
   descripcion?: string;
+  esGeneral?: boolean;
   orden?: number;
   sociedadId?: string;
   tipoIngresoId?: string;
@@ -238,6 +239,7 @@ export async function updateCaja(
     nombre?: string;
     descripcion?: string;
     activa?: boolean;
+    esGeneral?: boolean;
     orden?: number;
     sociedadId?: string | null;
     tipoIngresoId?: string | null;

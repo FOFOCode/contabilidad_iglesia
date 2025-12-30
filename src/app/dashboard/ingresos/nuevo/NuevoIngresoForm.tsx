@@ -27,6 +27,7 @@ interface Caja {
   descripcion: string | null;
   sociedadId: string | null;
   tipoIngresoId: string | null;
+  esGeneral: boolean;
   sociedad: { nombre: string } | null;
   tipoIngreso: { nombre: string } | null;
 }
@@ -63,13 +64,17 @@ export function NuevoIngresoForm({
   const [cajaAsignada, setCajaAsignada] = useState<Caja | null>(null);
   const [cajaSugerida, setCajaSugerida] = useState(false);
 
+  // Moneda principal por defecto
+  const monedaPrincipal = monedas.find((m) => m.esPrincipal) || monedas[0];
+
   const [formData, setFormData] = useState({
     sociedadId: "",
     servicioId: "",
     tipoIngresoId: "",
     cajaId: "",
     fechaRecaudacion: new Date().toISOString().split("T")[0],
-    montos: {} as Record<string, string>, // monedaId -> monto
+    monto: "",
+    monedaId: monedaPrincipal?.id || "",
     comentario: "",
   });
 
@@ -94,28 +99,48 @@ export function NuevoIngresoForm({
     ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
   ];
 
+  const monedaOptions = monedas.map((m) => ({
+    value: m.id,
+    label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
+  }));
+
   // Buscar caja sugerida basada en sociedad y tipo de ingreso
   useEffect(() => {
     if (formData.sociedadId && formData.tipoIngresoId) {
-      // Buscar caja que coincida con sociedad Y tipo de ingreso
-      let cajaEncontrada = cajas.find(
-        (c) =>
-          c.sociedadId === formData.sociedadId &&
-          c.tipoIngresoId === formData.tipoIngresoId
+      // Obtener el nombre del tipo de ingreso seleccionado
+      const tipoSeleccionado = tiposIngreso.find(
+        (t) => t.id === formData.tipoIngresoId
       );
 
-      // Si no hay, buscar solo por tipo de ingreso (cajas generales sin sociedad)
-      if (!cajaEncontrada) {
-        cajaEncontrada = cajas.find(
-          (c) => c.tipoIngresoId === formData.tipoIngresoId && !c.sociedadId
-        );
+      let cajaEncontrada;
+
+      // Si es OFRENDA, buscar la caja general primero
+      if (tipoSeleccionado?.nombre.toUpperCase() === "OFRENDA") {
+        cajaEncontrada = cajas.find((c) => c.esGeneral);
       }
 
-      // Si no hay, buscar solo por sociedad
+      // Si no se encontró caja general o no es ofrenda, usar la lógica normal
       if (!cajaEncontrada) {
+        // Buscar caja que coincida con sociedad Y tipo de ingreso
         cajaEncontrada = cajas.find(
-          (c) => c.sociedadId === formData.sociedadId && !c.tipoIngresoId
+          (c) =>
+            c.sociedadId === formData.sociedadId &&
+            c.tipoIngresoId === formData.tipoIngresoId
         );
+
+        // Si no hay, buscar solo por tipo de ingreso (cajas generales sin sociedad)
+        if (!cajaEncontrada) {
+          cajaEncontrada = cajas.find(
+            (c) => c.tipoIngresoId === formData.tipoIngresoId && !c.sociedadId
+          );
+        }
+
+        // Si no hay, buscar solo por sociedad
+        if (!cajaEncontrada) {
+          cajaEncontrada = cajas.find(
+            (c) => c.sociedadId === formData.sociedadId && !c.tipoIngresoId
+          );
+        }
       }
 
       if (cajaEncontrada) {
@@ -129,7 +154,7 @@ export function NuevoIngresoForm({
     } else {
       setCajaSugerida(false);
     }
-  }, [formData.sociedadId, formData.tipoIngresoId, cajas]);
+  }, [formData.sociedadId, formData.tipoIngresoId, cajas, tiposIngreso]);
 
   // Si se selecciona caja manualmente
   useEffect(() => {
@@ -156,16 +181,6 @@ export function NuevoIngresoForm({
     }
   };
 
-  const handleMontoChange = (monedaId: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      montos: { ...prev.montos, [monedaId]: value },
-    }));
-    if (errors.montos) {
-      setErrors((prev) => ({ ...prev, montos: "" }));
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
@@ -176,13 +191,9 @@ export function NuevoIngresoForm({
     if (!formData.tipoIngresoId)
       newErrors.tipoIngresoId = "Seleccione el tipo de ingreso";
     if (!formData.cajaId) newErrors.cajaId = "Seleccione una caja";
-
-    // Validar que al menos un monto sea mayor a 0
-    const montosValidos = Object.entries(formData.montos).filter(
-      ([_, monto]) => parseFloat(monto) > 0
-    );
-    if (montosValidos.length === 0) {
-      newErrors.montos = "Ingrese al menos un monto";
+    if (!formData.monedaId) newErrors.monedaId = "Seleccione una moneda";
+    if (!formData.monto || parseFloat(formData.monto) <= 0) {
+      newErrors.monto = "Ingrese un monto válido";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -192,18 +203,26 @@ export function NuevoIngresoForm({
 
     startTransition(async () => {
       try {
+        // Crear fecha en zona horaria local para evitar desfase
+        const [year, month, day] = formData.fechaRecaudacion
+          .split("-")
+          .map(Number);
+        const fechaLocal = new Date(year, month - 1, day, 12, 0, 0);
+
         await crearIngreso({
-          fechaRecaudacion: new Date(formData.fechaRecaudacion),
+          fechaRecaudacion: fechaLocal,
           sociedadId: formData.sociedadId,
           servicioId: formData.servicioId,
           tipoIngresoId: formData.tipoIngresoId,
           cajaId: formData.cajaId,
           usuarioId,
           comentario: formData.comentario || undefined,
-          montos: montosValidos.map(([monedaId, monto]) => ({
-            monedaId,
-            monto: parseFloat(monto),
-          })),
+          montos: [
+            {
+              monedaId: formData.monedaId,
+              monto: parseFloat(formData.monto),
+            },
+          ],
         });
 
         setShowSuccess(true);
@@ -348,41 +367,32 @@ export function NuevoIngresoForm({
             </div>
           </div>
 
-          {/* Montos por moneda */}
+          {/* Monto */}
           <div>
             <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
-              Montos
+              Monto
             </h3>
-            {errors.montos && (
-              <div className="mb-4 p-3 bg-[#fcf6e9] border border-[#f2dca6] rounded-lg flex items-center gap-2">
-                <svg
-                  className="w-5 h-5 text-[#b1871b]"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-[#59430d] text-sm">{errors.montos}</span>
-              </div>
-            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {monedas.map((moneda) => (
-                <Input
-                  key={moneda.id}
-                  label={`${moneda.nombre} (${moneda.codigo})`}
-                  name={`monto_${moneda.id}`}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder={`${moneda.simbolo} 0.00`}
-                  value={formData.montos[moneda.id] || ""}
-                  onChange={(e) => handleMontoChange(moneda.id, e.target.value)}
-                />
-              ))}
+              <Input
+                label="Monto"
+                name="monto"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={formData.monto}
+                onChange={handleChange}
+                error={errors.monto}
+                required
+              />
+              <Select
+                label="Moneda"
+                name="monedaId"
+                options={monedaOptions}
+                value={formData.monedaId}
+                onChange={handleChange}
+                error={errors.monedaId}
+              />
             </div>
           </div>
 

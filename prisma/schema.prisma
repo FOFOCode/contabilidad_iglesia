@@ -120,6 +120,7 @@ model Caja {
   nombre        String    @unique
   descripcion   String?
   activa        Boolean   @default(true)
+  esGeneral     Boolean   @default(false) // Caja que recibe ofrendas generales sin importar sociedad
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt

@@ -201,6 +201,55 @@ export async function eliminarEgreso(id: string) {
   });
 }
 
+// Obtener saldo de una caja por moneda
+export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
+  const monedas = await prisma.moneda.findMany({
+    where: monedaId ? { id: monedaId, activa: true } : { activa: true },
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  });
+
+  // Ingresos agrupados por moneda
+  const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
+    by: ["monedaId"],
+    where: {
+      ingreso: { cajaId },
+      ...(monedaId ? { monedaId } : {}),
+    },
+    _sum: { monto: true },
+  });
+
+  // Egresos agrupados por moneda
+  const egresosPorMoneda = await prisma.egreso.groupBy({
+    by: ["monedaId"],
+    where: {
+      cajaId,
+      ...(monedaId ? { monedaId } : {}),
+    },
+    _sum: { monto: true },
+  });
+
+  const saldos = monedas.map((moneda) => {
+    const ingresos =
+      ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    const egresos =
+      egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    const saldo = Number(ingresos) - Number(egresos);
+
+    return {
+      monedaId: moneda.id,
+      monedaCodigo: moneda.codigo,
+      monedaSimbolo: moneda.simbolo,
+      ingresos: Number(ingresos),
+      egresos: Number(egresos),
+      saldo,
+    };
+  });
+
+  return saldos;
+}
+
 // =====================
 // CAJAS - SALDOS
 // =====================
@@ -438,4 +487,138 @@ export async function obtenerDatosFormularioEgreso() {
 
   const monedas = monedasRaw.map(serializarMoneda);
   return { tiposGasto, cajas, monedas };
+}
+
+// =====================
+// DATOS PARA REPORTES
+// =====================
+
+interface FiltrosReporte {
+  fechaInicio?: Date;
+  fechaFin?: Date;
+  cajaId?: string;
+  sociedadId?: string;
+}
+
+export async function obtenerDatosReporte(filtros: FiltrosReporte) {
+  const whereIngresos: any = {};
+  const whereEgresos: any = {};
+
+  if (filtros.fechaInicio) {
+    whereIngresos.fechaRecaudacion = {
+      ...whereIngresos.fechaRecaudacion,
+      gte: filtros.fechaInicio,
+    };
+    whereEgresos.fechaSalida = {
+      ...whereEgresos.fechaSalida,
+      gte: filtros.fechaInicio,
+    };
+  }
+  if (filtros.fechaFin) {
+    whereIngresos.fechaRecaudacion = {
+      ...whereIngresos.fechaRecaudacion,
+      lte: filtros.fechaFin,
+    };
+    whereEgresos.fechaSalida = {
+      ...whereEgresos.fechaSalida,
+      lte: filtros.fechaFin,
+    };
+  }
+  if (filtros.cajaId) {
+    whereIngresos.cajaId = filtros.cajaId;
+    whereEgresos.cajaId = filtros.cajaId;
+  }
+  if (filtros.sociedadId) {
+    whereIngresos.sociedadId = filtros.sociedadId;
+  }
+
+  const [ingresos, egresos, sociedades, cajas, monedasRaw] = await Promise.all([
+    prisma.ingreso.findMany({
+      where: whereIngresos,
+      include: {
+        sociedad: true,
+        servicio: true,
+        tipoIngreso: true,
+        caja: true,
+        montos: { include: { moneda: true } },
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fechaRecaudacion: "desc" },
+    }),
+    prisma.egreso.findMany({
+      where: whereEgresos,
+      include: {
+        tipoGasto: true,
+        caja: true,
+        moneda: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fechaSalida: "desc" },
+    }),
+    prisma.sociedad.findMany({
+      where: { activa: true },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.caja.findMany({
+      where: { activa: true },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    }),
+  ]);
+
+  // Serializar para evitar Decimal
+  const ingresosSerializados = ingresos.map((ing) => ({
+    id: ing.id,
+    fecha: ing.fechaRecaudacion,
+    tipo: "Ingreso" as const,
+    concepto: `${ing.tipoIngreso.nombre} - ${ing.sociedad.nombre}`,
+    sociedad: ing.sociedad.nombre,
+    caja: ing.caja.nombre,
+    servicio: ing.servicio.nombre,
+    tipoIngreso: ing.tipoIngreso.nombre,
+    comentario: ing.comentario || undefined,
+    usuario: ing.usuario
+      ? `${ing.usuario.nombre} ${ing.usuario.apellido}`
+      : undefined,
+    montos: ing.montos.map((m) => ({
+      monto: Number(m.monto),
+      monedaId: m.monedaId,
+      monedaCodigo: m.moneda.codigo,
+      monedaSimbolo: m.moneda.simbolo,
+    })),
+  }));
+
+  const egresosSerializados = egresos.map((eg) => ({
+    id: eg.id,
+    fecha: eg.fechaSalida,
+    tipo: "Egreso" as const,
+    concepto: eg.descripcionGasto || eg.tipoGasto.nombre,
+    sociedad: null,
+    caja: eg.caja.nombre,
+    tipoGasto: eg.tipoGasto.nombre,
+    solicitante: eg.solicitante,
+    comentario: eg.comentario || undefined,
+    usuario: eg.usuario
+      ? `${eg.usuario.nombre} ${eg.usuario.apellido}`
+      : undefined,
+    montos: [
+      {
+        monto: Number(eg.monto),
+        monedaId: eg.monedaId,
+        monedaCodigo: eg.moneda.codigo,
+        monedaSimbolo: eg.moneda.simbolo,
+      },
+    ],
+  }));
+
+  return {
+    ingresos: ingresosSerializados,
+    egresos: egresosSerializados,
+    sociedades,
+    cajas,
+    monedas: monedasRaw.map(serializarMoneda),
+  };
 }

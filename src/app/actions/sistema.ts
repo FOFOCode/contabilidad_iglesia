@@ -248,6 +248,15 @@ export async function sembrarDatosIniciales() {
 export async function obtenerResumenDashboard() {
   const hoy = new Date();
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const inicioMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  const finMesAnterior = new Date(
+    hoy.getFullYear(),
+    hoy.getMonth(),
+    0,
+    23,
+    59,
+    59
+  );
   const inicioAnio = new Date(hoy.getFullYear(), 0, 1);
 
   // Obtener moneda principal
@@ -274,6 +283,107 @@ export async function obtenerResumenDashboard() {
     },
     _sum: { monto: true },
   });
+
+  // Ingresos mes anterior (para comparativa)
+  const ingresosMesAnterior = await prisma.ingresoMonto.groupBy({
+    by: ["monedaId"],
+    where: {
+      ingreso: {
+        fechaRecaudacion: { gte: inicioMesAnterior, lte: finMesAnterior },
+      },
+    },
+    _sum: { monto: true },
+  });
+
+  // Egresos mes anterior
+  const egresosMesAnterior = await prisma.egreso.groupBy({
+    by: ["monedaId"],
+    where: {
+      fechaSalida: { gte: inicioMesAnterior, lte: finMesAnterior },
+    },
+    _sum: { monto: true },
+  });
+
+  // Ingresos del año (acumulado)
+  const ingresosAnio = await prisma.ingresoMonto.groupBy({
+    by: ["monedaId"],
+    where: {
+      ingreso: {
+        fechaRecaudacion: { gte: inicioAnio },
+      },
+    },
+    _sum: { monto: true },
+  });
+
+  // Egresos del año
+  const egresosAnio = await prisma.egreso.groupBy({
+    by: ["monedaId"],
+    where: {
+      fechaSalida: { gte: inicioAnio },
+    },
+    _sum: { monto: true },
+  });
+
+  // Ingresos por sociedad del mes
+  const ingresosPorSociedad = await prisma.ingreso.findMany({
+    where: { fechaRecaudacion: { gte: inicioMes } },
+    select: {
+      sociedad: { select: { id: true, nombre: true } },
+      montos: {
+        select: {
+          monto: true,
+          moneda: { select: { id: true, simbolo: true, codigo: true } },
+        },
+      },
+    },
+  });
+
+  // Egresos por tipo de gasto del mes
+  const egresosPorTipo = await prisma.egreso.groupBy({
+    by: ["tipoGastoId", "monedaId"],
+    where: { fechaSalida: { gte: inicioMes } },
+    _sum: { monto: true },
+  });
+
+  // Obtener nombres de tipos de gasto
+  const tiposGasto = await prisma.tipoGasto.findMany({
+    where: { activo: true },
+    select: { id: true, nombre: true },
+  });
+
+  // Top 5 cajas por movimiento (con saldos calculados)
+  const cajasActivas = await prisma.caja.findMany({
+    where: { activa: true },
+    select: { id: true, nombre: true, esGeneral: true },
+    orderBy: { orden: "asc" },
+  });
+
+  // Calcular saldos por caja
+  const cajasConSaldos = await Promise.all(
+    cajasActivas.slice(0, 6).map(async (caja) => {
+      const ingresosMoneda = await prisma.ingresoMonto.groupBy({
+        by: ["monedaId"],
+        where: { ingreso: { cajaId: caja.id } },
+        _sum: { monto: true },
+      });
+      const egresosMoneda = await prisma.egreso.groupBy({
+        by: ["monedaId"],
+        where: { cajaId: caja.id },
+        _sum: { monto: true },
+      });
+
+      return {
+        ...caja,
+        saldos: ingresosMoneda.map((i) => {
+          const egreso = egresosMoneda.find((e) => e.monedaId === i.monedaId);
+          return {
+            monedaId: i.monedaId,
+            saldo: Number(i._sum.monto || 0) - Number(egreso?._sum.monto || 0),
+          };
+        }),
+      };
+    })
+  );
 
   // Contadores
   const [totalIngresos, totalEgresos, totalCajas] = await Promise.all([
@@ -307,15 +417,29 @@ export async function obtenerResumenDashboard() {
   // Monedas para referencia
   const monedas = await prisma.moneda.findMany({ where: { activa: true } });
 
+  // Sociedades para referencia
+  const sociedades = await prisma.sociedad.findMany({
+    where: { activa: true },
+  });
+
   return {
     monedaPrincipal,
     ingresosMes,
     egresosMes,
+    ingresosMesAnterior,
+    egresosMesAnterior,
+    ingresosAnio,
+    egresosAnio,
+    ingresosPorSociedad,
+    egresosPorTipo,
+    tiposGasto,
+    cajasConSaldos,
     totalIngresos,
     totalEgresos,
     totalCajas,
     ultimosIngresos,
     ultimosEgresos,
     monedas,
+    sociedades,
   };
 }

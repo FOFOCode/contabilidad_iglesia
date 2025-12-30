@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Input, Select, TextArea, Button } from "@/components/ui";
-import { crearEgreso } from "@/app/actions/operaciones";
+import { crearEgreso, obtenerSaldoCaja } from "@/app/actions/operaciones";
 
 interface TipoGasto {
   id: string;
@@ -42,6 +42,15 @@ export function NuevoEgresoForm({
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saldoCaja, setSaldoCaja] = useState<
+    {
+      monedaId: string;
+      monedaCodigo: string;
+      monedaSimbolo: string;
+      saldo: number;
+    }[]
+  >([]);
+  const [cargandoSaldo, setCargandoSaldo] = useState(false);
 
   // Moneda principal por defecto
   const monedaPrincipal = monedas.find((m) => m.esPrincipal) || monedas[0];
@@ -72,6 +81,30 @@ export function NuevoEgresoForm({
     value: m.id,
     label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
   }));
+
+  // Cargar saldo de la caja seleccionada
+  useEffect(() => {
+    if (formData.cajaId) {
+      setCargandoSaldo(true);
+      obtenerSaldoCaja(formData.cajaId)
+        .then((saldos) => {
+          setSaldoCaja(saldos);
+        })
+        .catch(console.error)
+        .finally(() => setCargandoSaldo(false));
+    } else {
+      setSaldoCaja([]);
+    }
+  }, [formData.cajaId]);
+
+  // Obtener saldo actual de la moneda seleccionada
+  const saldoMonedaActual = saldoCaja.find(
+    (s) => s.monedaId === formData.monedaId
+  );
+  const montoNumerico = parseFloat(formData.monto) || 0;
+  const saldoProyectado = saldoMonedaActual
+    ? saldoMonedaActual.saldo - montoNumerico
+    : null;
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -106,8 +139,12 @@ export function NuevoEgresoForm({
 
     startTransition(async () => {
       try {
+        // Crear fecha en zona horaria local para evitar desfase
+        const [year, month, day] = formData.fechaSalida.split("-").map(Number);
+        const fechaLocal = new Date(year, month - 1, day, 12, 0, 0);
+
         await crearEgreso({
-          fechaSalida: new Date(formData.fechaSalida),
+          fechaSalida: fechaLocal,
           tipoGastoId: formData.tipoGastoId,
           cajaId: formData.cajaId,
           monedaId: formData.monedaId,
@@ -186,6 +223,88 @@ export function NuevoEgresoForm({
                 required
               />
             </div>
+
+            {/* Preview de Saldo de la Caja */}
+            {formData.cajaId && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-[#eef4f7] to-white rounded-lg border border-[#b9d4df]">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold text-[#40768c] uppercase">
+                    Saldo Disponible en Caja
+                  </h4>
+                  {cargandoSaldo && (
+                    <span className="text-xs text-[#73a9bf]">Cargando...</span>
+                  )}
+                </div>
+                {!cargandoSaldo && saldoCaja.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {saldoCaja.map((s) => (
+                      <div
+                        key={s.monedaId}
+                        className={`p-2 rounded ${
+                          s.monedaId === formData.monedaId
+                            ? "bg-white border-2 border-[#40768c]"
+                            : "bg-white/50"
+                        }`}
+                      >
+                        <p className="text-xs text-[#73a9bf]">
+                          {s.monedaCodigo}
+                        </p>
+                        <p
+                          className={`font-bold ${
+                            s.saldo >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
+                          }`}
+                        >
+                          {s.monedaSimbolo}
+                          {s.saldo.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Proyección después del egreso */}
+                {saldoMonedaActual && montoNumerico > 0 && (
+                  <div className="mt-3 pt-3 border-t border-[#b9d4df]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#73a9bf]">
+                        Saldo después del egreso (
+                        {saldoMonedaActual.monedaCodigo}):
+                      </span>
+                      <span
+                        className={`font-bold text-lg ${
+                          saldoProyectado !== null && saldoProyectado >= 0
+                            ? "text-[#2ba193]"
+                            : "text-[#e0451f]"
+                        }`}
+                      >
+                        {saldoMonedaActual.monedaSimbolo}
+                        {saldoProyectado?.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    {saldoProyectado !== null && saldoProyectado < 0 && (
+                      <p className="text-xs text-[#e0451f] mt-1 flex items-center gap-1">
+                        <svg
+                          className="w-4 h-4"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        ¡Atención! El saldo quedaría negativo
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Fecha y Moneda */}

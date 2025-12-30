@@ -46,6 +46,7 @@ export interface ConfigItemData {
 export interface CajaData extends ConfigItemData {
   sociedadId: string | null;
   tipoIngresoId: string | null;
+  esGeneral: boolean;
   sociedad?: { nombre: string } | null;
   tipoIngreso?: { nombre: string } | null;
 }
@@ -254,6 +255,7 @@ export function ConfiguracionClient({
     descripcion: "",
     sociedadId: "",
     tipoIngresoId: "",
+    esGeneral: false,
     codigo: "",
     simbolo: "",
     tasaCambio: "1",
@@ -302,6 +304,7 @@ export function ConfiguracionClient({
       descripcion: "",
       sociedadId: "",
       tipoIngresoId: "",
+      esGeneral: false,
       codigo: "",
       simbolo: "",
       tasaCambio: "1",
@@ -321,6 +324,7 @@ export function ConfiguracionClient({
         descripcion: "",
         sociedadId: "",
         tipoIngresoId: "",
+        esGeneral: false,
         codigo: item.codigo,
         simbolo: item.simbolo,
         tasaCambio: item.tasaCambio.toString(),
@@ -332,6 +336,7 @@ export function ConfiguracionClient({
         descripcion: item.descripcion || "",
         sociedadId: item.sociedadId || "",
         tipoIngresoId: item.tipoIngresoId || "",
+        esGeneral: item.esGeneral || false,
         codigo: "",
         simbolo: "",
         tasaCambio: "1",
@@ -343,6 +348,7 @@ export function ConfiguracionClient({
         descripcion: item.descripcion || "",
         sociedadId: "",
         tipoIngresoId: "",
+        esGeneral: false,
         codigo: "",
         simbolo: "",
         tasaCambio: "1",
@@ -649,6 +655,7 @@ export function ConfiguracionClient({
               await updateCaja(editingItem.id, {
                 nombre: formData.nombre,
                 descripcion: formData.descripcion || undefined,
+                esGeneral: formData.esGeneral,
                 sociedadId: formData.sociedadId || null,
                 tipoIngresoId: formData.tipoIngresoId || null,
               });
@@ -659,6 +666,7 @@ export function ConfiguracionClient({
                         ...c,
                         nombre: formData.nombre,
                         descripcion: formData.descripcion,
+                        esGeneral: formData.esGeneral,
                         sociedadId: formData.sociedadId || null,
                         tipoIngresoId: formData.tipoIngresoId || null,
                         sociedad: formData.sociedadId
@@ -689,6 +697,7 @@ export function ConfiguracionClient({
               const created = await createCaja({
                 nombre: formData.nombre,
                 descripcion: formData.descripcion || undefined,
+                esGeneral: formData.esGeneral,
                 sociedadId: formData.sociedadId || undefined,
                 tipoIngresoId: formData.tipoIngresoId || undefined,
               });
@@ -727,6 +736,7 @@ export function ConfiguracionClient({
           descripcion: "",
           sociedadId: "",
           tipoIngresoId: "",
+          esGeneral: false,
           codigo: "",
           simbolo: "",
           tasaCambio: "1",
@@ -1317,11 +1327,33 @@ export function ConfiguracionClient({
                         }
                         options={tipoIngresoOptions}
                       />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="esGeneral"
+                          checked={formData.esGeneral}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              esGeneral: e.target.checked,
+                            }))
+                          }
+                          className="w-4 h-4 text-[#2ba193] bg-gray-100 border-gray-300 rounded focus:ring-[#2ba193] focus:ring-2"
+                        />
+                        <label
+                          htmlFor="esGeneral"
+                          className="text-sm font-medium text-[#305969]"
+                        >
+                          Es caja general (recibe ofrendas de todas las
+                          sociedades)
+                        </label>
+                      </div>
                       <div className="p-3 bg-[#eef4f7] rounded-lg border border-[#b9d4df]">
                         <p className="text-xs text-[#40768c]">
-                          <strong>Nota:</strong> La sociedad y tipo de ingreso
-                          determinan qué ingresos se asignan automáticamente a
-                          esta caja.
+                          <strong>Nota:</strong> Si es caja general, recibirá
+                          todas las ofrendas sin importar la sociedad. De lo
+                          contrario, la sociedad y tipo de ingreso determinan
+                          qué ingresos se asignan automáticamente.
                         </p>
                       </div>
                     </>

@@ -82,9 +82,13 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
 
   // Estado específico para cajas
   const [cajas, setCajas] = useState<
-    { id: number; nombre: string; descripcion: string }[]
+    { id: number; nombre: string; descripcion: string; esGeneral: boolean }[]
   >([]);
-  const [nuevaCaja, setNuevaCaja] = useState({ nombre: "", descripcion: "" });
+  const [nuevaCaja, setNuevaCaja] = useState({
+    nombre: "",
+    descripcion: "",
+    esGeneral: false,
+  });
 
   const indicePaso = PASOS_ORDEN.indexOf(pasoActual);
   const progreso = Math.round((indicePaso / (PASOS_ORDEN.length - 1)) * 100);
@@ -160,7 +164,7 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
   const agregarCaja = () => {
     if (!nuevaCaja.nombre.trim()) return;
     setCajas([...cajas, { id: Date.now(), ...nuevaCaja }]);
-    setNuevaCaja({ nombre: "", descripcion: "" });
+    setNuevaCaja({ nombre: "", descripcion: "", esGeneral: false });
   };
 
   const eliminarCaja = (id: number) => {
@@ -226,6 +230,7 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
               await createCaja({
                 nombre: cajas[i].nombre,
                 descripcion: cajas[i].descripcion || undefined,
+                esGeneral: cajas[i].esGeneral,
                 orden: i,
               });
             }
@@ -487,14 +492,19 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
                     key={c.id}
                     className="flex items-center justify-between bg-[#eef4f7] p-3 rounded-lg"
                   >
-                    <div>
-                      <span className="font-medium text-[#203b46]">
-                        {c.nombre}
-                      </span>
-                      {c.descripcion && (
-                        <span className="text-[#73a9bf] ml-2 text-sm">
-                          - {c.descripcion}
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <span className="font-medium text-[#203b46]">
+                          {c.nombre}
                         </span>
+                        {c.descripcion && (
+                          <span className="text-[#73a9bf] ml-2 text-sm">
+                            - {c.descripcion}
+                          </span>
+                        )}
+                      </div>
+                      {c.esGeneral && (
+                        <Badge variant="warning">★ General</Badge>
                       )}
                     </div>
                     <button
@@ -528,6 +538,28 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
                 placeholder="Para qué se usa esta caja"
                 className="mb-3"
               />
+              <label className="flex items-start gap-2 mb-3">
+                <input
+                  type="checkbox"
+                  checked={nuevaCaja.esGeneral}
+                  onChange={(e) =>
+                    setNuevaCaja({
+                      ...nuevaCaja,
+                      esGeneral: e.target.checked,
+                    })
+                  }
+                  className="w-4 h-4 mt-1"
+                />
+                <div>
+                  <span className="text-sm text-[#305969] font-medium block">
+                    Es caja general
+                  </span>
+                  <span className="text-xs text-[#73a9bf]">
+                    Las ofrendas de todas las sociedades irán a esta caja
+                    automáticamente
+                  </span>
+                </div>
+              </label>
               <Button
                 onClick={agregarCaja}
                 variant="secondary"

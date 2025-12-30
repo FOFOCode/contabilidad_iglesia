@@ -17,6 +17,14 @@ export default async function DashboardPage() {
         monedas={[]}
         ingresosMes={[]}
         egresosMes={[]}
+        ingresosMesAnterior={[]}
+        egresosMesAnterior={[]}
+        ingresosAnio={[]}
+        egresosAnio={[]}
+        ingresosPorSociedad={[]}
+        egresosPorTipo={[]}
+        tiposGasto={[]}
+        cajasConSaldos={[]}
         totalIngresos={0}
         totalEgresos={0}
         totalCajas={0}
@@ -39,6 +47,74 @@ export default async function DashboardPage() {
   const egresosMes = resumen.egresosMes.map((e) => ({
     monedaId: e.monedaId,
     total: Number(e._sum.monto) || 0,
+  }));
+
+  const ingresosMesAnterior = resumen.ingresosMesAnterior.map((i) => ({
+    monedaId: i.monedaId,
+    total: Number(i._sum.monto) || 0,
+  }));
+
+  const egresosMesAnterior = resumen.egresosMesAnterior.map((e) => ({
+    monedaId: e.monedaId,
+    total: Number(e._sum.monto) || 0,
+  }));
+
+  const ingresosAnio = resumen.ingresosAnio.map((i) => ({
+    monedaId: i.monedaId,
+    total: Number(i._sum.monto) || 0,
+  }));
+
+  const egresosAnio = resumen.egresosAnio.map((e) => ({
+    monedaId: e.monedaId,
+    total: Number(e._sum.monto) || 0,
+  }));
+
+  // Agrupar ingresos por sociedad
+  const ingresosPorSociedadAgrupados: Record<
+    string,
+    { nombre: string; montos: Record<string, number> }
+  > = {};
+  resumen.ingresosPorSociedad.forEach((ing) => {
+    const socId = ing.sociedad.id;
+    if (!ingresosPorSociedadAgrupados[socId]) {
+      ingresosPorSociedadAgrupados[socId] = {
+        nombre: ing.sociedad.nombre,
+        montos: {},
+      };
+    }
+    ing.montos.forEach((m) => {
+      const monedaId = m.moneda.id;
+      if (!ingresosPorSociedadAgrupados[socId].montos[monedaId]) {
+        ingresosPorSociedadAgrupados[socId].montos[monedaId] = 0;
+      }
+      ingresosPorSociedadAgrupados[socId].montos[monedaId] += Number(m.monto);
+    });
+  });
+
+  const ingresosPorSociedad = Object.entries(ingresosPorSociedadAgrupados).map(
+    ([id, data]) => ({
+      sociedadId: id,
+      nombre: data.nombre,
+      montos: Object.entries(data.montos).map(([monedaId, total]) => ({
+        monedaId,
+        total,
+      })),
+    })
+  );
+
+  // Egresos por tipo
+  const egresosPorTipo = resumen.egresosPorTipo.map((e) => ({
+    tipoGastoId: e.tipoGastoId,
+    monedaId: e.monedaId,
+    total: Number(e._sum.monto) || 0,
+  }));
+
+  // Cajas con saldos
+  const cajasConSaldos = resumen.cajasConSaldos.map((c) => ({
+    id: c.id,
+    nombre: c.nombre,
+    esGeneral: c.esGeneral,
+    saldos: c.saldos,
   }));
 
   // Transformar últimos ingresos
@@ -73,11 +149,25 @@ export default async function DashboardPage() {
     esPrincipal: m.esPrincipal,
   }));
 
+  // Tipos de gasto
+  const tiposGasto = resumen.tiposGasto.map((t) => ({
+    id: t.id,
+    nombre: t.nombre,
+  }));
+
   return (
     <DashboardClient
       monedas={monedas}
       ingresosMes={ingresosMes}
       egresosMes={egresosMes}
+      ingresosMesAnterior={ingresosMesAnterior}
+      egresosMesAnterior={egresosMesAnterior}
+      ingresosAnio={ingresosAnio}
+      egresosAnio={egresosAnio}
+      ingresosPorSociedad={ingresosPorSociedad}
+      egresosPorTipo={egresosPorTipo}
+      tiposGasto={tiposGasto}
+      cajasConSaldos={cajasConSaldos}
       totalIngresos={resumen.totalIngresos}
       totalEgresos={resumen.totalEgresos}
       totalCajas={resumen.totalCajas}

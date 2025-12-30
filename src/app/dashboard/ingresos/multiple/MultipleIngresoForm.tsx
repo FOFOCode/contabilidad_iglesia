@@ -26,6 +26,7 @@ interface Caja {
   descripcion: string | null;
   sociedadId: string | null;
   tipoIngresoId: string | null;
+  esGeneral: boolean;
 }
 
 interface Moneda {
@@ -52,7 +53,8 @@ interface IngresoRow {
   servicioId: string;
   tipoIngresoId: string;
   cajaId: string;
-  montos: Record<string, string>;
+  monto: string;
+  monedaId: string;
   comentario: string;
 }
 
@@ -69,6 +71,9 @@ export function MultipleIngresoForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Moneda principal por defecto
+  const monedaPrincipal = monedas.find((m) => m.esPrincipal) || monedas[0];
+
   const createEmptyRow = (id: number): IngresoRow => ({
     id,
     fecha: new Date().toISOString().split("T")[0],
@@ -76,7 +81,8 @@ export function MultipleIngresoForm({
     servicioId: "",
     tipoIngresoId: "",
     cajaId: "",
-    montos: {},
+    monto: "",
+    monedaId: monedaPrincipal?.id || "",
     comentario: "",
   });
 
@@ -108,12 +114,26 @@ export function MultipleIngresoForm({
     ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
   ];
 
+  const monedaOptions = monedas.map((m) => ({
+    value: m.id,
+    label: `${m.simbolo} ${m.codigo}`,
+  }));
+
   // Función para encontrar caja sugerida
   const findSuggestedCaja = (
     sociedadId: string,
     tipoIngresoId: string
   ): string => {
     if (!sociedadId || !tipoIngresoId) return "";
+
+    // Obtener el nombre del tipo de ingreso seleccionado
+    const tipoSeleccionado = tiposIngreso.find((t) => t.id === tipoIngresoId);
+
+    // Si es OFRENDA, buscar la caja general primero
+    if (tipoSeleccionado?.nombre.toUpperCase() === "OFRENDA") {
+      const cajaGeneral = cajas.find((c) => c.esGeneral);
+      if (cajaGeneral) return cajaGeneral.id;
+    }
 
     // Buscar caja que coincida con sociedad Y tipo de ingreso
     let caja = cajas.find(
@@ -174,25 +194,12 @@ export function MultipleIngresoForm({
     );
   };
 
-  const updateMonto = (rowId: number, monedaId: string, value: string) => {
-    setRows(
-      rows.map((row) => {
-        if (row.id !== rowId) return row;
-        return {
-          ...row,
-          montos: { ...row.montos, [monedaId]: value },
-        };
-      })
-    );
-  };
-
   const duplicateRow = (id: number) => {
     const rowToDuplicate = rows.find((row) => row.id === id);
     if (rowToDuplicate) {
       const newRow = {
         ...rowToDuplicate,
         id: nextId,
-        montos: { ...rowToDuplicate.montos },
       };
       setRows([...rows, newRow]);
       setNextId(nextId + 1);
@@ -207,9 +214,10 @@ export function MultipleIngresoForm({
     });
 
     rows.forEach((row) => {
-      Object.entries(row.montos).forEach(([monedaId, monto]) => {
-        result[monedaId] = (result[monedaId] || 0) + (parseFloat(monto) || 0);
-      });
+      if (row.monto && row.monedaId) {
+        result[row.monedaId] =
+          (result[row.monedaId] || 0) + (parseFloat(row.monto) || 0);
+      }
     });
 
     return result;
@@ -225,40 +233,45 @@ export function MultipleIngresoForm({
         !row.sociedadId ||
         !row.servicioId ||
         !row.tipoIngresoId ||
-        !row.cajaId
+        !row.cajaId ||
+        !row.monedaId
       ) {
         return false;
       }
-      const tieneMontos = Object.values(row.montos).some(
-        (m) => parseFloat(m) > 0
-      );
+      const tieneMontos = parseFloat(row.monto) > 0;
       return tieneMontos;
     });
 
     if (filasValidas.length === 0) {
       setError(
-        "Complete al menos una fila con todos los campos requeridos y al menos un monto"
+        "Complete al menos una fila con todos los campos requeridos y un monto válido"
       );
       return;
     }
 
     startTransition(async () => {
       try {
-        const ingresos = filasValidas.map((row) => ({
-          fechaRecaudacion: new Date(row.fecha),
-          sociedadId: row.sociedadId,
-          servicioId: row.servicioId,
-          tipoIngresoId: row.tipoIngresoId,
-          cajaId: row.cajaId,
-          usuarioId,
-          comentario: row.comentario || undefined,
-          montos: Object.entries(row.montos)
-            .filter(([_, monto]) => parseFloat(monto) > 0)
-            .map(([monedaId, monto]) => ({
-              monedaId,
-              monto: parseFloat(monto),
-            })),
-        }));
+        const ingresos = filasValidas.map((row) => {
+          // Crear fecha en zona horaria local para evitar desfase
+          const [year, month, day] = row.fecha.split("-").map(Number);
+          const fechaLocal = new Date(year, month - 1, day, 12, 0, 0);
+
+          return {
+            fechaRecaudacion: fechaLocal,
+            sociedadId: row.sociedadId,
+            servicioId: row.servicioId,
+            tipoIngresoId: row.tipoIngresoId,
+            cajaId: row.cajaId,
+            usuarioId,
+            comentario: row.comentario || undefined,
+            montos: [
+              {
+                monedaId: row.monedaId,
+                monto: parseFloat(row.monto),
+              },
+            ],
+          };
+        });
 
         await crearIngresosMultiples(ingresos);
         setSuccess(true);
@@ -449,22 +462,25 @@ export function MultipleIngresoForm({
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
-              {monedas.map((moneda) => (
-                <Input
-                  key={moneda.id}
-                  label={`Monto ${moneda.codigo}`}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={row.montos[moneda.id] || ""}
-                  onChange={(e) =>
-                    updateMonto(row.id, moneda.id, e.target.value)
-                  }
-                />
-              ))}
-              <div className="col-span-2 sm:col-span-1 lg:col-span-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
+              <Input
+                label="Monto"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={row.monto}
+                onChange={(e) => updateRow(row.id, "monto", e.target.value)}
+                required
+              />
+              <Select
+                label="Moneda"
+                options={monedaOptions}
+                value={row.monedaId}
+                onChange={(e) => updateRow(row.id, "monedaId", e.target.value)}
+                required
+              />
+              <div className="col-span-2">
                 <Input
                   label="Observaciones"
                   placeholder="Notas adicionales..."
