@@ -356,71 +356,82 @@ export async function obtenerResumenDashboard() {
     where: { activa: true },
     select: { id: true, nombre: true, esGeneral: true },
     orderBy: { orden: "asc" },
+    take: 6,
   });
 
-  // Calcular saldos por caja
-  const cajasConSaldos = await Promise.all(
-    cajasActivas.slice(0, 6).map(async (caja) => {
-      const ingresosMoneda = await prisma.ingresoMonto.groupBy({
-        by: ["monedaId"],
-        where: { ingreso: { cajaId: caja.id } },
-        _sum: { monto: true },
-      });
-      const egresosMoneda = await prisma.egreso.groupBy({
-        by: ["monedaId"],
-        where: { cajaId: caja.id },
-        _sum: { monto: true },
-      });
+  // Obtener IDs de cajas para filtrar
+  const cajaIds = cajasActivas.map((c) => c.id);
 
+  // Consultas optimizadas: una sola consulta para todos los ingresos y egresos
+  const [ingresosAgrupados, egresosAgrupados] = await Promise.all([
+    prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
+      SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
+      FROM ingreso_montos im
+      INNER JOIN ingresos i ON im."ingresoId" = i.id
+      WHERE i."cajaId" = ANY(${cajaIds}::text[])
+      GROUP BY i."cajaId", im."monedaId"
+    `,
+    prisma.egreso.groupBy({
+      by: ["cajaId", "monedaId"],
+      where: { cajaId: { in: cajaIds } },
+      _sum: { monto: true },
+    }),
+  ]);
+
+  // Mapas para acceso rápido
+  const ingresosMap = new Map<string, number>();
+  ingresosAgrupados.forEach((ing) => {
+    ingresosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+  });
+
+  const egresosMap = new Map<string, number>();
+  egresosAgrupados.forEach((egr) => {
+    egresosMap.set(`${egr.cajaId}-${egr.monedaId}`, Number(egr._sum.monto || 0));
+  });
+
+  // Monedas para referencia (necesitamos esto antes de construir cajasConSaldos)
+  const monedas = await prisma.moneda.findMany({ where: { activa: true } });
+
+  // Construir cajas con saldos
+  const cajasConSaldos = cajasActivas.map((caja) => ({
+    ...caja,
+    saldos: monedas.map((moneda) => {
+      const key = `${caja.id}-${moneda.id}`;
+      const ingresos = ingresosMap.get(key) || 0;
+      const egresos = egresosMap.get(key) || 0;
       return {
-        ...caja,
-        saldos: ingresosMoneda.map((i) => {
-          const egreso = egresosMoneda.find((e) => e.monedaId === i.monedaId);
-          return {
-            monedaId: i.monedaId,
-            saldo: Number(i._sum.monto || 0) - Number(egreso?._sum.monto || 0),
-          };
-        }),
+        monedaId: moneda.id,
+        saldo: ingresos - egresos,
       };
-    })
-  );
+    }),
+  }));
 
-  // Contadores
-  const [totalIngresos, totalEgresos, totalCajas] = await Promise.all([
+  // Contadores y últimos movimientos en paralelo
+  const [totalIngresos, totalEgresos, totalCajas, ultimosIngresos, ultimosEgresos, sociedades] = await Promise.all([
     prisma.ingreso.count({ where: { fechaRecaudacion: { gte: inicioMes } } }),
     prisma.egreso.count({ where: { fechaSalida: { gte: inicioMes } } }),
     prisma.caja.count({ where: { activa: true } }),
+    prisma.ingreso.findMany({
+      take: 5,
+      orderBy: { creadoEn: "desc" },
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+        caja: true,
+        montos: { include: { moneda: true } },
+      },
+    }),
+    prisma.egreso.findMany({
+      take: 5,
+      orderBy: { creadoEn: "desc" },
+      include: {
+        tipoGasto: true,
+        caja: true,
+        moneda: true,
+      },
+    }),
+    prisma.sociedad.findMany({ where: { activa: true } }),
   ]);
-
-  // Últimos movimientos
-  const ultimosIngresos = await prisma.ingreso.findMany({
-    take: 5,
-    orderBy: { creadoEn: "desc" },
-    include: {
-      sociedad: true,
-      tipoIngreso: true,
-      caja: true,
-      montos: { include: { moneda: true } },
-    },
-  });
-
-  const ultimosEgresos = await prisma.egreso.findMany({
-    take: 5,
-    orderBy: { creadoEn: "desc" },
-    include: {
-      tipoGasto: true,
-      caja: true,
-      moneda: true,
-    },
-  });
-
-  // Monedas para referencia
-  const monedas = await prisma.moneda.findMany({ where: { activa: true } });
-
-  // Sociedades para referencia
-  const sociedades = await prisma.sociedad.findMany({
-    where: { activa: true },
-  });
 
   return {
     monedaPrincipal,

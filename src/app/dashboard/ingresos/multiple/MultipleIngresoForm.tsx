@@ -93,31 +93,47 @@ export function MultipleIngresoForm({
   ]);
   const [nextId, setNextId] = useState(4);
 
-  // Opciones para selects
-  const sociedadOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-  ];
+  // Memoizar opciones para selects
+  const sociedadOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
+    ],
+    [sociedades]
+  );
 
-  const servicioOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...servicios.map((s) => ({ value: s.id, label: s.nombre })),
-  ];
+  const servicioOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...servicios.map((s) => ({ value: s.id, label: s.nombre })),
+    ],
+    [servicios]
+  );
 
-  const tipoIngresoOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-  ];
+  const tipoIngresoOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
+    ],
+    [tiposIngreso]
+  );
 
-  const cajaOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-  ];
+  const cajaOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
+    ],
+    [cajas]
+  );
 
-  const monedaOptions = monedas.map((m) => ({
-    value: m.id,
-    label: `${m.simbolo} ${m.codigo}`,
-  }));
+  const monedaOptions = useMemo(
+    () =>
+      monedas.map((m) => ({
+        value: m.id,
+        label: `${m.simbolo} ${m.codigo}`,
+      })),
+    [monedas]
+  );
 
   // Función para encontrar caja sugerida
   const findSuggestedCaja = (

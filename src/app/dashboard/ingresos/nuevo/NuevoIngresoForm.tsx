@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Input, Select, TextArea, Button } from "@/components/ui";
@@ -78,31 +78,47 @@ export function NuevoIngresoForm({
     comentario: "",
   });
 
-  // Convertir a options para selects
-  const sociedadOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-  ];
+  // Memoizar opciones de selects para evitar recálculos
+  const sociedadOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
+    ],
+    [sociedades]
+  );
 
-  const servicioOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...servicios.map((s) => ({ value: s.id, label: s.nombre })),
-  ];
+  const servicioOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...servicios.map((s) => ({ value: s.id, label: s.nombre })),
+    ],
+    [servicios]
+  );
 
-  const tipoIngresoOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-  ];
+  const tipoIngresoOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
+    ],
+    [tiposIngreso]
+  );
 
-  const cajaOptions = [
-    { value: "", label: "-- Seleccione manualmente --" },
-    ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-  ];
+  const cajaOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione manualmente --" },
+      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
+    ],
+    [cajas]
+  );
 
-  const monedaOptions = monedas.map((m) => ({
-    value: m.id,
-    label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
-  }));
+  const monedaOptions = useMemo(
+    () =>
+      monedas.map((m) => ({
+        value: m.id,
+        label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
+      })),
+    [monedas]
+  );
 
   // Buscar caja sugerida basada en sociedad y tipo de ingreso
   useEffect(() => {
@@ -237,7 +253,7 @@ export function NuevoIngresoForm({
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl">
+    <div className="p-4 md:p-5 lg:p-6 max-w-3xl mx-auto lg:mx-0">
       {showSuccess && (
         <div className="mb-6 p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center gap-3">
           <svg

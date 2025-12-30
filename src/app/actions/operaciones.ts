@@ -255,63 +255,80 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
 // =====================
 
 export async function obtenerCajasConSaldos() {
-  const cajas = await prisma.caja.findMany({
-    where: { activa: true },
-    include: {
-      sociedad: true,
-      tipoIngreso: true,
-    },
-    orderBy: { orden: "asc" },
+  // Obtener datos base en paralelo
+  const [cajas, monedas, todosIngresos, todosEgresos] = await Promise.all([
+    prisma.caja.findMany({
+      where: { activa: true },
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+      },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    }),
+    // Una sola consulta para TODOS los ingresos agrupados por caja y moneda
+    prisma.ingresoMonto.groupBy({
+      by: ["monedaId"],
+      where: { ingreso: { caja: { activa: true } } },
+      _sum: { monto: true },
+    }),
+    // Una sola consulta para TODOS los egresos agrupados por caja y moneda
+    prisma.egreso.groupBy({
+      by: ["monedaId", "cajaId"],
+      where: { caja: { activa: true } },
+      _sum: { monto: true },
+    }),
+  ]);
+
+  // Obtener ingresos agrupados por caja y moneda en una sola consulta
+  const ingresosAgrupados = await prisma.$queryRaw<
+    { cajaId: string; monedaId: string; total: number }[]
+  >`
+    SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
+    FROM ingreso_montos im
+    INNER JOIN ingresos i ON im."ingresoId" = i.id
+    INNER JOIN cajas c ON i."cajaId" = c.id
+    WHERE c.activa = true
+    GROUP BY i."cajaId", im."monedaId"
+  `;
+
+  // Mapa para acceso rápido a ingresos
+  const ingresosMap = new Map<string, number>();
+  ingresosAgrupados.forEach((ing) => {
+    ingresosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
   });
 
-  const monedas = await prisma.moneda.findMany({
-    where: { activa: true },
-    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  // Mapa para acceso rápido a egresos
+  const egresosMap = new Map<string, number>();
+  todosEgresos.forEach((egr) => {
+    egresosMap.set(`${egr.cajaId}-${egr.monedaId}`, Number(egr._sum.monto || 0));
   });
 
-  // Calcular saldos por caja y moneda
-  const cajasConSaldos = await Promise.all(
-    cajas.map(async (caja) => {
-      // Ingresos agrupados por moneda
-      const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
-        by: ["monedaId"],
-        where: { ingreso: { cajaId: caja.id } },
-        _sum: { monto: true },
-      });
-
-      // Egresos agrupados por moneda
-      const egresosPorMoneda = await prisma.egreso.groupBy({
-        by: ["monedaId"],
-        where: { cajaId: caja.id },
-        _sum: { monto: true },
-      });
-
-      // Construir saldos por moneda
-      const saldos = monedas.map((moneda) => {
-        const ingresos =
-          ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
-          new Prisma.Decimal(0);
-        const egresos =
-          egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
-          new Prisma.Decimal(0);
-        const saldo = Number(ingresos) - Number(egresos);
-
-        return {
-          monedaId: moneda.id,
-          monedaCodigo: moneda.codigo,
-          monedaSimbolo: moneda.simbolo,
-          ingresos: Number(ingresos),
-          egresos: Number(egresos),
-          saldo,
-        };
-      });
+  // Construir cajas con saldos usando los mapas
+  const cajasConSaldos = cajas.map((caja) => {
+    const saldos = monedas.map((moneda) => {
+      const key = `${caja.id}-${moneda.id}`;
+      const ingresos = ingresosMap.get(key) || 0;
+      const egresos = egresosMap.get(key) || 0;
 
       return {
-        ...caja,
-        saldos,
+        monedaId: moneda.id,
+        monedaCodigo: moneda.codigo,
+        monedaSimbolo: moneda.simbolo,
+        ingresos,
+        egresos,
+        saldo: ingresos - egresos,
       };
-    })
-  );
+    });
+
+    return {
+      ...caja,
+      saldos,
+    };
+  });
 
   // Serializar monedas para evitar Decimal
   const monedasSerializadas = monedas.map(serializarMoneda);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useMemo, useCallback } from "react";
 import { logout } from "@/app/actions/auth";
 
 interface NavItemProps {
@@ -47,14 +47,16 @@ export default function Sidebar({ usuario }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     setLoggingOut(true);
     await logout();
     router.push("/login");
     router.refresh();
-  };
+  }, [router]);
 
-  const navItems = [
+  const closeSidebar = useCallback(() => setIsOpen(false), []);
+
+  const navItems = useMemo(() => [
     {
       href: "/dashboard",
       label: "Inicio",
@@ -175,7 +177,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
         </svg>
       ),
     },
-  ];
+  ], []);
 
   return (
     <>
@@ -219,7 +221,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {isOpen && (
         <div
           className="lg:hidden fixed inset-0 bg-black/50 z-30"
-          onClick={() => setIsOpen(false)}
+          onClick={closeSidebar}
         />
       )}
 
@@ -269,7 +271,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href))
               }
-              onClick={() => setIsOpen(false)}
+              onClick={closeSidebar}
             />
           ))}
         </nav>

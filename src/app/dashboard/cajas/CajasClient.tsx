@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Card, Badge, Button } from "@/components/ui";
 
@@ -38,26 +38,30 @@ interface CajasClientProps {
 export function CajasClient({ cajas, monedas }: CajasClientProps) {
   const [expandedCaja, setExpandedCaja] = useState<string | null>(null);
 
-  // Calcular totales globales por moneda
-  const totalesGlobales = monedas
-    .map((moneda) => {
-      let totalIngresos = 0;
-      let totalEgresos = 0;
-      cajas.forEach((caja) => {
-        const saldo = caja.saldos.find((s) => s.monedaId === moneda.id);
-        if (saldo) {
-          totalIngresos += saldo.ingresos;
-          totalEgresos += saldo.egresos;
-        }
-      });
-      return {
-        moneda,
-        ingresos: totalIngresos,
-        egresos: totalEgresos,
-        saldo: totalIngresos - totalEgresos,
-      };
-    })
-    .filter((t) => t.ingresos > 0 || t.egresos > 0);
+  // Memoizar el cálculo de totales globales por moneda
+  const totalesGlobales = useMemo(
+    () =>
+      monedas
+        .map((moneda) => {
+          let totalIngresos = 0;
+          let totalEgresos = 0;
+          cajas.forEach((caja) => {
+            const saldo = caja.saldos.find((s) => s.monedaId === moneda.id);
+            if (saldo) {
+              totalIngresos += saldo.ingresos;
+              totalEgresos += saldo.egresos;
+            }
+          });
+          return {
+            moneda,
+            ingresos: totalIngresos,
+            egresos: totalEgresos,
+            saldo: totalIngresos - totalEgresos,
+          };
+        })
+        .filter((t) => t.ingresos > 0 || t.egresos > 0),
+    [monedas, cajas]
+  );
 
   const formatMonto = (monto: number, simbolo: string) => {
     return `${simbolo} ${monto.toFixed(2)}`;

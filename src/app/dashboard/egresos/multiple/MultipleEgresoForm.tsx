@@ -73,21 +73,31 @@ export function MultipleEgresoForm({
   ]);
   const [nextId, setNextId] = useState(4);
 
-  // Opciones para selects
-  const tipoGastoOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-  ];
+  // Memoizar opciones para selects
+  const tipoGastoOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
+    ],
+    [tiposGasto]
+  );
 
-  const monedaOptions = monedas.map((m) => ({
-    value: m.id,
-    label: `${m.nombre} (${m.codigo})`,
-  }));
+  const monedaOptions = useMemo(
+    () =>
+      monedas.map((m) => ({
+        value: m.id,
+        label: `${m.nombre} (${m.codigo})`,
+      })),
+    [monedas]
+  );
 
-  const cajaOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-  ];
+  const cajaOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
+    ],
+    [cajas]
+  );
 
   const addRow = () => {
     setRows([...rows, createEmptyRow(nextId)]);

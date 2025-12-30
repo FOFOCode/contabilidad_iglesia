@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Input, Select, TextArea, Button } from "@/components/ui";
@@ -66,21 +66,31 @@ export function NuevoEgresoForm({
     comentario: "",
   });
 
-  // Convertir a options para selects
-  const tipoGastoOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-  ];
+  // Memoizar opciones de selects para evitar recálculos
+  const tipoGastoOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
+    ],
+    [tiposGasto]
+  );
 
-  const cajaOptions = [
-    { value: "", label: "-- Seleccione --" },
-    ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-  ];
+  const cajaOptions = useMemo(
+    () => [
+      { value: "", label: "-- Seleccione --" },
+      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
+    ],
+    [cajas]
+  );
 
-  const monedaOptions = monedas.map((m) => ({
-    value: m.id,
-    label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
-  }));
+  const monedaOptions = useMemo(
+    () =>
+      monedas.map((m) => ({
+        value: m.id,
+        label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
+      })),
+    [monedas]
+  );
 
   // Cargar saldo de la caja seleccionada
   useEffect(() => {
@@ -170,7 +180,7 @@ export function NuevoEgresoForm({
   const monedaSeleccionada = monedas.find((m) => m.id === formData.monedaId);
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl">
+    <div className="p-4 md:p-5 lg:p-6 max-w-3xl mx-auto lg:mx-0">
       {showSuccess && (
         <div className="mb-6 p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center gap-3">
           <svg
