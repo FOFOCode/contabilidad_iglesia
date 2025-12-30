@@ -331,3 +331,101 @@ export async function deleteUsuario(id: string) {
     where: { id },
   });
 }
+
+// =====================
+// SALDOS INICIALES
+// =====================
+
+export async function getCajasActivas() {
+  return prisma.caja.findMany({
+    where: { activa: true },
+    orderBy: { orden: "asc" },
+    select: {
+      id: true,
+      nombre: true,
+      esGeneral: true,
+    },
+  });
+}
+
+export async function getMonedasActivas() {
+  return prisma.moneda.findMany({
+    where: { activa: true },
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    select: {
+      id: true,
+      codigo: true,
+      simbolo: true,
+      esPrincipal: true,
+    },
+  });
+}
+
+export async function registrarSaldoInicial(data: {
+  cajaId: string;
+  monedaId: string;
+  monto: number;
+  usuarioId: string;
+}) {
+  // Buscar o crear sociedad y tipo de ingreso para "Saldo Inicial"
+  let sociedadSistema = await prisma.sociedad.findFirst({
+    where: { nombre: "Sistema" },
+  });
+
+  if (!sociedadSistema) {
+    sociedadSistema = await prisma.sociedad.create({
+      data: {
+        nombre: "Sistema",
+        descripcion: "Sociedad del sistema para saldos iniciales",
+        orden: 999,
+      },
+    });
+  }
+
+  let tipoIngresoSaldoInicial = await prisma.tipoIngreso.findFirst({
+    where: { nombre: "Saldo Inicial" },
+  });
+
+  if (!tipoIngresoSaldoInicial) {
+    tipoIngresoSaldoInicial = await prisma.tipoIngreso.create({
+      data: {
+        nombre: "Saldo Inicial",
+        descripcion: "Saldo inicial de la caja",
+        orden: 999,
+      },
+    });
+  }
+
+  let tipoServicioSistema = await prisma.tipoServicio.findFirst({
+    where: { nombre: "Sistema" },
+  });
+
+  if (!tipoServicioSistema) {
+    tipoServicioSistema = await prisma.tipoServicio.create({
+      data: {
+        nombre: "Sistema",
+        descripcion: "Tipo de servicio del sistema",
+        orden: 999,
+      },
+    });
+  }
+
+  // Crear el ingreso como saldo inicial
+  return prisma.ingreso.create({
+    data: {
+      fechaRecaudacion: new Date(),
+      comentario: "Saldo inicial de la caja",
+      sociedadId: sociedadSistema.id,
+      servicioId: tipoServicioSistema.id,
+      tipoIngresoId: tipoIngresoSaldoInicial.id,
+      cajaId: data.cajaId,
+      usuarioId: data.usuarioId,
+      montos: {
+        create: {
+          monedaId: data.monedaId,
+          monto: data.monto,
+        },
+      },
+    },
+  });
+}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Button, Input, Badge } from "@/components/ui";
+import { Card, Button, Input, Badge, Select } from "@/components/ui";
 import { sembrarDatosIniciales } from "@/app/actions/sistema";
 import {
   createMoneda,
@@ -11,6 +11,9 @@ import {
   createTipoIngreso,
   createTipoGasto,
   createCaja,
+  getCajasActivas,
+  getMonedasActivas,
+  registrarSaldoInicial,
 } from "@/app/actions/configuraciones";
 
 interface ConfigStatus {
@@ -25,6 +28,7 @@ interface ConfigStatus {
 
 interface AsistenteClientProps {
   statusInicial: ConfigStatus;
+  usuarioId: string | null;
 }
 
 type Paso =
@@ -35,6 +39,7 @@ type Paso =
   | "ingresos"
   | "gastos"
   | "cajas"
+  | "saldos"
   | "completado";
 
 const PASOS_ORDEN: Paso[] = [
@@ -45,10 +50,14 @@ const PASOS_ORDEN: Paso[] = [
   "ingresos",
   "gastos",
   "cajas",
+  "saldos",
   "completado",
 ];
 
-export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
+export function AsistenteClient({
+  statusInicial,
+  usuarioId,
+}: AsistenteClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pasoActual, setPasoActual] = useState<Paso>("bienvenida");
@@ -88,6 +97,22 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
     nombre: "",
     descripcion: "",
     esGeneral: false,
+  });
+
+  // Estado para saldos iniciales
+  const [cajasCreadas, setCajasCreadas] = useState<
+    { id: string; nombre: string; esGeneral: boolean }[]
+  >([]);
+  const [monedasCreadas, setMonedasCreadas] = useState<
+    { id: string; codigo: string; simbolo: string; esPrincipal: boolean }[]
+  >([]);
+  const [saldosIniciales, setSaldosIniciales] = useState<
+    { id: number; cajaId: string; monedaId: string; monto: string }[]
+  >([]);
+  const [nuevoSaldo, setNuevoSaldo] = useState({
+    cajaId: "",
+    monedaId: "",
+    monto: "",
   });
 
   const indicePaso = PASOS_ORDEN.indexOf(pasoActual);
@@ -171,6 +196,46 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
     setCajas(cajas.filter((c) => c.id !== id));
   };
 
+  // Agregar saldo inicial
+  const agregarSaldo = () => {
+    if (!nuevoSaldo.cajaId || !nuevoSaldo.monedaId || !nuevoSaldo.monto) return;
+    if (parseFloat(nuevoSaldo.monto) <= 0) return;
+
+    // Verificar si ya existe un saldo para esta caja y moneda
+    const existe = saldosIniciales.find(
+      (s) =>
+        s.cajaId === nuevoSaldo.cajaId && s.monedaId === nuevoSaldo.monedaId
+    );
+    if (existe) {
+      setError("Ya existe un saldo para esta caja y moneda");
+      return;
+    }
+
+    setSaldosIniciales([...saldosIniciales, { id: Date.now(), ...nuevoSaldo }]);
+    setNuevoSaldo({ cajaId: "", monedaId: "", monto: "" });
+    setError(null);
+  };
+
+  const eliminarSaldo = (id: number) => {
+    setSaldosIniciales(saldosIniciales.filter((s) => s.id !== id));
+  };
+
+  // Cargar cajas y monedas creadas para el paso de saldos
+  const cargarDatosParaSaldos = async () => {
+    const [cajasData, monedasData] = await Promise.all([
+      getCajasActivas(),
+      getMonedasActivas(),
+    ]);
+    setCajasCreadas(cajasData);
+    setMonedasCreadas(monedasData);
+
+    // Pre-seleccionar moneda principal
+    const monedaPrincipal = monedasData.find((m) => m.esPrincipal);
+    if (monedaPrincipal) {
+      setNuevoSaldo((prev) => ({ ...prev, monedaId: monedaPrincipal.id }));
+    }
+  };
+
   // Guardar y continuar
   const guardarYContinuar = () => {
     setError(null);
@@ -235,6 +300,21 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
               });
             }
             setCajas([]);
+            // Cargar datos para el paso de saldos
+            await cargarDatosParaSaldos();
+            break;
+          case "saldos":
+            if (saldosIniciales.length > 0 && usuarioId) {
+              for (const saldo of saldosIniciales) {
+                await registrarSaldoInicial({
+                  cajaId: saldo.cajaId,
+                  monedaId: saldo.monedaId,
+                  monto: parseFloat(saldo.monto),
+                  usuarioId,
+                });
+              }
+            }
+            setSaldosIniciales([]);
             break;
         }
         irSiguiente();
@@ -582,7 +662,129 @@ export function AsistenteClient({ statusInicial }: AsistenteClientProps) {
                 onClick={guardarYContinuar}
                 disabled={cajas.length === 0 || isPending}
               >
-                {isPending ? "Guardando..." : "Finalizar →"}
+                {isPending ? "Guardando..." : "Continuar →"}
+              </Button>
+            </div>
+          </div>
+        );
+
+      case "saldos":
+        return (
+          <div className="max-w-2xl mx-auto">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-2">💰</div>
+              <h2 className="text-xl font-bold text-[#203b46]">
+                Paso 7: Saldos Iniciales
+              </h2>
+              <p className="text-[#40768c] text-sm">
+                Ingresa el dinero que ya tienes en cada caja (opcional)
+              </p>
+            </div>
+
+            {/* Lista de saldos agregados */}
+            {saldosIniciales.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {saldosIniciales.map((s) => {
+                  const caja = cajasCreadas.find((c) => c.id === s.cajaId);
+                  const moneda = monedasCreadas.find(
+                    (m) => m.id === s.monedaId
+                  );
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between bg-[#ebfaf8] p-3 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium text-[#203b46]">
+                          {caja?.nombre}
+                        </span>
+                        <span className="text-[#2ba193] font-bold">
+                          {moneda?.simbolo}{" "}
+                          {parseFloat(s.monto).toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                        <Badge variant="info">{moneda?.codigo}</Badge>
+                      </div>
+                      <button
+                        onClick={() => eliminarSaldo(s.id)}
+                        className="text-[#e0451f] hover:bg-[#fcece9] p-1 rounded"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Formulario para agregar saldo */}
+            <Card className="mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <Select
+                  label="Caja"
+                  value={nuevoSaldo.cajaId}
+                  onChange={(e) =>
+                    setNuevoSaldo({ ...nuevoSaldo, cajaId: e.target.value })
+                  }
+                  options={[
+                    { value: "", label: "-- Seleccione caja --" },
+                    ...cajasCreadas.map((c) => ({
+                      value: c.id,
+                      label: c.nombre,
+                    })),
+                  ]}
+                />
+                <Select
+                  label="Moneda"
+                  value={nuevoSaldo.monedaId}
+                  onChange={(e) =>
+                    setNuevoSaldo({ ...nuevoSaldo, monedaId: e.target.value })
+                  }
+                  options={[
+                    { value: "", label: "-- Seleccione moneda --" },
+                    ...monedasCreadas.map((m) => ({
+                      value: m.id,
+                      label: `${m.simbolo} ${m.codigo}`,
+                    })),
+                  ]}
+                />
+              </div>
+              <Input
+                label="Monto inicial"
+                type="number"
+                value={nuevoSaldo.monto}
+                onChange={(e) =>
+                  setNuevoSaldo({ ...nuevoSaldo, monto: e.target.value })
+                }
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+                className="mb-3"
+              />
+              <Button
+                onClick={agregarSaldo}
+                variant="secondary"
+                className="w-full"
+              >
+                + Agregar saldo inicial
+              </Button>
+            </Card>
+
+            <p className="text-xs text-[#73a9bf] text-center mb-4">
+              💡 Si no tienes dinero en las cajas, puedes saltar este paso
+            </p>
+
+            <div className="flex justify-between">
+              <Button onClick={irAnterior} variant="secondary">
+                ← Atrás
+              </Button>
+              <Button onClick={guardarYContinuar} disabled={isPending}>
+                {isPending
+                  ? "Guardando..."
+                  : saldosIniciales.length > 0
+                  ? "Finalizar →"
+                  : "Saltar →"}
               </Button>
             </div>
           </div>

@@ -227,71 +227,79 @@ export function UsuariosConfig() {
         ) : (
           <Table
             columns={[
-              { key: "nombre", header: "Nombre" },
-              { key: "correo", header: "Correo" },
-              { key: "estado", header: "Estado" },
-              { key: "acciones", header: "Acciones" },
-            ]}
-            data={usuarios.map((u) => ({
-              id: u.id,
-              nombre: (
-                <div>
+              {
+                key: "nombre",
+                header: "Nombre",
+                render: (u: Usuario) => (
                   <span className="font-medium">
                     {u.nombre} {u.apellido}
                   </span>
-                </div>
-              ),
-              correo: u.correo,
-              estado: (
-                <Badge variant={u.activo ? "success" : "danger"}>
-                  {u.activo ? "Activo" : "Inactivo"}
-                </Badge>
-              ),
-              acciones: (
-                <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleToggleActive(u.id)}
-                  >
-                    {u.activo ? "Desactivar" : "Activar"}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleEdit(u)}
-                  >
-                    Editar
-                  </Button>
-                  {deleteConfirm === u.id ? (
-                    <>
+                ),
+              },
+              {
+                key: "correo",
+                header: "Correo",
+                render: (u: Usuario) => u.correo,
+              },
+              {
+                key: "estado",
+                header: "Estado",
+                render: (u: Usuario) => (
+                  <Badge variant={u.activo ? "success" : "danger"}>
+                    {u.activo ? "Activo" : "Inactivo"}
+                  </Badge>
+                ),
+              },
+              {
+                key: "acciones",
+                header: "Acciones",
+                render: (u: Usuario) => (
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleToggleActive(u.id)}
+                    >
+                      {u.activo ? "Desactivar" : "Activar"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleEdit(u)}
+                    >
+                      Editar
+                    </Button>
+                    {deleteConfirm === u.id ? (
+                      <>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDelete(u.id)}
+                        >
+                          Confirmar
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setDeleteConfirm(null)}
+                        >
+                          Cancelar
+                        </Button>
+                      </>
+                    ) : (
                       <Button
                         variant="danger"
                         size="sm"
-                        onClick={() => handleDelete(u.id)}
+                        onClick={() => setDeleteConfirm(u.id)}
                       >
-                        Confirmar
+                        Eliminar
                       </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setDeleteConfirm(null)}
-                      >
-                        Cancelar
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setDeleteConfirm(u.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  )}
-                </div>
-              ),
-            }))}
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+            data={usuarios}
           />
         )}
       </Card>
