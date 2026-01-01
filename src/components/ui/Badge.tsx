@@ -6,12 +6,14 @@ interface BadgeProps {
   children: ReactNode;
   variant?: "default" | "success" | "warning" | "danger" | "info";
   size?: "sm" | "md";
+  className?: string;
 }
 
 export default function Badge({
   children,
   variant = "default",
   size = "sm",
+  className = "",
 }: BadgeProps) {
   const variants = {
     default: "bg-[#eef4f7] text-[#305969]",
@@ -28,7 +30,7 @@ export default function Badge({
 
   return (
     <span
-      className={`inline-flex items-center font-medium rounded-full ${variants[variant]} ${sizes[size]}`}
+      className={`inline-flex items-center font-medium rounded-full ${variants[variant]} ${sizes[size]} ${className}`}
     >
       {children}
     </span>

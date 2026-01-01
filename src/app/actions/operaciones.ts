@@ -669,3 +669,235 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     monedas: monedasRaw.map(serializarMoneda),
   };
 }
+
+// =====================
+// DATOS PARA REPORTES ANALÍTICOS
+// =====================
+
+interface FiltrosReporteAnalitico {
+  anio: number;
+  monedaId?: string;
+}
+
+export async function obtenerDatosReporteAnalitico(
+  filtros: FiltrosReporteAnalitico
+) {
+  const inicioAnio = new Date(filtros.anio, 0, 1, 0, 0, 0);
+  const finAnio = new Date(filtros.anio, 11, 31, 23, 59, 59);
+
+  const [
+    ingresos,
+    egresos,
+    tiposIngreso,
+    tiposGasto,
+    sociedades,
+    cajas,
+    monedasRaw,
+  ] = await Promise.all([
+    prisma.ingreso.findMany({
+      where: {
+        fechaRecaudacion: { gte: inicioAnio, lte: finAnio },
+      },
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+        caja: true,
+        montos: { include: { moneda: true } },
+      },
+    }),
+    prisma.egreso.findMany({
+      where: {
+        fechaSalida: { gte: inicioAnio, lte: finAnio },
+        ...(filtros.monedaId ? { monedaId: filtros.monedaId } : {}),
+      },
+      include: {
+        tipoGasto: true,
+        caja: true,
+        moneda: true,
+      },
+    }),
+    prisma.tipoIngreso.findMany({ where: { activo: true } }),
+    prisma.tipoGasto.findMany({ where: { activo: true } }),
+    prisma.sociedad.findMany({ where: { activa: true } }),
+    prisma.caja.findMany({ where: { activa: true } }),
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    }),
+  ]);
+
+  // Filtrar ingresos por moneda si se especifica
+  const ingresosFiltrados = filtros.monedaId
+    ? ingresos.filter((ing) =>
+        ing.montos.some((m) => m.monedaId === filtros.monedaId)
+      )
+    : ingresos;
+
+  // 1. Datos mensuales para gráfica de tendencia
+  const datosMensuales = Array.from({ length: 12 }, (_, mes) => {
+    const ingresosDelMes = ingresosFiltrados.filter(
+      (ing) => new Date(ing.fechaRecaudacion).getMonth() === mes
+    );
+    const egresosDelMes = egresos.filter(
+      (eg) => new Date(eg.fechaSalida).getMonth() === mes
+    );
+
+    let totalIngresos = 0;
+    let totalEgresos = 0;
+
+    ingresosDelMes.forEach((ing) => {
+      ing.montos.forEach((m) => {
+        if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
+          totalIngresos += Number(m.monto);
+        }
+      });
+    });
+
+    egresosDelMes.forEach((eg) => {
+      totalEgresos += Number(eg.monto);
+    });
+
+    return {
+      mes: mes + 1,
+      nombreMes: [
+        "Enero",
+        "Febrero",
+        "Marzo",
+        "Abril",
+        "Mayo",
+        "Junio",
+        "Julio",
+        "Agosto",
+        "Septiembre",
+        "Octubre",
+        "Noviembre",
+        "Diciembre",
+      ][mes],
+      ingresos: totalIngresos,
+      egresos: totalEgresos,
+      balance: totalIngresos - totalEgresos,
+    };
+  });
+
+  // 2. Desglose por Sociedad
+  const porSociedad = sociedades.map((soc) => {
+    const ingresosDeS = ingresosFiltrados.filter(
+      (ing) => ing.sociedadId === soc.id
+    );
+    let total = 0;
+    ingresosDeS.forEach((ing) => {
+      ing.montos.forEach((m) => {
+        if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
+          total += Number(m.monto);
+        }
+      });
+    });
+    return {
+      id: soc.id,
+      nombre: soc.nombre,
+      total,
+      cantidad: ingresosDeS.length,
+    };
+  });
+
+  // 3. Desglose por Tipo de Ingreso
+  const porTipoIngreso = tiposIngreso.map((tipo) => {
+    const ingresosDeT = ingresosFiltrados.filter(
+      (ing) => ing.tipoIngresoId === tipo.id
+    );
+    let total = 0;
+    ingresosDeT.forEach((ing) => {
+      ing.montos.forEach((m) => {
+        if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
+          total += Number(m.monto);
+        }
+      });
+    });
+    return {
+      id: tipo.id,
+      nombre: tipo.nombre,
+      total,
+      cantidad: ingresosDeT.length,
+    };
+  });
+
+  // 4. Desglose por Tipo de Gasto
+  const porTipoGasto = tiposGasto.map((tipo) => {
+    const egresosDeT = egresos.filter((eg) => eg.tipoGastoId === tipo.id);
+    const total = egresosDeT.reduce((sum, eg) => sum + Number(eg.monto), 0);
+    return {
+      id: tipo.id,
+      nombre: tipo.nombre,
+      total,
+      cantidad: egresosDeT.length,
+    };
+  });
+
+  // 5. Desglose por Caja
+  const porCaja = cajas.map((caja) => {
+    const ingresosDeCaja = ingresosFiltrados.filter(
+      (ing) => ing.cajaId === caja.id
+    );
+    const egresosDeCaja = egresos.filter((eg) => eg.cajaId === caja.id);
+
+    let totalIngresos = 0;
+    ingresosDeCaja.forEach((ing) => {
+      ing.montos.forEach((m) => {
+        if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
+          totalIngresos += Number(m.monto);
+        }
+      });
+    });
+    const totalEgresos = egresosDeCaja.reduce(
+      (sum, eg) => sum + Number(eg.monto),
+      0
+    );
+
+    return {
+      id: caja.id,
+      nombre: caja.nombre,
+      ingresos: totalIngresos,
+      egresos: totalEgresos,
+      balance: totalIngresos - totalEgresos,
+    };
+  });
+
+  // 6. Totales generales
+  let totalIngresosAnio = 0;
+  let totalEgresosAnio = 0;
+  ingresosFiltrados.forEach((ing) => {
+    ing.montos.forEach((m) => {
+      if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
+        totalIngresosAnio += Number(m.monto);
+      }
+    });
+  });
+  totalEgresosAnio = egresos.reduce((sum, eg) => sum + Number(eg.monto), 0);
+
+  // Serializar moneda seleccionada
+  const monedaSeleccionadaRaw = filtros.monedaId
+    ? monedasRaw.find((m) => m.id === filtros.monedaId)
+    : monedasRaw.find((m) => m.esPrincipal);
+
+  const monedaSeleccionada = monedaSeleccionadaRaw
+    ? serializarMoneda(monedaSeleccionadaRaw)
+    : null;
+
+  return {
+    anio: filtros.anio,
+    monedaSeleccionada,
+    datosMensuales,
+    porSociedad: porSociedad.filter((s) => s.total > 0 || s.cantidad > 0),
+    porTipoIngreso: porTipoIngreso.filter((t) => t.total > 0 || t.cantidad > 0),
+    porTipoGasto: porTipoGasto.filter((t) => t.total > 0 || t.cantidad > 0),
+    porCaja,
+    totales: {
+      ingresos: totalIngresosAnio,
+      egresos: totalEgresosAnio,
+      balance: totalIngresosAnio - totalEgresosAnio,
+      cantidadIngresos: ingresosFiltrados.length,
+      cantidadEgresos: egresos.length,
+    },
+    monedas: monedasRaw.map(serializarMoneda),
+  };
+}

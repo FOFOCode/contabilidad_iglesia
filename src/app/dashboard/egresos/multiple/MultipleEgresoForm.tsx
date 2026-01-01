@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Input, Select, Button } from "@/components/ui";
+import { Card, Input, Combobox, Button } from "@/components/ui";
 import { crearEgresosMultiples } from "@/app/actions/operaciones";
 
 interface TipoGasto {
@@ -75,10 +75,7 @@ export function MultipleEgresoForm({
 
   // Memoizar opciones para selects
   const tipoGastoOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-    ],
+    () => tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposGasto]
   );
 
@@ -92,10 +89,7 @@ export function MultipleEgresoForm({
   );
 
   const cajaOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    ],
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
     [cajas]
   );
 
@@ -189,7 +183,11 @@ export function MultipleEgresoForm({
         }, 1500);
       } catch (err) {
         console.error(err);
-        setError("Error al guardar los egresos. Intente nuevamente.");
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Error al guardar los egresos. Intente nuevamente.";
+        setError(errorMessage);
       }
     });
   };
@@ -343,20 +341,22 @@ export function MultipleEgresoForm({
                 }
                 required
               />
-              <Select
+              <Combobox
                 label="Tipo de Gasto"
                 options={tipoGastoOptions}
                 value={row.tipoGastoId}
-                onChange={(e) =>
-                  updateRow(row.id, "tipoGastoId", e.target.value)
-                }
+                onChange={(value) => updateRow(row.id, "tipoGastoId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
-              <Select
+              <Combobox
                 label="Caja"
                 options={cajaOptions}
                 value={row.cajaId}
-                onChange={(e) => updateRow(row.id, "cajaId", e.target.value)}
+                onChange={(value) => updateRow(row.id, "cajaId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
               <div className="grid grid-cols-2 gap-2">
@@ -370,13 +370,13 @@ export function MultipleEgresoForm({
                   onChange={(e) => updateRow(row.id, "monto", e.target.value)}
                   required
                 />
-                <Select
+                <Combobox
                   label="Moneda"
                   options={monedaOptions}
                   value={row.monedaId}
-                  onChange={(e) =>
-                    updateRow(row.id, "monedaId", e.target.value)
-                  }
+                  onChange={(value) => updateRow(row.id, "monedaId", value)}
+                  placeholder="Seleccionar..."
+                  searchable={false}
                 />
               </div>
             </div>

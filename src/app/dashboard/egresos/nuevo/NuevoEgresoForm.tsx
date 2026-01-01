@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Input, Select, TextArea, Button } from "@/components/ui";
+import { Card, Input, Combobox, TextArea, Button } from "@/components/ui";
 import { crearEgreso, obtenerSaldoCaja } from "@/app/actions/operaciones";
 
 interface TipoGasto {
@@ -68,18 +68,12 @@ export function NuevoEgresoForm({
 
   // Memoizar opciones de selects para evitar recálculos
   const tipoGastoOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-    ],
+    () => tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposGasto]
   );
 
   const cajaOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    ],
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
     [cajas]
   );
 
@@ -128,6 +122,13 @@ export function NuevoEgresoForm({
     }
   };
 
+  const handleComboboxChange = (name: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
@@ -140,6 +141,15 @@ export function NuevoEgresoForm({
       newErrors.solicitante = "Ingrese el solicitante";
     if (!formData.monto || parseFloat(formData.monto) <= 0) {
       newErrors.monto = "Ingrese un monto válido";
+    }
+
+    // Validación de saldo insuficiente
+    if (saldoProyectado !== null && saldoProyectado < 0) {
+      const simbolo = saldoMonedaActual?.monedaSimbolo || "";
+      newErrors.monto = `Saldo insuficiente. Disponible: ${simbolo}${saldoMonedaActual?.saldo.toLocaleString(
+        "es-GT",
+        { minimumFractionDigits: 2 }
+      )}`;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -171,7 +181,9 @@ export function NuevoEgresoForm({
         }, 1500);
       } catch (error) {
         console.error(error);
-        setErrors({ general: "Error al guardar el egreso" });
+        const errorMessage =
+          error instanceof Error ? error.message : "Error al guardar el egreso";
+        setErrors({ general: errorMessage });
       }
     });
   };
@@ -214,22 +226,22 @@ export function NuevoEgresoForm({
               Clasificación
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select
+              <Combobox
                 label="Tipo de Gasto"
-                name="tipoGastoId"
                 options={tipoGastoOptions}
                 value={formData.tipoGastoId}
-                onChange={handleChange}
+                onChange={(value) => handleComboboxChange("tipoGastoId", value)}
                 error={errors.tipoGastoId}
+                placeholder="Seleccionar tipo de gasto..."
                 required
               />
-              <Select
+              <Combobox
                 label="Caja de Origen"
-                name="cajaId"
                 options={cajaOptions}
                 value={formData.cajaId}
-                onChange={handleChange}
+                onChange={(value) => handleComboboxChange("cajaId", value)}
                 error={errors.cajaId}
+                placeholder="Seleccionar caja..."
                 required
               />
             </div>
@@ -331,13 +343,13 @@ export function NuevoEgresoForm({
                 onChange={handleChange}
                 required
               />
-              <Select
+              <Combobox
                 label="Moneda"
-                name="monedaId"
                 options={monedaOptions}
                 value={formData.monedaId}
-                onChange={handleChange}
+                onChange={(value) => handleComboboxChange("monedaId", value)}
                 error={errors.monedaId}
+                placeholder="Seleccionar moneda..."
                 required
               />
             </div>
@@ -401,7 +413,9 @@ export function NuevoEgresoForm({
               type="submit"
               size="lg"
               className="w-full sm:w-auto"
-              disabled={isPending}
+              disabled={
+                isPending || (saldoProyectado !== null && saldoProyectado < 0)
+              }
             >
               {isPending ? "Guardando..." : "Guardar Egreso"}
             </Button>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Input, Select, Button } from "@/components/ui";
+import { Card, Input, Combobox, Button } from "@/components/ui";
 import { crearIngresosMultiples } from "@/app/actions/operaciones";
 
 interface Sociedad {
@@ -95,34 +95,22 @@ export function MultipleIngresoForm({
 
   // Memoizar opciones para selects
   const sociedadOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    ],
+    () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
     [sociedades]
   );
 
   const servicioOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...servicios.map((s) => ({ value: s.id, label: s.nombre })),
-    ],
+    () => servicios.map((s) => ({ value: s.id, label: s.nombre })),
     [servicios]
   );
 
   const tipoIngresoOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-    ],
+    () => tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposIngreso]
   );
 
   const cajaOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    ],
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
     [cajas]
   );
 
@@ -442,38 +430,40 @@ export function MultipleIngresoForm({
                 onChange={(e) => updateRow(row.id, "fecha", e.target.value)}
                 required
               />
-              <Select
+              <Combobox
                 label="Sociedad"
                 options={sociedadOptions}
                 value={row.sociedadId}
-                onChange={(e) =>
-                  updateRow(row.id, "sociedadId", e.target.value)
-                }
+                onChange={(value) => updateRow(row.id, "sociedadId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
-              <Select
+              <Combobox
                 label="Tipo de Servicio"
                 options={servicioOptions}
                 value={row.servicioId}
-                onChange={(e) =>
-                  updateRow(row.id, "servicioId", e.target.value)
-                }
+                onChange={(value) => updateRow(row.id, "servicioId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
-              <Select
+              <Combobox
                 label="Tipo de Ingreso"
                 options={tipoIngresoOptions}
                 value={row.tipoIngresoId}
-                onChange={(e) =>
-                  updateRow(row.id, "tipoIngresoId", e.target.value)
-                }
+                onChange={(value) => updateRow(row.id, "tipoIngresoId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
-              <Select
+              <Combobox
                 label="Caja"
                 options={cajaOptions}
                 value={row.cajaId}
-                onChange={(e) => updateRow(row.id, "cajaId", e.target.value)}
+                onChange={(value) => updateRow(row.id, "cajaId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
             </div>
@@ -489,11 +479,13 @@ export function MultipleIngresoForm({
                 onChange={(e) => updateRow(row.id, "monto", e.target.value)}
                 required
               />
-              <Select
+              <Combobox
                 label="Moneda"
                 options={monedaOptions}
                 value={row.monedaId}
-                onChange={(e) => updateRow(row.id, "monedaId", e.target.value)}
+                onChange={(value) => updateRow(row.id, "monedaId", value)}
+                placeholder="Seleccionar..."
+                searchable={false}
                 required
               />
               <div className="col-span-2">

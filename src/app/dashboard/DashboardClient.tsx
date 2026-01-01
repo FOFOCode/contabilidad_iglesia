@@ -203,16 +203,24 @@ export function DashboardClient({
         </h2>
         <div className="flex flex-wrap gap-2 md:gap-3">
           <Link href="/dashboard/ingresos/nuevo">
-            <Button>💵 Nuevo Ingreso</Button>
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2ba193] text-white font-medium text-sm hover:bg-[#238a7e] shadow-sm hover:shadow-md transition-all">
+              <span className="text-lg">💵</span> Nuevo Ingreso
+            </button>
           </Link>
           <Link href="/dashboard/egresos/nuevo">
-            <Button variant="secondary">💸 Nuevo Egreso</Button>
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-[#305969] font-medium text-sm border border-[#dceaef] hover:border-[#e0451f]/40 hover:bg-[#fcf8f7] shadow-sm hover:shadow-md transition-all">
+              <span className="text-lg">💸</span> Nuevo Egreso
+            </button>
           </Link>
           <Link href="/dashboard/ingresos/multiple">
-            <Button variant="secondary">📋 Ingreso Múltiple</Button>
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-[#305969] font-medium text-sm border border-[#dceaef] hover:border-[#40768c]/40 hover:bg-[#f8fbfc] shadow-sm hover:shadow-md transition-all">
+              <span className="text-lg">📋</span> Ingreso Múltiple
+            </button>
           </Link>
           <Link href="/dashboard/reportes">
-            <Button variant="secondary">📊 Ver Reportes</Button>
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-[#305969] font-medium text-sm border border-[#dceaef] hover:border-[#40768c]/40 hover:bg-[#f8fbfc] shadow-sm hover:shadow-md transition-all">
+              <span className="text-lg">📊</span> Ver Reportes
+            </button>
           </Link>
         </div>
       </section>

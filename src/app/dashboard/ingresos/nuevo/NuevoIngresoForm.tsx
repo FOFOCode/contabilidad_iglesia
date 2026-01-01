@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Input, Select, TextArea, Button } from "@/components/ui";
+import { Card, Input, Combobox, TextArea, Button } from "@/components/ui";
 import { crearIngreso } from "@/app/actions/operaciones";
 
 interface Sociedad {
@@ -80,34 +80,22 @@ export function NuevoIngresoForm({
 
   // Memoizar opciones de selects para evitar recálculos
   const sociedadOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    ],
+    () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
     [sociedades]
   );
 
   const servicioOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...servicios.map((s) => ({ value: s.id, label: s.nombre })),
-    ],
+    () => servicios.map((s) => ({ value: s.id, label: s.nombre })),
     [servicios]
   );
 
   const tipoIngresoOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione --" },
-      ...tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-    ],
+    () => tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposIngreso]
   );
 
   const cajaOptions = useMemo(
-    () => [
-      { value: "", label: "-- Seleccione manualmente --" },
-      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    ],
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
     [cajas]
   );
 
@@ -191,6 +179,16 @@ export function NuevoIngresoForm({
       setCajaSugerida(false);
     }
 
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+  };
+
+  const handleComboboxChange = (name: string, value: string) => {
+    if (name === "cajaId") {
+      setCajaSugerida(false);
+    }
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
@@ -287,31 +285,33 @@ export function NuevoIngresoForm({
               Clasificación
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Select
+              <Combobox
                 label="Sociedad u Origen"
-                name="sociedadId"
                 options={sociedadOptions}
                 value={formData.sociedadId}
-                onChange={handleChange}
+                onChange={(value) => handleComboboxChange("sociedadId", value)}
                 error={errors.sociedadId}
+                placeholder="Seleccionar sociedad..."
                 required
               />
-              <Select
+              <Combobox
                 label="Tipo de Servicio"
-                name="servicioId"
                 options={servicioOptions}
                 value={formData.servicioId}
-                onChange={handleChange}
+                onChange={(value) => handleComboboxChange("servicioId", value)}
                 error={errors.servicioId}
+                placeholder="Seleccionar servicio..."
                 required
               />
-              <Select
+              <Combobox
                 label="Tipo de Ingreso"
-                name="tipoIngresoId"
                 options={tipoIngresoOptions}
                 value={formData.tipoIngresoId}
-                onChange={handleChange}
+                onChange={(value) =>
+                  handleComboboxChange("tipoIngresoId", value)
+                }
                 error={errors.tipoIngresoId}
+                placeholder="Seleccionar tipo..."
                 required
               />
             </div>
@@ -371,12 +371,12 @@ export function NuevoIngresoForm({
                     </button>
                   </div>
                 ) : (
-                  <Select
-                    name="cajaId"
+                  <Combobox
                     options={cajaOptions}
                     value={formData.cajaId}
-                    onChange={handleChange}
+                    onChange={(value) => handleComboboxChange("cajaId", value)}
                     error={errors.cajaId}
+                    placeholder="Seleccionar caja manualmente..."
                   />
                 )}
               </div>
@@ -401,13 +401,13 @@ export function NuevoIngresoForm({
                 error={errors.monto}
                 required
               />
-              <Select
+              <Combobox
                 label="Moneda"
-                name="monedaId"
                 options={monedaOptions}
                 value={formData.monedaId}
-                onChange={handleChange}
+                onChange={(value) => handleComboboxChange("monedaId", value)}
                 error={errors.monedaId}
+                placeholder="Seleccionar moneda..."
               />
             </div>
           </div>

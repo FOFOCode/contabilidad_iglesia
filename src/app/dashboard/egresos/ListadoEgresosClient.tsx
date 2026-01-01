@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react";
 import Link from "next/link";
-import { Card, Button, Select, Input, Badge, Table } from "@/components/ui";
+import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
 import { eliminarEgreso } from "@/app/actions/operaciones";
 
 interface Moneda {
@@ -47,6 +47,10 @@ export function ListadoEgresosClient({
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<EgresoData | null>(null);
 
+  // Paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const filasPorPagina = 10;
+
   // Filtros
   const [filtros, setFiltros] = useState({
     desde: "",
@@ -57,21 +61,16 @@ export function ListadoEgresosClient({
 
   // Memoizar opciones de select
   const tipoGastoOptions = useMemo(
-    () => [
-      { value: "", label: "Todos los tipos" },
-      ...tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-    ],
+    () => tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposGasto]
   );
 
   const monedaOptions = useMemo(
-    () => [
-      { value: "", label: "Todas las monedas" },
-      ...monedas.map((m) => ({
+    () =>
+      monedas.map((m) => ({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    ],
     [monedas]
   );
 
@@ -102,6 +101,23 @@ export function ListadoEgresosClient({
       }),
     [egresos, filtros, tiposGasto]
   );
+
+  // Cálculos de paginación
+  const totalPaginas = Math.ceil(egresosFiltrados.length / filasPorPagina);
+  const egresosPaginados = useMemo(
+    () =>
+      egresosFiltrados.slice(
+        (paginaActual - 1) * filasPorPagina,
+        paginaActual * filasPorPagina
+      ),
+    [egresosFiltrados, paginaActual, filasPorPagina]
+  );
+
+  // Resetear página cuando cambian los filtros
+  const handleFiltroChange = (nuevosFiltros: typeof filtros) => {
+    setFiltros(nuevosFiltros);
+    setPaginaActual(1);
+  };
 
   const handleDelete = async (id: string) => {
     setError(null);
@@ -148,21 +164,39 @@ export function ListadoEgresosClient({
       key: "fecha",
       header: "Fecha",
       render: (item: EgresoData) => (
-        <span className="text-[#203b46] font-medium">
-          {formatDate(item.fechaSalida)}
-        </span>
+        <div>
+          <span className="text-[#203b46] font-medium block">
+            {formatDate(item.fechaSalida)}
+          </span>
+          {/* Mostrar tipo de gasto debajo de la fecha en móvil/tablet */}
+          <span className="text-xs text-[#73a9bf] md:hidden block">
+            {item.tipoGasto.nombre}
+          </span>
+        </div>
       ),
     },
     {
-      key: "solicitante",
-      header: "Solicitante",
+      key: "detalle",
+      header: "Detalle",
       render: (item: EgresoData) => (
-        <span className="text-[#305969]">{item.solicitante}</span>
+        <div className="min-w-0">
+          <span className="text-[#305969] font-medium block truncate">
+            {item.solicitante}
+          </span>
+          <span className="text-xs text-[#73a9bf] block truncate">
+            {item.descripcionGasto || item.tipoGasto.nombre}
+          </span>
+          {/* Mostrar caja en móvil */}
+          <span className="text-xs text-[#40768c] md:hidden block">
+            {item.caja.nombre}
+          </span>
+        </div>
       ),
     },
     {
       key: "tipo",
-      header: "Tipo de Gasto",
+      header: "Tipo",
+      hideOnMobile: true,
       render: (item: EgresoData) => (
         <Badge variant="warning">{item.tipoGasto.nombre}</Badge>
       ),
@@ -170,6 +204,8 @@ export function ListadoEgresosClient({
     {
       key: "caja",
       header: "Caja",
+      hideOnMobile: true,
+      hideOnTablet: true,
       render: (item: EgresoData) => (
         <span className="text-[#73a9bf] text-sm">{item.caja.nombre}</span>
       ),
@@ -177,57 +213,44 @@ export function ListadoEgresosClient({
     {
       key: "monto",
       header: "Monto",
+      className: "text-right",
       render: (item: EgresoData) => (
-        <span className="font-semibold text-[#e0451f]">
+        <span className="font-semibold text-[#e0451f] whitespace-nowrap">
           {formatMonto(Number(item.monto), item.moneda.simbolo)}
         </span>
       ),
     },
     {
-      key: "descripcion",
-      header: "Descripción",
-      render: (item: EgresoData) => (
-        <span className="text-[#73a9bf] text-sm truncate max-w-[200px] block">
-          {item.descripcionGasto || "-"}
-        </span>
-      ),
-    },
-    {
-      key: "ver",
-      header: "",
-      render: (item: EgresoData) => (
-        <button
-          onClick={() => setDetalleSeleccionado(item)}
-          className="p-1.5 text-[#40768c] hover:bg-[#eef4f7] rounded-lg"
-          title="Ver detalle"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-            />
-          </svg>
-        </button>
-      ),
-    },
-    {
       key: "acciones",
-      header: "Acciones",
+      header: "",
+      className: "text-right",
       render: (item: EgresoData) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => setDetalleSeleccionado(item)}
+            className="p-1.5 text-[#40768c] hover:bg-[#eef4f7] rounded-lg"
+            title="Ver detalle"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+              />
+            </svg>
+          </button>
           {deleteConfirm === item.id ? (
             <>
               <button
@@ -341,29 +364,39 @@ export function ListadoEgresosClient({
             label="Desde"
             type="date"
             value={filtros.desde}
-            onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })}
+            onChange={(e) =>
+              handleFiltroChange({ ...filtros, desde: e.target.value })
+            }
           />
           <Input
             label="Hasta"
             type="date"
             value={filtros.hasta}
-            onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })}
+            onChange={(e) =>
+              handleFiltroChange({ ...filtros, hasta: e.target.value })
+            }
           />
-          <Select
+          <Combobox
             label="Tipo de Gasto"
             value={filtros.tipoGastoId}
-            onChange={(e) =>
-              setFiltros({ ...filtros, tipoGastoId: e.target.value })
+            onChange={(value) =>
+              handleFiltroChange({ ...filtros, tipoGastoId: value })
             }
             options={tipoGastoOptions}
+            placeholder="Todos los tipos"
+            clearable
+            searchable={false}
           />
-          <Select
+          <Combobox
             label="Moneda"
             value={filtros.monedaId}
-            onChange={(e) =>
-              setFiltros({ ...filtros, monedaId: e.target.value })
+            onChange={(value) =>
+              handleFiltroChange({ ...filtros, monedaId: value })
             }
             options={monedaOptions}
+            placeholder="Todas las monedas"
+            clearable
+            searchable={false}
           />
         </div>
         {(filtros.desde ||
@@ -371,14 +404,14 @@ export function ListadoEgresosClient({
           filtros.tipoGastoId ||
           filtros.monedaId) && (
           <button
-            onClick={() =>
-              setFiltros({
+            onClick={() => {
+              handleFiltroChange({
                 desde: "",
                 hasta: "",
                 tipoGastoId: "",
                 monedaId: "",
-              })
-            }
+              });
+            }}
             className="mt-3 text-sm text-[#40768c] underline"
           >
             Limpiar filtros
@@ -386,25 +419,61 @@ export function ListadoEgresosClient({
         )}
       </Card>
 
-      {/* Totales */}
+      {/* Resumen de Egresos Filtrados */}
       {totalesPorMoneda.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {totalesPorMoneda.map(({ moneda, total }) => (
-            <Card key={moneda.id} className="bg-[#fcece9] border-[#f3b5a5]">
-              <div className="text-sm text-[#b43718]">
-                Total {moneda.codigo}
-              </div>
-              <div className="text-2xl font-bold text-[#e0451f]">
-                {moneda.simbolo} {total.toFixed(2)}
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-semibold text-[#40768c] uppercase tracking-wide">
+              📊 Resumen de egresos
+            </span>
+            {(filtros.desde || filtros.hasta) && (
+              <span className="text-xs text-[#73a9bf] bg-[#eef4f7] px-2 py-0.5 rounded-full">
+                {filtros.desde && filtros.hasta
+                  ? `${filtros.desde} al ${filtros.hasta}`
+                  : filtros.desde
+                  ? `Desde ${filtros.desde}`
+                  : `Hasta ${filtros.hasta}`}
+              </span>
+            )}
+            {!filtros.desde && !filtros.hasta && (
+              <span className="text-xs text-[#73a9bf] bg-[#eef4f7] px-2 py-0.5 rounded-full">
+                Todos los registros
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {totalesPorMoneda.map(({ moneda, total }) => (
+              <Card key={moneda.id} className="bg-[#fcece9] border-[#f3b5a5]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-[#b43718] uppercase font-medium">
+                      Total Egresos ({moneda.codigo})
+                    </div>
+                    <div className="text-xl md:text-2xl font-bold text-[#e0451f]">
+                      {moneda.simbolo}{" "}
+                      {total.toLocaleString("es-GT", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                  </div>
+                  <span className="text-2xl opacity-50">💸</span>
+                </div>
+              </Card>
+            ))}
+            <Card className="bg-[#eef4f7] border-[#b9d4df]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-[#40768c] uppercase font-medium">
+                    Total Registros
+                  </div>
+                  <div className="text-xl md:text-2xl font-bold text-[#305969]">
+                    {egresosFiltrados.length}
+                  </div>
+                </div>
+                <span className="text-2xl opacity-50">📋</span>
               </div>
             </Card>
-          ))}
-          <Card className="bg-[#eef4f7] border-[#b9d4df]">
-            <div className="text-sm text-[#40768c]">Registros</div>
-            <div className="text-2xl font-bold text-[#305969]">
-              {egresosFiltrados.length}
-            </div>
-          </Card>
+          </div>
         </div>
       )}
 
@@ -412,9 +481,117 @@ export function ListadoEgresosClient({
       <Card>
         <Table
           columns={columns}
-          data={egresosFiltrados}
+          data={egresosPaginados}
           emptyMessage="No hay egresos registrados."
         />
+
+        {/* Paginación */}
+        {totalPaginas > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-4 border-t border-[#dceaef]">
+            <div className="text-sm text-[#73a9bf]">
+              Mostrando{" "}
+              <span className="font-semibold text-[#305969]">
+                {(paginaActual - 1) * filasPorPagina + 1}
+              </span>{" "}
+              -{" "}
+              <span className="font-semibold text-[#305969]">
+                {Math.min(paginaActual * filasPorPagina, egresosFiltrados.length)}
+              </span>{" "}
+              de{" "}
+              <span className="font-semibold text-[#305969]">
+                {egresosFiltrados.length}
+              </span>{" "}
+              registros
+            </div>
+            <div className="flex items-center gap-1 bg-[#f5f9fb] rounded-xl p-1">
+              <button
+                onClick={() => setPaginaActual(1)}
+                disabled={paginaActual === 1}
+                className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:shadow-none"
+                title="Primera página"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                disabled={paginaActual === 1}
+                className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:shadow-none"
+                title="Página anterior"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              </button>
+              <span className="px-4 py-1.5 text-sm font-semibold text-white bg-[#2ba193] rounded-lg mx-1">
+                {paginaActual} / {totalPaginas}
+              </span>
+              <button
+                onClick={() =>
+                  setPaginaActual((p) => Math.min(totalPaginas, p + 1))
+                }
+                disabled={paginaActual === totalPaginas}
+                className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:shadow-none"
+                title="Página siguiente"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={() => setPaginaActual(totalPaginas)}
+                disabled={paginaActual === totalPaginas}
+                className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:shadow-none"
+                title="Última página"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Modal de Detalle */}

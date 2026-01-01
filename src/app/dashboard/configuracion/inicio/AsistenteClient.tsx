@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Button, Input, Badge, Select } from "@/components/ui";
+import { Card, Button, Input, Badge, Combobox } from "@/components/ui";
 import { sembrarDatosIniciales } from "@/app/actions/sistema";
 import {
   createMoneda,
@@ -721,33 +721,30 @@ export function AsistenteClient({
             {/* Formulario para agregar saldo */}
             <Card className="mb-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                <Select
+                <Combobox
                   label="Caja"
                   value={nuevoSaldo.cajaId}
-                  onChange={(e) =>
-                    setNuevoSaldo({ ...nuevoSaldo, cajaId: e.target.value })
+                  onChange={(value) =>
+                    setNuevoSaldo({ ...nuevoSaldo, cajaId: value })
                   }
-                  options={[
-                    { value: "", label: "-- Seleccione caja --" },
-                    ...cajasCreadas.map((c) => ({
-                      value: c.id,
-                      label: c.nombre,
-                    })),
-                  ]}
+                  options={cajasCreadas.map((c) => ({
+                    value: c.id,
+                    label: c.nombre,
+                  }))}
+                  placeholder="Seleccione caja"
                 />
-                <Select
+                <Combobox
                   label="Moneda"
                   value={nuevoSaldo.monedaId}
-                  onChange={(e) =>
-                    setNuevoSaldo({ ...nuevoSaldo, monedaId: e.target.value })
+                  onChange={(value) =>
+                    setNuevoSaldo({ ...nuevoSaldo, monedaId: value })
                   }
-                  options={[
-                    { value: "", label: "-- Seleccione moneda --" },
-                    ...monedasCreadas.map((m) => ({
-                      value: m.id,
-                      label: `${m.simbolo} ${m.codigo}`,
-                    })),
-                  ]}
+                  options={monedasCreadas.map((m) => ({
+                    value: m.id,
+                    label: `${m.simbolo} ${m.codigo}`,
+                  }))}
+                  placeholder="Seleccione moneda"
+                  searchable={false}
                 />
               </div>
               <Input

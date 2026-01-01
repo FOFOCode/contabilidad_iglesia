@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useTransition, useMemo, useCallback } from "react";
-import { Card, Button, Select, Input, Badge, Table } from "@/components/ui";
-import { obtenerDatosReporte } from "@/app/actions/operaciones";
+import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
+import {
+  obtenerDatosReporte,
+  obtenerDatosReporteAnalitico,
+} from "@/app/actions/operaciones";
 
 interface Sociedad {
   id: string;
@@ -65,6 +68,65 @@ const periodoOptions = [
   { value: "personalizado", label: "Rango Personalizado" },
 ];
 
+// Tipos de reportes disponibles
+type TipoVista =
+  | "movimientos"
+  | "comparativo"
+  | "sociedades"
+  | "tipoIngreso"
+  | "tipoGasto"
+  | "cajas";
+
+interface DatosAnaliticos {
+  anio: number;
+  monedaSeleccionada: {
+    id: string;
+    codigo: string;
+    simbolo: string;
+    nombre: string;
+  } | null;
+  datosMensuales: {
+    mes: number;
+    nombreMes: string;
+    ingresos: number;
+    egresos: number;
+    balance: number;
+  }[];
+  porSociedad: {
+    id: string;
+    nombre: string;
+    total: number;
+    cantidad: number;
+  }[];
+  porTipoIngreso: {
+    id: string;
+    nombre: string;
+    total: number;
+    cantidad: number;
+  }[];
+  porTipoGasto: {
+    id: string;
+    nombre: string;
+    total: number;
+    cantidad: number;
+  }[];
+  porCaja: {
+    id: string;
+    nombre: string;
+    ingresos: number;
+    egresos: number;
+    balance: number;
+  }[];
+  totales: {
+    ingresos: number;
+    egresos: number;
+    balance: number;
+    cantidadIngresos: number;
+    cantidadEgresos: number;
+  };
+  monedas: { id: string; codigo: string; simbolo: string; nombre: string }[];
+}
+
 function calcularFechas(periodo: string): { inicio: Date; fin: Date } {
   const hoy = new Date();
   hoy.setHours(23, 59, 59, 999);
@@ -99,6 +161,7 @@ export function ReportesClient({
   monedas,
 }: ReportesClientProps) {
   const [isPending, startTransition] = useTransition();
+  const [vistaActiva, setVistaActiva] = useState<TipoVista>("movimientos");
   const [filtros, setFiltros] = useState({
     tipoReporte: "todos",
     periodo: "mes",
@@ -108,38 +171,40 @@ export function ReportesClient({
     sociedadId: "",
     monedaId: "",
   });
+  const [filtrosAnaliticos, setFiltrosAnaliticos] = useState({
+    anio: new Date().getFullYear(),
+    monedaId: monedas.find((m) => m.esPrincipal)?.id || "",
+  });
   const [resultados, setResultados] = useState<MovimientoReporte[]>([]);
+  const [datosAnaliticos, setDatosAnaliticos] =
+    useState<DatosAnaliticos | null>(null);
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<MovimientoReporte | null>(null);
 
   // Memoizar opciones de select para evitar recalcular en cada render
   const sociedadOptions = useMemo(
-    () => [
-      { value: "", label: "Todas las Sociedades" },
-      ...sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    ],
+    () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
     [sociedades]
   );
 
   const cajaOptions = useMemo(
-    () => [
-      { value: "", label: "Todas las Cajas" },
-      ...cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    ],
+    () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
     [cajas]
   );
 
   const monedaOptions = useMemo(
-    () => [
-      { value: "", label: "Todas las Monedas" },
-      ...monedas.map((m) => ({
+    () =>
+      monedas.map((m) => ({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    ],
     [monedas]
   );
+
+  const handleComboboxChange = useCallback((name: string, value: string) => {
+    setFiltros((prev) => ({ ...prev, [name]: value }));
+  }, []);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
@@ -148,6 +213,26 @@ export function ReportesClient({
     },
     []
   );
+
+  // Años disponibles para el reporte analítico
+  const anioOptions = useMemo(() => {
+    const anioActual = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => ({
+      value: (anioActual - i).toString(),
+      label: (anioActual - i).toString(),
+    }));
+  }, []);
+
+  const handleGenerarReporteAnalitico = () => {
+    startTransition(async () => {
+      const datos = await obtenerDatosReporteAnalitico({
+        anio: filtrosAnaliticos.anio,
+        monedaId: filtrosAnaliticos.monedaId || undefined,
+      });
+      setDatosAnaliticos(datos as DatosAnaliticos);
+      setMostrarResultados(true);
+    });
+  };
 
   const handleGenerarReporte = () => {
     startTransition(async () => {
@@ -518,117 +603,246 @@ export function ReportesClient({
     },
   ];
 
+  // Helper para formatear moneda
+  const formatMonto = (monto: number, simbolo?: string) => {
+    const sym = simbolo || datosAnaliticos?.monedaSeleccionada?.simbolo || "$";
+    return `${sym}${monto.toLocaleString("es-GT", {
+      minimumFractionDigits: 2,
+    })}`;
+  };
+
+  // Calcular el máximo para la barra de progreso
+  const maxMensual = useMemo(() => {
+    if (!datosAnaliticos) return 0;
+    return Math.max(
+      ...datosAnaliticos.datosMensuales.map((d) =>
+        Math.max(d.ingresos, d.egresos)
+      )
+    );
+  }, [datosAnaliticos]);
+
   return (
     <div className="p-4 md:p-5 lg:p-6">
-      {/* Panel de Filtros */}
-      <Card className="mb-4 md:mb-5">
-        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      {/* Pestañas de tipo de reporte */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {[
+          { id: "movimientos", label: "📋 Movimientos" },
+          { id: "comparativo", label: "📈 Comparativo" },
+          { id: "sociedades", label: "👥 Sociedades" },
+          { id: "tipoIngreso", label: "💰 Ingresos" },
+          { id: "tipoGasto", label: "💸 Gastos" },
+          { id: "cajas", label: "🏦 Cajas" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setVistaActiva(tab.id as TipoVista);
+              setMostrarResultados(false);
+            }}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
+              vistaActiva === tab.id
+                ? "bg-[#2ba193] text-white shadow-md"
+                : "bg-white text-[#40768c] hover:bg-[#f8fbfc] border border-[#dceaef] hover:border-[#2ba193]/40 hover:shadow-sm"
+            }`}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-            />
-          </svg>
-          Configurar Reporte
-        </h3>
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
-          <Select
-            label="Tipo de Reporte"
-            name="tipoReporte"
-            options={tipoReporteOptions}
-            value={filtros.tipoReporte}
-            onChange={handleChange}
-          />
-          <Select
-            label="Período"
-            name="periodo"
-            options={periodoOptions}
-            value={filtros.periodo}
-            onChange={handleChange}
-          />
-          <Select
-            label="Caja"
-            name="cajaId"
-            options={cajaOptions}
-            value={filtros.cajaId}
-            onChange={handleChange}
-          />
-          <Select
-            label="Moneda"
-            name="monedaId"
-            options={monedaOptions}
-            value={filtros.monedaId}
-            onChange={handleChange}
-          />
-        </div>
+      {/* Panel de Filtros - Movimientos */}
+      {vistaActiva === "movimientos" && (
+        <Card className="mb-4 md:mb-5">
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            Configurar Reporte
+          </h3>
 
-        {filtros.periodo === "personalizado" && (
-          <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
-            <Input
-              label="Fecha Inicio"
-              name="fechaInicio"
-              type="date"
-              value={filtros.fechaInicio}
-              onChange={handleChange}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
+            <Combobox
+              label="Tipo de Reporte"
+              options={tipoReporteOptions}
+              value={filtros.tipoReporte}
+              onChange={(value) => handleComboboxChange("tipoReporte", value)}
+              searchable={false}
             />
-            <Input
-              label="Fecha Fin"
-              name="fechaFin"
-              type="date"
-              value={filtros.fechaFin}
-              onChange={handleChange}
+            <Combobox
+              label="Período"
+              options={periodoOptions}
+              value={filtros.periodo}
+              onChange={(value) => handleComboboxChange("periodo", value)}
+              searchable={false}
             />
-          </div>
-        )}
-
-        {filtros.tipoReporte !== "egresos" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
-            <Select
-              label="Sociedad"
-              name="sociedadId"
-              options={sociedadOptions}
-              value={filtros.sociedadId}
-              onChange={handleChange}
+            <Combobox
+              label="Caja"
+              options={cajaOptions}
+              value={filtros.cajaId}
+              onChange={(value) => handleComboboxChange("cajaId", value)}
+              placeholder="Todas las cajas"
+              clearable
+              searchable={false}
+            />
+            <Combobox
+              label="Moneda"
+              options={monedaOptions}
+              value={filtros.monedaId}
+              onChange={(value) => handleComboboxChange("monedaId", value)}
+              placeholder="Todas las monedas"
+              clearable
+              searchable={false}
             />
           </div>
-        )}
 
-        <div className="flex justify-end">
-          <Button onClick={handleGenerarReporte} disabled={isPending}>
-            {isPending ? (
-              "Generando..."
-            ) : (
-              <>
-                <svg
-                  className="w-4 h-4 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                Generar Reporte
-              </>
-            )}
-          </Button>
-        </div>
-      </Card>
+          {filtros.periodo === "personalizado" && (
+            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
+              <Input
+                label="Fecha Inicio"
+                name="fechaInicio"
+                type="date"
+                value={filtros.fechaInicio}
+                onChange={handleChange}
+              />
+              <Input
+                label="Fecha Fin"
+                name="fechaFin"
+                type="date"
+                value={filtros.fechaFin}
+                onChange={handleChange}
+              />
+            </div>
+          )}
 
-      {/* Resultados */}
-      {mostrarResultados && (
+          {filtros.tipoReporte !== "egresos" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
+              <Combobox
+                label="Sociedad"
+                options={sociedadOptions}
+                value={filtros.sociedadId}
+                onChange={(value) => handleComboboxChange("sociedadId", value)}
+                placeholder="Todas las sociedades"
+                clearable
+                searchable={false}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={handleGenerarReporte} disabled={isPending}>
+              {isPending ? (
+                "Generando..."
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Generar Reporte
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Panel de Filtros - Reportes Analíticos */}
+      {vistaActiva !== "movimientos" && (
+        <Card className="mb-4 md:mb-5">
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+              />
+            </svg>
+            Configurar Análisis
+          </h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
+            <Combobox
+              label="Año"
+              options={anioOptions}
+              value={filtrosAnaliticos.anio.toString()}
+              onChange={(value) =>
+                setFiltrosAnaliticos((prev) => ({
+                  ...prev,
+                  anio: parseInt(value) || new Date().getFullYear(),
+                }))
+              }
+              searchable={false}
+            />
+            <Combobox
+              label="Moneda"
+              options={monedaOptions}
+              value={filtrosAnaliticos.monedaId}
+              onChange={(value) =>
+                setFiltrosAnaliticos((prev) => ({ ...prev, monedaId: value }))
+              }
+              placeholder="Todas las monedas"
+              clearable
+              searchable={false}
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              onClick={handleGenerarReporteAnalitico}
+              disabled={isPending}
+            >
+              {isPending ? (
+                "Analizando..."
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                  Generar Análisis
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Resultados - Movimientos */}
+      {vistaActiva === "movimientos" && mostrarResultados && (
         <>
           {/* Resumen */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
@@ -748,6 +962,361 @@ export function ReportesClient({
             )}
           </Card>
         </>
+      )}
+
+      {/* Resultados - Comparativo Mensual */}
+      {vistaActiva === "comparativo" &&
+        mostrarResultados &&
+        datosAnaliticos && (
+          <>
+            {/* Resumen anual */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
+              <Card>
+                <div className="text-center">
+                  <p className="text-xs text-[#73a9bf] uppercase mb-1">
+                    Total Ingresos {datosAnaliticos.anio}
+                  </p>
+                  <p className="text-2xl font-bold text-[#2ba193]">
+                    {formatMonto(datosAnaliticos.totales.ingresos)}
+                  </p>
+                  <p className="text-xs text-[#73a9bf]">
+                    {datosAnaliticos.totales.cantidadIngresos} registros
+                  </p>
+                </div>
+              </Card>
+              <Card>
+                <div className="text-center">
+                  <p className="text-xs text-[#73a9bf] uppercase mb-1">
+                    Total Egresos {datosAnaliticos.anio}
+                  </p>
+                  <p className="text-2xl font-bold text-[#e0451f]">
+                    {formatMonto(datosAnaliticos.totales.egresos)}
+                  </p>
+                  <p className="text-xs text-[#73a9bf]">
+                    {datosAnaliticos.totales.cantidadEgresos} registros
+                  </p>
+                </div>
+              </Card>
+              <Card>
+                <div className="text-center">
+                  <p className="text-xs text-[#73a9bf] uppercase mb-1">
+                    Balance {datosAnaliticos.anio}
+                  </p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      datosAnaliticos.totales.balance >= 0
+                        ? "text-[#2ba193]"
+                        : "text-[#e0451f]"
+                    }`}
+                  >
+                    {formatMonto(datosAnaliticos.totales.balance)}
+                  </p>
+                </div>
+              </Card>
+              <Card>
+                <div className="text-center">
+                  <p className="text-xs text-[#73a9bf] uppercase mb-1">
+                    Moneda
+                  </p>
+                  <p className="text-2xl font-bold text-[#40768c]">
+                    {datosAnaliticos.monedaSeleccionada?.codigo || "Todas"}
+                  </p>
+                </div>
+              </Card>
+            </div>
+
+            {/* Gráfica de barras */}
+            <Card className="mb-5">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+                📊 Tendencia Mensual {datosAnaliticos.anio}
+              </h3>
+              <div className="space-y-3">
+                {datosAnaliticos.datosMensuales.map((mes) => (
+                  <div key={mes.mes} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium text-[#305969] w-24">
+                        {mes.nombreMes.substring(0, 3)}
+                      </span>
+                      <div className="flex gap-4 text-xs">
+                        <span className="text-[#2ba193]">
+                          +{formatMonto(mes.ingresos)}
+                        </span>
+                        <span className="text-[#e0451f]">
+                          -{formatMonto(mes.egresos)}
+                        </span>
+                        <span
+                          className={`font-semibold ${
+                            mes.balance >= 0
+                              ? "text-[#2ba193]"
+                              : "text-[#e0451f]"
+                          }`}
+                        >
+                          = {formatMonto(mes.balance)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 h-4">
+                      <div
+                        className="bg-[#2ba193] rounded-l"
+                        style={{
+                          width: `${
+                            maxMensual > 0
+                              ? (mes.ingresos / maxMensual) * 50
+                              : 0
+                          }%`,
+                        }}
+                      />
+                      <div
+                        className="bg-[#e0451f] rounded-r"
+                        style={{
+                          width: `${
+                            maxMensual > 0 ? (mes.egresos / maxMensual) * 50 : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        )}
+
+      {/* Resultados - Por Sociedad */}
+      {vistaActiva === "sociedades" && mostrarResultados && datosAnaliticos && (
+        <Card>
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+            👥 Ingresos por Sociedad - {datosAnaliticos.anio}
+          </h3>
+          {datosAnaliticos.porSociedad.length === 0 ? (
+            <p className="text-center py-8 text-[#73a9bf]">
+              No hay datos para mostrar
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {datosAnaliticos.porSociedad
+                .sort((a, b) => b.total - a.total)
+                .map((soc, idx) => {
+                  const maxTotal = Math.max(
+                    ...datosAnaliticos.porSociedad.map((s) => s.total)
+                  );
+                  return (
+                    <div
+                      key={soc.id}
+                      className="p-3 bg-[#f8fbfc] rounded-lg border border-[#eef4f7]"
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold text-[#40768c]">
+                            #{idx + 1}
+                          </span>
+                          <span className="font-medium text-[#305969]">
+                            {soc.nombre}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-[#2ba193]">
+                            {formatMonto(soc.total)}
+                          </p>
+                          <p className="text-xs text-[#73a9bf]">
+                            {soc.cantidad} registros
+                          </p>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-[#dceaef] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#2ba193] rounded-full transition-all"
+                          style={{
+                            width: `${
+                              maxTotal > 0 ? (soc.total / maxTotal) * 100 : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Resultados - Por Tipo de Ingreso */}
+      {vistaActiva === "tipoIngreso" &&
+        mostrarResultados &&
+        datosAnaliticos && (
+          <Card>
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+              💰 Ingresos por Tipo - {datosAnaliticos.anio}
+            </h3>
+            {datosAnaliticos.porTipoIngreso.length === 0 ? (
+              <p className="text-center py-8 text-[#73a9bf]">
+                No hay datos para mostrar
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {datosAnaliticos.porTipoIngreso
+                  .sort((a, b) => b.total - a.total)
+                  .map((tipo) => {
+                    const porcentaje =
+                      datosAnaliticos.totales.ingresos > 0
+                        ? (tipo.total / datosAnaliticos.totales.ingresos) * 100
+                        : 0;
+                    return (
+                      <div
+                        key={tipo.id}
+                        className="p-4 bg-gradient-to-r from-[#eef4f7] to-white rounded-lg border border-[#dceaef]"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-medium text-[#305969]">
+                            {tipo.nombre}
+                          </h4>
+                          <Badge variant="success">
+                            {porcentaje.toFixed(1)}%
+                          </Badge>
+                        </div>
+                        <p className="text-xl font-bold text-[#2ba193]">
+                          {formatMonto(tipo.total)}
+                        </p>
+                        <p className="text-xs text-[#73a9bf]">
+                          {tipo.cantidad} registros
+                        </p>
+                        <div className="h-2 bg-[#dceaef] rounded-full overflow-hidden mt-2">
+                          <div
+                            className="h-full bg-[#2ba193] rounded-full"
+                            style={{ width: `${porcentaje}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </Card>
+        )}
+
+      {/* Resultados - Por Tipo de Gasto */}
+      {vistaActiva === "tipoGasto" && mostrarResultados && datosAnaliticos && (
+        <Card>
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+            💸 Egresos por Tipo - {datosAnaliticos.anio}
+          </h3>
+          {datosAnaliticos.porTipoGasto.length === 0 ? (
+            <p className="text-center py-8 text-[#73a9bf]">
+              No hay datos para mostrar
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {datosAnaliticos.porTipoGasto
+                .sort((a, b) => b.total - a.total)
+                .map((tipo) => {
+                  const porcentaje =
+                    datosAnaliticos.totales.egresos > 0
+                      ? (tipo.total / datosAnaliticos.totales.egresos) * 100
+                      : 0;
+                  return (
+                    <div
+                      key={tipo.id}
+                      className="p-4 bg-gradient-to-r from-[#fcf0ed] to-white rounded-lg border border-[#f5d4cc]"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-medium text-[#305969]">
+                          {tipo.nombre}
+                        </h4>
+                        <Badge variant="danger">{porcentaje.toFixed(1)}%</Badge>
+                      </div>
+                      <p className="text-xl font-bold text-[#e0451f]">
+                        {formatMonto(tipo.total)}
+                      </p>
+                      <p className="text-xs text-[#73a9bf]">
+                        {tipo.cantidad} registros
+                      </p>
+                      <div className="h-2 bg-[#f5d4cc] rounded-full overflow-hidden mt-2">
+                        <div
+                          className="h-full bg-[#e0451f] rounded-full"
+                          style={{ width: `${porcentaje}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Resultados - Por Caja */}
+      {vistaActiva === "cajas" && mostrarResultados && datosAnaliticos && (
+        <Card>
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+            🏦 Movimientos por Caja - {datosAnaliticos.anio}
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#dceaef]">
+                  <th className="text-left p-3 text-xs font-semibold text-[#40768c] uppercase">
+                    Caja
+                  </th>
+                  <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                    Ingresos
+                  </th>
+                  <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                    Egresos
+                  </th>
+                  <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                    Balance
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {datosAnaliticos.porCaja.map((caja) => (
+                  <tr
+                    key={caja.id}
+                    className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                  >
+                    <td className="p-3 font-medium text-[#305969]">
+                      {caja.nombre}
+                    </td>
+                    <td className="p-3 text-right text-[#2ba193] font-semibold">
+                      {formatMonto(caja.ingresos)}
+                    </td>
+                    <td className="p-3 text-right text-[#e0451f] font-semibold">
+                      {formatMonto(caja.egresos)}
+                    </td>
+                    <td
+                      className={`p-3 text-right font-bold ${
+                        caja.balance >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
+                      }`}
+                    >
+                      {formatMonto(caja.balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-[#eef4f7] font-bold">
+                  <td className="p-3 text-[#305969]">TOTAL</td>
+                  <td className="p-3 text-right text-[#2ba193]">
+                    {formatMonto(datosAnaliticos.totales.ingresos)}
+                  </td>
+                  <td className="p-3 text-right text-[#e0451f]">
+                    {formatMonto(datosAnaliticos.totales.egresos)}
+                  </td>
+                  <td
+                    className={`p-3 text-right ${
+                      datosAnaliticos.totales.balance >= 0
+                        ? "text-[#2ba193]"
+                        : "text-[#e0451f]"
+                    }`}
+                  >
+                    {formatMonto(datosAnaliticos.totales.balance)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Card>
       )}
 
       {/* Modal de Detalle */}

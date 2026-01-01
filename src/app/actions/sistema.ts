@@ -255,23 +255,33 @@ export async function sembrarDatosIniciales() {
 // Obtener resumen del dashboard
 export async function obtenerResumenDashboard() {
   return withRetry(async () => {
-    // Usar zona horaria de El Salvador (UTC-6)
-    const ahora = new Date();
-    const offsetElSalvador = -6 * 60; // UTC-6 en minutos
-    const offsetActual = ahora.getTimezoneOffset();
-    const diferenciaMinutos = offsetActual + offsetElSalvador;
-    const hoy = new Date(ahora.getTime() - diferenciaMinutos * 60 * 1000);
+    // Calcular fechas en zona horaria de El Salvador (UTC-6)
+    // Obtenemos la hora actual en UTC y le restamos 6 horas para obtener la hora de El Salvador
+    const ahoraUTC = new Date();
+    const horaElSalvador = new Date(ahoraUTC.getTime() - 6 * 60 * 60 * 1000);
 
-    const inicioMes = new Date(
-      Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1, 6, 0, 0)
-    ); // 00:00 El Salvador = 06:00 UTC
+    // Extraer año y mes según la hora de El Salvador
+    const anio = horaElSalvador.getUTCFullYear();
+    const mes = horaElSalvador.getUTCMonth(); // 0-11
+
+    // Inicio del mes actual: día 1 a las 00:00:00 de El Salvador = 06:00:00 UTC
+    const inicioMes = new Date(Date.UTC(anio, mes, 1, 6, 0, 0, 0));
+
+    // Calcular mes y año anterior de forma explícita para mayor claridad
+    // (JavaScript maneja mes=-1 automáticamente, pero esto es más legible)
+    const mesAnterior = mes === 0 ? 11 : mes - 1;
+    const anioMesAnterior = mes === 0 ? anio - 1 : anio;
+
+    // Inicio del mes anterior
     const inicioMesAnterior = new Date(
-      Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 1, 1, 6, 0, 0)
+      Date.UTC(anioMesAnterior, mesAnterior, 1, 6, 0, 0, 0)
     );
-    const finMesAnterior = new Date(
-      Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1, 5, 59, 59)
-    ); // 23:59:59 del último día del mes anterior
-    const inicioAnio = new Date(Date.UTC(hoy.getUTCFullYear(), 0, 1, 6, 0, 0));
+
+    // Fin del mes anterior: día 1 del mes actual a las 05:59:59 UTC (23:59:59 El Salvador del día anterior)
+    const finMesAnterior = new Date(Date.UTC(anio, mes, 1, 5, 59, 59, 999));
+
+    // Inicio del año actual (siempre 1 de enero del año actual según El Salvador)
+    const inicioAnio = new Date(Date.UTC(anio, 0, 1, 6, 0, 0, 0));
 
     // Obtener moneda principal
     const monedaPrincipal = await prisma.moneda.findFirst({

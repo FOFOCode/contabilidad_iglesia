@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useEffect } from "react";
-import { Card, Button, Input, Badge, Table, Select } from "@/components/ui";
+import { Card, Button, Input, Badge, Table, Combobox } from "@/components/ui";
 import {
   obtenerTodosPaises,
   crearPais,
@@ -461,16 +461,17 @@ export function FilialesConfig({
                     }
                     required
                   />
-                  <Select
+                  <Combobox
                     label="País"
                     value={formData.paisId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, paisId: e.target.value })
+                    onChange={(value) =>
+                      setFormData({ ...formData, paisId: value })
                     }
                     options={paisesActivos.map((p) => ({
                       value: p.id,
                       label: p.nombre,
                     }))}
+                    placeholder="Seleccione un país"
                     required
                   />
                 </>

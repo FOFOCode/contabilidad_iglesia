@@ -251,17 +251,17 @@ export default function Sidebar({ usuario }: SidebarProps) {
       <aside
         className={`
         fixed lg:static inset-y-0 left-0 z-40
-        w-64 bg-white border-r border-[#b9d4df] min-h-screen flex flex-col
+        w-56 bg-white border-r border-[#b9d4df] min-h-screen flex flex-col
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}
       >
         {/* Logo / Título */}
-        <div className="p-6 border-b border-[#dceaef]">
+        <div className="p-4 border-b border-[#dceaef]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#305969] rounded-lg flex items-center justify-center">
+            <div className="w-9 h-9 bg-[#305969] rounded-lg flex items-center justify-center">
               <svg
-                className="w-6 h-6 text-white"
+                className="w-5 h-5 text-white"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

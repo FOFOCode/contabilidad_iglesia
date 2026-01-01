@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useMemo, useCallback } from "react";
-import { Card, Button, Input, Badge, Table, Select } from "@/components/ui";
+import { Card, Button, Input, Badge, Table, Combobox } from "@/components/ui";
 import {
   crearDiezmoFilial,
   crearDiezmosMultiples,
@@ -541,37 +541,38 @@ export function FilialesClient({
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
             <h3 className="text-lg font-semibold">Registro de Diezmos</h3>
             <div className="flex flex-wrap gap-2">
-              <Select
+              <Combobox
                 value={filtroFilial}
-                onChange={(e) => setFiltroFilial(e.target.value)}
-                options={[
-                  { value: "", label: "Todas las filiales" },
-                  ...filialesData.map((f) => ({
-                    value: f.id,
-                    label: f.nombre,
-                  })),
-                ]}
+                onChange={(value) => setFiltroFilial(value)}
+                options={filialesData.map((f) => ({
+                  value: f.id,
+                  label: f.nombre,
+                }))}
+                placeholder="Todas las filiales"
+                clearable
+                searchable={false}
                 className="w-40"
               />
-              <Select
+              <Combobox
                 value={filtroMoneda}
-                onChange={(e) => setFiltroMoneda(e.target.value)}
-                options={[
-                  { value: "", label: "Todas monedas" },
-                  ...resumen.monedas.map((m) => ({
-                    value: m.id,
-                    label: m.codigo,
-                  })),
-                ]}
+                onChange={(value) => setFiltroMoneda(value)}
+                options={resumen.monedas.map((m) => ({
+                  value: m.id,
+                  label: m.codigo,
+                }))}
+                placeholder="Todas monedas"
+                clearable
+                searchable={false}
                 className="w-32"
               />
-              <Select
+              <Combobox
                 value={filtroAnio}
-                onChange={(e) => setFiltroAnio(e.target.value)}
+                onChange={(value) => setFiltroAnio(value)}
                 options={aniosDisponibles.map((a) => ({
                   value: a.toString(),
                   label: a.toString(),
                 }))}
+                searchable={false}
                 className="w-24"
               />
               <div className="flex gap-2">
@@ -747,19 +748,17 @@ export function FilialesClient({
           <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
             <h3 className="text-lg font-semibold mb-4">Registrar Diezmo</h3>
             <form onSubmit={handleSubmitDiezmo} className="space-y-4">
-              <Select
+              <Combobox
                 label="Iglesia Filial"
                 value={formDiezmo.filialId}
-                onChange={(e) =>
-                  setFormDiezmo({ ...formDiezmo, filialId: e.target.value })
+                onChange={(value) =>
+                  setFormDiezmo({ ...formDiezmo, filialId: value })
                 }
-                options={[
-                  { value: "", label: "Seleccione una iglesia" },
-                  ...filialesData.map((f) => ({
-                    value: f.id,
-                    label: `${f.nombre} (${f.pais.nombre})`,
-                  })),
-                ]}
+                options={filialesData.map((f) => ({
+                  value: f.id,
+                  label: `${f.nombre} (${f.pais.nombre})`,
+                }))}
+                placeholder="Seleccione una iglesia"
                 required
               />
               <div className="grid grid-cols-2 gap-4">
@@ -773,30 +772,32 @@ export function FilialesClient({
                   }
                   required
                 />
-                <Select
+                <Combobox
                   label="Moneda"
                   value={formDiezmo.monedaId}
-                  onChange={(e) =>
-                    setFormDiezmo({ ...formDiezmo, monedaId: e.target.value })
+                  onChange={(value) =>
+                    setFormDiezmo({ ...formDiezmo, monedaId: value })
                   }
                   options={resumen.monedas.map((m) => ({
                     value: m.id,
                     label: `${m.codigo} (${m.simbolo})`,
                   }))}
+                  searchable={false}
                   required
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Select
+                <Combobox
                   label="Mes"
                   value={formDiezmo.mes}
-                  onChange={(e) =>
-                    setFormDiezmo({ ...formDiezmo, mes: e.target.value })
+                  onChange={(value) =>
+                    setFormDiezmo({ ...formDiezmo, mes: value })
                   }
                   options={MESES.map((m, i) => ({
                     value: (i + 1).toString(),
                     label: m,
                   }))}
+                  searchable={false}
                   required
                 />
                 <Input
@@ -856,19 +857,20 @@ export function FilialesClient({
             </p>
             <form onSubmit={handleSubmitDiezmoMultiple} className="space-y-4">
               <div className="grid grid-cols-3 gap-4 p-3 bg-gray-50 rounded-lg">
-                <Select
+                <Combobox
                   label="Mes"
                   value={formDiezmoMultiple.mes}
-                  onChange={(e) =>
+                  onChange={(value) =>
                     setFormDiezmoMultiple({
                       ...formDiezmoMultiple,
-                      mes: e.target.value,
+                      mes: value,
                     })
                   }
                   options={MESES.map((m, i) => ({
                     value: (i + 1).toString(),
                     label: m,
                   }))}
+                  searchable={false}
                 />
                 <Input
                   label="Año"
@@ -881,19 +883,20 @@ export function FilialesClient({
                     })
                   }
                 />
-                <Select
+                <Combobox
                   label="Moneda"
                   value={formDiezmoMultiple.monedaId}
-                  onChange={(e) =>
+                  onChange={(value) =>
                     setFormDiezmoMultiple({
                       ...formDiezmoMultiple,
-                      monedaId: e.target.value,
+                      monedaId: value,
                     })
                   }
                   options={resumen.monedas.map((m) => ({
                     value: m.id,
                     label: `${m.codigo} (${m.simbolo})`,
                   }))}
+                  searchable={false}
                 />
               </div>
 
@@ -1083,24 +1086,25 @@ export function FilialesClient({
                   }
                   required
                 />
-                <Select
+                <Combobox
                   label="Moneda"
                   value={formEgreso.monedaId}
-                  onChange={(e) =>
-                    setFormEgreso({ ...formEgreso, monedaId: e.target.value })
+                  onChange={(value) =>
+                    setFormEgreso({ ...formEgreso, monedaId: value })
                   }
                   options={resumen.monedas.map((m) => ({
                     value: m.id,
                     label: `${m.codigo} (${m.simbolo})`,
                   }))}
+                  searchable={false}
                   required
                 />
               </div>
-              <Select
+              <Combobox
                 label="Tipo de Gasto"
                 value={formEgreso.tipoGastoId}
-                onChange={(e) =>
-                  setFormEgreso({ ...formEgreso, tipoGastoId: e.target.value })
+                onChange={(value) =>
+                  setFormEgreso({ ...formEgreso, tipoGastoId: value })
                 }
                 options={resumen.tiposGasto.map((t) => ({
                   value: t.id,

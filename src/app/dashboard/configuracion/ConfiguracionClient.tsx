@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useEffect, ReactNode } from "react";
-import { Card, Button, Input, Badge, Table, Select } from "@/components/ui";
+import { Card, Button, Input, Badge, Table, Combobox } from "@/components/ui";
 import { UsuariosConfig } from "./UsuariosConfig";
 import { FilialesConfig } from "./FilialesConfig";
 import {
@@ -1356,27 +1356,31 @@ export function ConfiguracionClient({
                   />
                   {activeTab === "cajas" && (
                     <>
-                      <Select
+                      <Combobox
                         label="Sociedad Asignada"
                         value={formData.sociedadId}
-                        onChange={(e) =>
+                        onChange={(value) =>
                           setFormData((prev) => ({
                             ...prev,
-                            sociedadId: e.target.value,
+                            sociedadId: value,
                           }))
                         }
                         options={sociedadOptions}
+                        placeholder="Sin sociedad asignada"
+                        clearable
                       />
-                      <Select
+                      <Combobox
                         label="Tipo de Ingreso Asociado"
                         value={formData.tipoIngresoId}
-                        onChange={(e) =>
+                        onChange={(value) =>
                           setFormData((prev) => ({
                             ...prev,
-                            tipoIngresoId: e.target.value,
+                            tipoIngresoId: value,
                           }))
                         }
                         options={tipoIngresoOptions}
+                        placeholder="Sin tipo de ingreso"
+                        clearable
                       />
                       <div className="flex items-center gap-2">
                         <input

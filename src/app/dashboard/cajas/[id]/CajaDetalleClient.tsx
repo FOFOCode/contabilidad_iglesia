@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout";
-import { Card, Badge, Button, Table, Select, Input } from "@/components/ui";
+import { Card, Badge, Button, Table, Combobox, Input } from "@/components/ui";
 
 interface Moneda {
   id: string;
@@ -315,15 +315,17 @@ export function CajaDetalleClient({
                 setFiltros({ ...filtros, fechaHasta: e.target.value })
               }
             />
-            <Select
+            <Combobox
               label="Tipo"
               options={[
-                { value: "", label: "Todos" },
                 { value: "ingreso", label: "Ingresos" },
                 { value: "egreso", label: "Egresos" },
               ]}
               value={filtros.tipo}
-              onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
+              onChange={(value) => setFiltros({ ...filtros, tipo: value })}
+              placeholder="Todos"
+              clearable
+              searchable={false}
             />
             <div className="flex items-end gap-2">
               <Button
