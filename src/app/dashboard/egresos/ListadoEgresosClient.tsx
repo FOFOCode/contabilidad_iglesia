@@ -495,7 +495,10 @@ export function ListadoEgresosClient({
               </span>{" "}
               -{" "}
               <span className="font-semibold text-[#305969]">
-                {Math.min(paginaActual * filasPorPagina, egresosFiltrados.length)}
+                {Math.min(
+                  paginaActual * filasPorPagina,
+                  egresosFiltrados.length
+                )}
               </span>{" "}
               de{" "}
               <span className="font-semibold text-[#305969]">

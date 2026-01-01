@@ -539,7 +539,10 @@ export function ListadoIngresosClient({
               </span>{" "}
               -{" "}
               <span className="font-semibold text-[#305969]">
-                {Math.min(paginaActual * filasPorPagina, ingresosFiltrados.length)}
+                {Math.min(
+                  paginaActual * filasPorPagina,
+                  ingresosFiltrados.length
+                )}
               </span>{" "}
               de{" "}
               <span className="font-semibold text-[#305969]">
