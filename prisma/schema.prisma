@@ -27,6 +27,8 @@ model Moneda {
 
   egresos        Egreso[]
   ingresosMontos IngresoMonto[]
+  diezmosFiliales DiezmoFilial[]
+  egresosFiliales EgresoFilial[]
 
   // Índice para filtrar monedas activas (consulta muy frecuente)
   @@index([activa, orden])
@@ -98,10 +100,102 @@ model TipoGasto {
   actualizadoEn DateTime  @updatedAt
 
   egresos Egreso[]
+  egresosFiliales EgresoFilial[]
 
   // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
   @@map("tipos_gasto")
+}
+
+/// Países para clasificar iglesias filiales
+model Pais {
+  id            String    @id @default(cuid())
+  nombre        String    @unique
+  codigo        String?   @unique // GT, US, MX, etc.
+  activo        Boolean   @default(true)
+  orden         Int       @default(0)
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  filiales Filial[]
+
+  @@index([activo, orden])
+  @@map("paises")
+}
+
+/// Iglesias filiales que envían diezmos
+model Filial {
+  id            String    @id @default(cuid())
+  nombre        String    @unique // Nombre de la iglesia
+  pastor        String    // Nombre del pastor
+  activa        Boolean   @default(true)
+  orden         Int       @default(0)
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  paisId        String
+  pais          Pais      @relation(fields: [paisId], references: [id], onDelete: Restrict)
+
+  diezmos       DiezmoFilial[]
+
+  @@index([paisId])
+  @@index([activa, orden])
+  @@map("filiales")
+}
+
+/// Registro de diezmos de iglesias filiales (funciona como "mini caja" por filial)
+model DiezmoFilial {
+  id            String    @id @default(cuid())
+  monto         Decimal   @db.Decimal(12, 2)
+  mes           Int       // 1-12
+  anio          Int       // Año de recaudación
+  comentario    String?   @db.Text
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  filialId      String
+  filial        Filial    @relation(fields: [filialId], references: [id], onDelete: Restrict)
+
+  monedaId      String
+  moneda        Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
+
+  usuarioId     String
+  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([filialId])
+  @@index([monedaId])
+  @@index([usuarioId])
+  @@index([anio, mes])
+  @@index([filialId, anio, mes])
+  @@map("diezmos_filiales")
+}
+
+/// Egresos de la caja general de diezmos filiales
+model EgresoFilial {
+  id               String    @id @default(cuid())
+  fechaSalida      DateTime  @default(now())
+  solicitante      String
+  monto            Decimal   @db.Decimal(12, 2)
+  descripcionGasto String?   @db.Text
+  comentario       String?   @db.Text
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+
+  monedaId         String
+  moneda           Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
+
+  tipoGastoId      String
+  tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id], onDelete: Restrict)
+
+  usuarioId        String
+  usuario          Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([monedaId])
+  @@index([tipoGastoId])
+  @@index([usuarioId])
+  @@index([fechaSalida])
+  @@index([creadoEn])
+  @@map("egresos_filiales")
 }
 
 // =====================
@@ -121,6 +215,8 @@ model Usuario {
 
   ingresos Ingreso[]
   egresos  Egreso[]
+  diezmosFiliales  DiezmoFilial[]
+  egresosFiliales  EgresoFilial[]
 
   // Índice para filtrar usuarios activos y login
   @@index([activo])

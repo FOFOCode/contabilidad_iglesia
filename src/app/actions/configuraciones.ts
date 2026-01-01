@@ -1,15 +1,17 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withRetry } from "@/lib/prisma";
 
 // =====================
 // MONEDAS
 // =====================
 
 export async function getMonedas() {
-  return prisma.moneda.findMany({
-    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }, { nombre: "asc" }],
-  });
+  return withRetry(() =>
+    prisma.moneda.findMany({
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }, { nombre: "asc" }],
+    })
+  );
 }
 
 export async function createMoneda(data: {
@@ -57,9 +59,11 @@ export async function deleteMoneda(id: string) {
 // =====================
 
 export async function getSociedades() {
-  return prisma.sociedad.findMany({
-    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-  });
+  return withRetry(() =>
+    prisma.sociedad.findMany({
+      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+    })
+  );
 }
 
 export async function createSociedad(data: {
@@ -96,9 +100,11 @@ export async function deleteSociedad(id: string) {
 // =====================
 
 export async function getTiposServicio() {
-  return prisma.tipoServicio.findMany({
-    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-  });
+  return withRetry(() =>
+    prisma.tipoServicio.findMany({
+      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+    })
+  );
 }
 
 export async function createTipoServicio(data: {
@@ -135,9 +141,11 @@ export async function deleteTipoServicio(id: string) {
 // =====================
 
 export async function getTiposIngreso() {
-  return prisma.tipoIngreso.findMany({
-    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-  });
+  return withRetry(() =>
+    prisma.tipoIngreso.findMany({
+      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+    })
+  );
 }
 
 export async function createTipoIngreso(data: {
@@ -174,9 +182,11 @@ export async function deleteTipoIngreso(id: string) {
 // =====================
 
 export async function getTiposGasto() {
-  return prisma.tipoGasto.findMany({
-    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-  });
+  return withRetry(() =>
+    prisma.tipoGasto.findMany({
+      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+    })
+  );
 }
 
 export async function createTipoGasto(data: {
@@ -213,13 +223,15 @@ export async function deleteTipoGasto(id: string) {
 // =====================
 
 export async function getCajas() {
-  return prisma.caja.findMany({
-    include: {
-      sociedad: true,
-      tipoIngreso: true,
-    },
-    orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-  });
+  return withRetry(() =>
+    prisma.caja.findMany({
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+      },
+      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+    })
+  );
 }
 
 export async function createCaja(data: {
@@ -262,18 +274,20 @@ export async function deleteCaja(id: string) {
 // =====================
 
 export async function getUsuarios() {
-  return prisma.usuario.findMany({
-    orderBy: [{ nombre: "asc" }, { apellido: "asc" }],
-    select: {
-      id: true,
-      nombre: true,
-      apellido: true,
-      correo: true,
-      activo: true,
-      creadoEn: true,
-      actualizadoEn: true,
-    },
-  });
+  return withRetry(() =>
+    prisma.usuario.findMany({
+      orderBy: [{ nombre: "asc" }, { apellido: "asc" }],
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        activo: true,
+        creadoEn: true,
+        actualizadoEn: true,
+      },
+    })
+  );
 }
 
 export async function createUsuario(data: {
@@ -337,28 +351,32 @@ export async function deleteUsuario(id: string) {
 // =====================
 
 export async function getCajasActivas() {
-  return prisma.caja.findMany({
-    where: { activa: true },
-    orderBy: { orden: "asc" },
-    select: {
-      id: true,
-      nombre: true,
-      esGeneral: true,
-    },
-  });
+  return withRetry(() =>
+    prisma.caja.findMany({
+      where: { activa: true },
+      orderBy: { orden: "asc" },
+      select: {
+        id: true,
+        nombre: true,
+        esGeneral: true,
+      },
+    })
+  );
 }
 
 export async function getMonedasActivas() {
-  return prisma.moneda.findMany({
-    where: { activa: true },
-    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
-    select: {
-      id: true,
-      codigo: true,
-      simbolo: true,
-      esPrincipal: true,
-    },
-  });
+  return withRetry(() =>
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+      select: {
+        id: true,
+        codigo: true,
+        simbolo: true,
+        esPrincipal: true,
+      },
+    })
+  );
 }
 
 export async function registrarSaldoInicial(data: {

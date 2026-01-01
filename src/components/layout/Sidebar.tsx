@@ -135,6 +135,25 @@ export default function Sidebar({ usuario }: SidebarProps) {
         ),
       },
       {
+        href: "/dashboard/filiales",
+        label: "Filiales",
+        icon: (
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 21h18M9 8h1m-1 4h1m4-4h1m-1 4h1M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16M12 11v6m-3-3h6"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/dashboard/reportes",
         label: "Reportes",
         icon: (

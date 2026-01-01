@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withRetry } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 
 // =====================
@@ -68,40 +68,44 @@ interface FiltrosIngreso {
 }
 
 export async function obtenerIngresos(filtros?: FiltrosIngreso) {
-  return prisma.ingreso.findMany({
-    where: {
-      fechaRecaudacion: {
-        gte: filtros?.desde,
-        lte: filtros?.hasta,
+  return withRetry(() =>
+    prisma.ingreso.findMany({
+      where: {
+        fechaRecaudacion: {
+          gte: filtros?.desde,
+          lte: filtros?.hasta,
+        },
+        sociedadId: filtros?.sociedadId || undefined,
+        tipoIngresoId: filtros?.tipoIngresoId || undefined,
+        cajaId: filtros?.cajaId || undefined,
       },
-      sociedadId: filtros?.sociedadId || undefined,
-      tipoIngresoId: filtros?.tipoIngresoId || undefined,
-      cajaId: filtros?.cajaId || undefined,
-    },
-    include: {
-      sociedad: true,
-      servicio: true,
-      tipoIngreso: true,
-      caja: true,
-      montos: { include: { moneda: true } },
-      usuario: { select: { nombre: true, apellido: true } },
-    },
-    orderBy: { fechaRecaudacion: "desc" },
-  });
+      include: {
+        sociedad: true,
+        servicio: true,
+        tipoIngreso: true,
+        caja: true,
+        montos: { include: { moneda: true } },
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fechaRecaudacion: "desc" },
+    })
+  );
 }
 
 export async function obtenerIngresoPorId(id: string) {
-  return prisma.ingreso.findUnique({
-    where: { id },
-    include: {
-      sociedad: true,
-      servicio: true,
-      tipoIngreso: true,
-      caja: true,
-      montos: { include: { moneda: true } },
-      usuario: { select: { nombre: true, apellido: true } },
-    },
-  });
+  return withRetry(() =>
+    prisma.ingreso.findUnique({
+      where: { id },
+      include: {
+        sociedad: true,
+        servicio: true,
+        tipoIngreso: true,
+        caja: true,
+        montos: { include: { moneda: true } },
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+    })
+  );
 }
 
 export async function eliminarIngreso(id: string) {
@@ -127,6 +131,23 @@ interface CrearEgresoData {
 }
 
 export async function crearEgreso(data: CrearEgresoData) {
+  // Validar que hay saldo suficiente en la caja
+  const saldos = await obtenerSaldoCaja(data.cajaId, data.monedaId);
+  const saldoMoneda = saldos.find((s) => s.monedaId === data.monedaId);
+
+  if (!saldoMoneda || saldoMoneda.saldo < data.monto) {
+    const disponible = saldoMoneda?.saldo || 0;
+    const simbolo = saldoMoneda?.monedaSimbolo || "";
+    throw new Error(
+      `Saldo insuficiente en la caja. Disponible: ${simbolo}${disponible.toLocaleString(
+        "es-GT",
+        { minimumFractionDigits: 2 }
+      )}. Intenta egresar: ${simbolo}${data.monto.toLocaleString("es-GT", {
+        minimumFractionDigits: 2,
+      })}`
+    );
+  }
+
   return prisma.egreso.create({
     data: {
       fechaSalida: data.fechaSalida,
@@ -164,35 +185,39 @@ interface FiltrosEgreso {
 }
 
 export async function obtenerEgresos(filtros?: FiltrosEgreso) {
-  return prisma.egreso.findMany({
-    where: {
-      fechaSalida: {
-        gte: filtros?.desde,
-        lte: filtros?.hasta,
+  return withRetry(() =>
+    prisma.egreso.findMany({
+      where: {
+        fechaSalida: {
+          gte: filtros?.desde,
+          lte: filtros?.hasta,
+        },
+        tipoGastoId: filtros?.tipoGastoId || undefined,
+        cajaId: filtros?.cajaId || undefined,
       },
-      tipoGastoId: filtros?.tipoGastoId || undefined,
-      cajaId: filtros?.cajaId || undefined,
-    },
-    include: {
-      tipoGasto: true,
-      moneda: true,
-      caja: true,
-      usuario: { select: { nombre: true, apellido: true } },
-    },
-    orderBy: { fechaSalida: "desc" },
-  });
+      include: {
+        tipoGasto: true,
+        moneda: true,
+        caja: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fechaSalida: "desc" },
+    })
+  );
 }
 
 export async function obtenerEgresoPorId(id: string) {
-  return prisma.egreso.findUnique({
-    where: { id },
-    include: {
-      tipoGasto: true,
-      moneda: true,
-      caja: true,
-      usuario: { select: { nombre: true, apellido: true } },
-    },
-  });
+  return withRetry(() =>
+    prisma.egreso.findUnique({
+      where: { id },
+      include: {
+        tipoGasto: true,
+        moneda: true,
+        caja: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+    })
+  );
 }
 
 export async function eliminarEgreso(id: string) {
@@ -203,51 +228,53 @@ export async function eliminarEgreso(id: string) {
 
 // Obtener saldo de una caja por moneda
 export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
-  const monedas = await prisma.moneda.findMany({
-    where: monedaId ? { id: monedaId, activa: true } : { activa: true },
-    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  return withRetry(async () => {
+    const monedas = await prisma.moneda.findMany({
+      where: monedaId ? { id: monedaId, activa: true } : { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    });
+
+    // Ingresos agrupados por moneda
+    const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
+      by: ["monedaId"],
+      where: {
+        ingreso: { cajaId },
+        ...(monedaId ? { monedaId } : {}),
+      },
+      _sum: { monto: true },
+    });
+
+    // Egresos agrupados por moneda
+    const egresosPorMoneda = await prisma.egreso.groupBy({
+      by: ["monedaId"],
+      where: {
+        cajaId,
+        ...(monedaId ? { monedaId } : {}),
+      },
+      _sum: { monto: true },
+    });
+
+    const saldos = monedas.map((moneda) => {
+      const ingresos =
+        ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
+        new Prisma.Decimal(0);
+      const egresos =
+        egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
+        new Prisma.Decimal(0);
+      const saldo = Number(ingresos) - Number(egresos);
+
+      return {
+        monedaId: moneda.id,
+        monedaCodigo: moneda.codigo,
+        monedaSimbolo: moneda.simbolo,
+        ingresos: Number(ingresos),
+        egresos: Number(egresos),
+        saldo,
+      };
+    });
+
+    return saldos;
   });
-
-  // Ingresos agrupados por moneda
-  const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
-    by: ["monedaId"],
-    where: {
-      ingreso: { cajaId },
-      ...(monedaId ? { monedaId } : {}),
-    },
-    _sum: { monto: true },
-  });
-
-  // Egresos agrupados por moneda
-  const egresosPorMoneda = await prisma.egreso.groupBy({
-    by: ["monedaId"],
-    where: {
-      cajaId,
-      ...(monedaId ? { monedaId } : {}),
-    },
-    _sum: { monto: true },
-  });
-
-  const saldos = monedas.map((moneda) => {
-    const ingresos =
-      ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
-      new Prisma.Decimal(0);
-    const egresos =
-      egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
-      new Prisma.Decimal(0);
-    const saldo = Number(ingresos) - Number(egresos);
-
-    return {
-      monedaId: moneda.id,
-      monedaCodigo: moneda.codigo,
-      monedaSimbolo: moneda.simbolo,
-      ingresos: Number(ingresos),
-      egresos: Number(egresos),
-      saldo,
-    };
-  });
-
-  return saldos;
 }
 
 // =====================

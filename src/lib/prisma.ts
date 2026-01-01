@@ -4,11 +4,25 @@ import { Pool } from "pg";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  pool: Pool | undefined;
 };
 
-function createPrismaClient() {
+function createPool() {
   const connectionString = process.env.DATABASE_URL;
-  const pool = new Pool({ connectionString });
+  return new Pool({
+    connectionString,
+    // Configuración optimizada para Supabase/serverless
+    max: 10, // Máximo de conexiones en el pool
+    min: 2, // Mínimo de conexiones mantenidas
+    idleTimeoutMillis: 30000, // Cerrar conexiones inactivas después de 30s
+    connectionTimeoutMillis: 10000, // Timeout de conexión: 10s
+    allowExitOnIdle: true, // Permitir que el proceso termine si está idle
+  });
+}
+
+function createPrismaClient() {
+  const pool = globalForPrisma.pool ?? createPool();
+  globalForPrisma.pool = pool;
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
@@ -16,3 +30,111 @@ function createPrismaClient() {
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+
+// =====================
+// UTILIDAD DE REINTENTOS
+// =====================
+
+interface RetryOptions {
+  maxRetries?: number;
+  initialDelay?: number;
+  maxDelay?: number;
+  backoffMultiplier?: number;
+}
+
+const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
+  maxRetries: 3,
+  initialDelay: 500, // 500ms
+  maxDelay: 5000, // 5s máximo
+  backoffMultiplier: 2,
+};
+
+// Errores que se consideran transitorios y se pueden reintentar
+const RETRYABLE_ERRORS = [
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EPIPE",
+  "ENOTFOUND",
+  "ENETUNREACH",
+  "EAI_AGAIN",
+  "ConnectionError",
+  "connection",
+  "timeout",
+  "Too many connections",
+  "Connection terminated",
+  "Client has encountered a connection error",
+  "prepared statement",
+  "FATAL",
+];
+
+function isRetryableError(error: unknown): boolean {
+  if (!error) return false;
+
+  const errorString = String(error);
+  const errorMessage = error instanceof Error ? error.message : errorString;
+  const errorCode = (error as { code?: string })?.code;
+
+  return RETRYABLE_ERRORS.some(
+    (retryable) =>
+      errorMessage.toLowerCase().includes(retryable.toLowerCase()) ||
+      errorCode === retryable
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Ejecuta una operación de base de datos con reintentos automáticos
+ * para manejar errores transitorios de conexión (común en Supabase/serverless)
+ */
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  options?: RetryOptions
+): Promise<T> {
+  const opts = { ...DEFAULT_RETRY_OPTIONS, ...options };
+  let lastError: unknown;
+  let delay = opts.initialDelay;
+
+  for (let attempt = 1; attempt <= opts.maxRetries + 1; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      // Si no es un error reintentable o es el último intento, lanzar
+      if (!isRetryableError(error) || attempt > opts.maxRetries) {
+        throw error;
+      }
+
+      console.warn(
+        `[Prisma Retry] Intento ${attempt}/${opts.maxRetries + 1} falló. ` +
+          `Reintentando en ${delay}ms...`,
+        error instanceof Error ? error.message : error
+      );
+
+      await sleep(delay);
+      delay = Math.min(delay * opts.backoffMultiplier, opts.maxDelay);
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Wrapper para transacciones con reintentos
+ */
+export async function withRetryTransaction<T>(
+  transaction: Parameters<typeof prisma.$transaction>[0],
+  options?: RetryOptions
+): Promise<T> {
+  return withRetry(
+    () =>
+      prisma.$transaction(
+        transaction as Parameters<typeof prisma.$transaction>[0]
+      ) as Promise<T>,
+    options
+  );
+}

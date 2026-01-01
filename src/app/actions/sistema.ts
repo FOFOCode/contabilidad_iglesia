@@ -1,11 +1,18 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, withRetry } from "@/lib/prisma";
 
 // Verificar si el sistema tiene configuración inicial
 export async function verificarConfiguracionInicial() {
-  const [monedas, sociedades, tiposServicio, tiposIngreso, tiposGasto, cajas] =
-    await Promise.all([
+  return withRetry(async () => {
+    const [
+      monedas,
+      sociedades,
+      tiposServicio,
+      tiposIngreso,
+      tiposGasto,
+      cajas,
+    ] = await Promise.all([
       prisma.moneda.count(),
       prisma.sociedad.count(),
       prisma.tipoServicio.count(),
@@ -14,21 +21,22 @@ export async function verificarConfiguracionInicial() {
       prisma.caja.count(),
     ]);
 
-  return {
-    monedas,
-    sociedades,
-    tiposServicio,
-    tiposIngreso,
-    tiposGasto,
-    cajas,
-    configurado:
-      monedas > 0 &&
-      sociedades > 0 &&
-      tiposServicio > 0 &&
-      tiposIngreso > 0 &&
-      tiposGasto > 0 &&
-      cajas > 0,
-  };
+    return {
+      monedas,
+      sociedades,
+      tiposServicio,
+      tiposIngreso,
+      tiposGasto,
+      cajas,
+      configurado:
+        monedas > 0 &&
+        sociedades > 0 &&
+        tiposServicio > 0 &&
+        tiposIngreso > 0 &&
+        tiposGasto > 0 &&
+        cajas > 0,
+    };
+  });
 }
 
 // Sembrar datos iniciales por defecto
@@ -246,221 +254,227 @@ export async function sembrarDatosIniciales() {
 
 // Obtener resumen del dashboard
 export async function obtenerResumenDashboard() {
-  const hoy = new Date();
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-  const inicioMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
-  const finMesAnterior = new Date(
-    hoy.getFullYear(),
-    hoy.getMonth(),
-    0,
-    23,
-    59,
-    59
-  );
-  const inicioAnio = new Date(hoy.getFullYear(), 0, 1);
+  return withRetry(async () => {
+    const hoy = new Date();
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const inicioMesAnterior = new Date(
+      hoy.getFullYear(),
+      hoy.getMonth() - 1,
+      1
+    );
+    const finMesAnterior = new Date(
+      hoy.getFullYear(),
+      hoy.getMonth(),
+      0,
+      23,
+      59,
+      59
+    );
+    const inicioAnio = new Date(hoy.getFullYear(), 0, 1);
 
-  // Obtener moneda principal
-  const monedaPrincipal = await prisma.moneda.findFirst({
-    where: { esPrincipal: true },
-  });
+    // Obtener moneda principal
+    const monedaPrincipal = await prisma.moneda.findFirst({
+      where: { esPrincipal: true },
+    });
 
-  // Ingresos del mes (agrupados por moneda)
-  const ingresosMes = await prisma.ingresoMonto.groupBy({
-    by: ["monedaId"],
-    where: {
-      ingreso: {
-        fechaRecaudacion: { gte: inicioMes },
-      },
-    },
-    _sum: { monto: true },
-  });
-
-  // Egresos del mes
-  const egresosMes = await prisma.egreso.groupBy({
-    by: ["monedaId"],
-    where: {
-      fechaSalida: { gte: inicioMes },
-    },
-    _sum: { monto: true },
-  });
-
-  // Ingresos mes anterior (para comparativa)
-  const ingresosMesAnterior = await prisma.ingresoMonto.groupBy({
-    by: ["monedaId"],
-    where: {
-      ingreso: {
-        fechaRecaudacion: { gte: inicioMesAnterior, lte: finMesAnterior },
-      },
-    },
-    _sum: { monto: true },
-  });
-
-  // Egresos mes anterior
-  const egresosMesAnterior = await prisma.egreso.groupBy({
-    by: ["monedaId"],
-    where: {
-      fechaSalida: { gte: inicioMesAnterior, lte: finMesAnterior },
-    },
-    _sum: { monto: true },
-  });
-
-  // Ingresos del año (acumulado)
-  const ingresosAnio = await prisma.ingresoMonto.groupBy({
-    by: ["monedaId"],
-    where: {
-      ingreso: {
-        fechaRecaudacion: { gte: inicioAnio },
-      },
-    },
-    _sum: { monto: true },
-  });
-
-  // Egresos del año
-  const egresosAnio = await prisma.egreso.groupBy({
-    by: ["monedaId"],
-    where: {
-      fechaSalida: { gte: inicioAnio },
-    },
-    _sum: { monto: true },
-  });
-
-  // Ingresos por sociedad del mes
-  const ingresosPorSociedad = await prisma.ingreso.findMany({
-    where: { fechaRecaudacion: { gte: inicioMes } },
-    select: {
-      sociedad: { select: { id: true, nombre: true } },
-      montos: {
-        select: {
-          monto: true,
-          moneda: { select: { id: true, simbolo: true, codigo: true } },
+    // Ingresos del mes (agrupados por moneda)
+    const ingresosMes = await prisma.ingresoMonto.groupBy({
+      by: ["monedaId"],
+      where: {
+        ingreso: {
+          fechaRecaudacion: { gte: inicioMes },
         },
       },
-    },
-  });
-
-  // Egresos por tipo de gasto del mes
-  const egresosPorTipo = await prisma.egreso.groupBy({
-    by: ["tipoGastoId", "monedaId"],
-    where: { fechaSalida: { gte: inicioMes } },
-    _sum: { monto: true },
-  });
-
-  // Obtener nombres de tipos de gasto
-  const tiposGasto = await prisma.tipoGasto.findMany({
-    where: { activo: true },
-    select: { id: true, nombre: true },
-  });
-
-  // Top 5 cajas por movimiento (con saldos calculados)
-  const cajasActivas = await prisma.caja.findMany({
-    where: { activa: true },
-    select: { id: true, nombre: true, esGeneral: true },
-    orderBy: { orden: "asc" },
-    take: 6,
-  });
-
-  // Obtener IDs de cajas para filtrar
-  const cajaIds = cajasActivas.map((c) => c.id);
-
-  // Consultas optimizadas: una sola consulta para todos los ingresos y egresos
-  const [ingresosAgrupados, egresosAgrupados] = await Promise.all([
-    prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
-      SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
-      FROM ingreso_montos im
-      INNER JOIN ingresos i ON im."ingresoId" = i.id
-      WHERE i."cajaId" = ANY(${cajaIds}::text[])
-      GROUP BY i."cajaId", im."monedaId"
-    `,
-    prisma.egreso.groupBy({
-      by: ["cajaId", "monedaId"],
-      where: { cajaId: { in: cajaIds } },
       _sum: { monto: true },
-    }),
-  ]);
+    });
 
-  // Mapas para acceso rápido
-  const ingresosMap = new Map<string, number>();
-  ingresosAgrupados.forEach((ing) => {
-    ingresosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
-  });
-
-  const egresosMap = new Map<string, number>();
-  egresosAgrupados.forEach((egr) => {
-    egresosMap.set(
-      `${egr.cajaId}-${egr.monedaId}`,
-      Number(egr._sum.monto || 0)
-    );
-  });
-
-  // Monedas para referencia (necesitamos esto antes de construir cajasConSaldos)
-  const monedas = await prisma.moneda.findMany({ where: { activa: true } });
-
-  // Construir cajas con saldos
-  const cajasConSaldos = cajasActivas.map((caja) => ({
-    ...caja,
-    saldos: monedas.map((moneda) => {
-      const key = `${caja.id}-${moneda.id}`;
-      const ingresos = ingresosMap.get(key) || 0;
-      const egresos = egresosMap.get(key) || 0;
-      return {
-        monedaId: moneda.id,
-        saldo: ingresos - egresos,
-      };
-    }),
-  }));
-
-  // Contadores y últimos movimientos en paralelo
-  const [
-    totalIngresos,
-    totalEgresos,
-    totalCajas,
-    ultimosIngresos,
-    ultimosEgresos,
-    sociedades,
-  ] = await Promise.all([
-    prisma.ingreso.count({ where: { fechaRecaudacion: { gte: inicioMes } } }),
-    prisma.egreso.count({ where: { fechaSalida: { gte: inicioMes } } }),
-    prisma.caja.count({ where: { activa: true } }),
-    prisma.ingreso.findMany({
-      take: 5,
-      orderBy: { creadoEn: "desc" },
-      include: {
-        sociedad: true,
-        tipoIngreso: true,
-        caja: true,
-        montos: { include: { moneda: true } },
+    // Egresos del mes
+    const egresosMes = await prisma.egreso.groupBy({
+      by: ["monedaId"],
+      where: {
+        fechaSalida: { gte: inicioMes },
       },
-    }),
-    prisma.egreso.findMany({
-      take: 5,
-      orderBy: { creadoEn: "desc" },
-      include: {
-        tipoGasto: true,
-        caja: true,
-        moneda: true,
-      },
-    }),
-    prisma.sociedad.findMany({ where: { activa: true } }),
-  ]);
+      _sum: { monto: true },
+    });
 
-  return {
-    monedaPrincipal,
-    ingresosMes,
-    egresosMes,
-    ingresosMesAnterior,
-    egresosMesAnterior,
-    ingresosAnio,
-    egresosAnio,
-    ingresosPorSociedad,
-    egresosPorTipo,
-    tiposGasto,
-    cajasConSaldos,
-    totalIngresos,
-    totalEgresos,
-    totalCajas,
-    ultimosIngresos,
-    ultimosEgresos,
-    monedas,
-    sociedades,
-  };
+    // Ingresos mes anterior (para comparativa)
+    const ingresosMesAnterior = await prisma.ingresoMonto.groupBy({
+      by: ["monedaId"],
+      where: {
+        ingreso: {
+          fechaRecaudacion: { gte: inicioMesAnterior, lte: finMesAnterior },
+        },
+      },
+      _sum: { monto: true },
+    });
+
+    // Egresos mes anterior
+    const egresosMesAnterior = await prisma.egreso.groupBy({
+      by: ["monedaId"],
+      where: {
+        fechaSalida: { gte: inicioMesAnterior, lte: finMesAnterior },
+      },
+      _sum: { monto: true },
+    });
+
+    // Ingresos del año (acumulado)
+    const ingresosAnio = await prisma.ingresoMonto.groupBy({
+      by: ["monedaId"],
+      where: {
+        ingreso: {
+          fechaRecaudacion: { gte: inicioAnio },
+        },
+      },
+      _sum: { monto: true },
+    });
+
+    // Egresos del año
+    const egresosAnio = await prisma.egreso.groupBy({
+      by: ["monedaId"],
+      where: {
+        fechaSalida: { gte: inicioAnio },
+      },
+      _sum: { monto: true },
+    });
+
+    // Ingresos por sociedad del mes
+    const ingresosPorSociedad = await prisma.ingreso.findMany({
+      where: { fechaRecaudacion: { gte: inicioMes } },
+      select: {
+        sociedad: { select: { id: true, nombre: true } },
+        montos: {
+          select: {
+            monto: true,
+            moneda: { select: { id: true, simbolo: true, codigo: true } },
+          },
+        },
+      },
+    });
+
+    // Egresos por tipo de gasto del mes
+    const egresosPorTipo = await prisma.egreso.groupBy({
+      by: ["tipoGastoId", "monedaId"],
+      where: { fechaSalida: { gte: inicioMes } },
+      _sum: { monto: true },
+    });
+
+    // Obtener nombres de tipos de gasto
+    const tiposGasto = await prisma.tipoGasto.findMany({
+      where: { activo: true },
+      select: { id: true, nombre: true },
+    });
+
+    // Top 5 cajas por movimiento (con saldos calculados)
+    const cajasActivas = await prisma.caja.findMany({
+      where: { activa: true },
+      select: { id: true, nombre: true, esGeneral: true },
+      orderBy: { orden: "asc" },
+      take: 6,
+    });
+
+    // Obtener IDs de cajas para filtrar
+    const cajaIds = cajasActivas.map((c) => c.id);
+
+    // Consultas optimizadas: una sola consulta para todos los ingresos y egresos
+    const [ingresosAgrupados, egresosAgrupados] = await Promise.all([
+      prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
+        SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
+        FROM ingreso_montos im
+        INNER JOIN ingresos i ON im."ingresoId" = i.id
+        WHERE i."cajaId" = ANY(${cajaIds}::text[])
+        GROUP BY i."cajaId", im."monedaId"
+      `,
+      prisma.egreso.groupBy({
+        by: ["cajaId", "monedaId"],
+        where: { cajaId: { in: cajaIds } },
+        _sum: { monto: true },
+      }),
+    ]);
+
+    // Mapas para acceso rápido
+    const ingresosMap = new Map<string, number>();
+    ingresosAgrupados.forEach((ing) => {
+      ingresosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+    });
+
+    const egresosMap = new Map<string, number>();
+    egresosAgrupados.forEach((egr) => {
+      egresosMap.set(
+        `${egr.cajaId}-${egr.monedaId}`,
+        Number(egr._sum.monto || 0)
+      );
+    });
+
+    // Monedas para referencia (necesitamos esto antes de construir cajasConSaldos)
+    const monedas = await prisma.moneda.findMany({ where: { activa: true } });
+
+    // Construir cajas con saldos
+    const cajasConSaldos = cajasActivas.map((caja) => ({
+      ...caja,
+      saldos: monedas.map((moneda) => {
+        const key = `${caja.id}-${moneda.id}`;
+        const ingresos = ingresosMap.get(key) || 0;
+        const egresos = egresosMap.get(key) || 0;
+        return {
+          monedaId: moneda.id,
+          saldo: ingresos - egresos,
+        };
+      }),
+    }));
+
+    // Contadores y últimos movimientos en paralelo
+    const [
+      totalIngresos,
+      totalEgresos,
+      totalCajas,
+      ultimosIngresos,
+      ultimosEgresos,
+      sociedades,
+    ] = await Promise.all([
+      prisma.ingreso.count({ where: { fechaRecaudacion: { gte: inicioMes } } }),
+      prisma.egreso.count({ where: { fechaSalida: { gte: inicioMes } } }),
+      prisma.caja.count({ where: { activa: true } }),
+      prisma.ingreso.findMany({
+        take: 5,
+        orderBy: { creadoEn: "desc" },
+        include: {
+          sociedad: true,
+          tipoIngreso: true,
+          caja: true,
+          montos: { include: { moneda: true } },
+        },
+      }),
+      prisma.egreso.findMany({
+        take: 5,
+        orderBy: { creadoEn: "desc" },
+        include: {
+          tipoGasto: true,
+          caja: true,
+          moneda: true,
+        },
+      }),
+      prisma.sociedad.findMany({ where: { activa: true } }),
+    ]);
+
+    return {
+      monedaPrincipal,
+      ingresosMes,
+      egresosMes,
+      ingresosMesAnterior,
+      egresosMesAnterior,
+      ingresosAnio,
+      egresosAnio,
+      ingresosPorSociedad,
+      egresosPorTipo,
+      tiposGasto,
+      cajasConSaldos,
+      totalIngresos,
+      totalEgresos,
+      totalCajas,
+      ultimosIngresos,
+      ultimosEgresos,
+      monedas,
+      sociedades,
+    };
+  });
 }

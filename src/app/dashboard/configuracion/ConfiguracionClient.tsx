@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useEffect, ReactNode } from "react";
 import { Card, Button, Input, Badge, Table, Select } from "@/components/ui";
 import { UsuariosConfig } from "./UsuariosConfig";
+import { FilialesConfig } from "./FilialesConfig";
 import {
   createMoneda,
   updateMoneda,
@@ -58,7 +59,26 @@ type TabType =
   | "gastos"
   | "cajas"
   | "monedas"
-  | "usuarios";
+  | "usuarios"
+  | "filiales";
+
+interface PaisData {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  activo: boolean;
+  orden: number;
+}
+
+interface FilialData {
+  id: string;
+  nombre: string;
+  pastor: string;
+  activa: boolean;
+  orden: number;
+  paisId: string;
+  pais: { id: string; nombre: string };
+}
 
 interface ConfiguracionClientProps {
   monedasData: MonedaData[];
@@ -67,6 +87,8 @@ interface ConfiguracionClientProps {
   tiposIngresoData: ConfigItemData[];
   tiposGastoData: ConfigItemData[];
   cajasData: CajaData[];
+  paisesData?: PaisData[];
+  filialesData?: FilialData[];
 }
 
 const tabs: { key: TabType; label: string; icon: ReactNode }[] = [
@@ -203,6 +225,25 @@ const tabs: { key: TabType; label: string; icon: ReactNode }[] = [
       </svg>
     ),
   },
+  {
+    key: "filiales",
+    label: "Filiales",
+    icon: (
+      <svg
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 21h18M9 8h1m-1 4h1m4-4h1m-1 4h1M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16M12 11v6m-3-3h6"
+        />
+      </svg>
+    ),
+  },
 ];
 
 export function ConfiguracionClient({
@@ -212,6 +253,8 @@ export function ConfiguracionClient({
   tiposIngresoData,
   tiposGastoData,
   cajasData,
+  paisesData = [],
+  filialesData = [],
 }: ConfiguracionClientProps) {
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState<TabType>("servicios");
@@ -231,6 +274,8 @@ export function ConfiguracionClient({
   const [tiposGasto, setTiposGasto] =
     useState<ConfigItemData[]>(tiposGastoData);
   const [cajas, setCajas] = useState<CajaData[]>(cajasData);
+  const [paises, setPaises] = useState<PaisData[]>(paisesData);
+  const [filiales, setFiliales] = useState<FilialData[]>(filialesData);
 
   // Actualizar cuando cambien los props
   useEffect(() => {
@@ -240,6 +285,8 @@ export function ConfiguracionClient({
     setTiposIngreso(tiposIngresoData);
     setTiposGasto(tiposGastoData);
     setCajas(cajasData);
+    setPaises(paisesData);
+    setFiliales(filialesData);
   }, [
     monedasData,
     sociedadesData,
@@ -247,6 +294,8 @@ export function ConfiguracionClient({
     tiposIngresoData,
     tiposGastoData,
     cajasData,
+    paisesData,
+    filialesData,
   ]);
 
   // Form state
@@ -1034,6 +1083,8 @@ export function ConfiguracionClient({
       {/* Contenido de la pestaña */}
       {activeTab === "usuarios" ? (
         <UsuariosConfig />
+      ) : activeTab === "filiales" ? (
+        <FilialesConfig paisesData={paises} filialesData={filiales} />
       ) : (
         <Card>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -1078,7 +1129,7 @@ export function ConfiguracionClient({
       )}
 
       {/* Información adicional */}
-      {activeTab !== "usuarios" && (
+      {activeTab !== "usuarios" && activeTab !== "filiales" && (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-[#ebfaf8] border-[#aeeae3]">
             <div className="flex items-start gap-3">
