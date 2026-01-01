@@ -255,22 +255,17 @@ export async function sembrarDatosIniciales() {
 // Obtener resumen del dashboard
 export async function obtenerResumenDashboard() {
   return withRetry(async () => {
-    const hoy = new Date();
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const inicioMesAnterior = new Date(
-      hoy.getFullYear(),
-      hoy.getMonth() - 1,
-      1
-    );
-    const finMesAnterior = new Date(
-      hoy.getFullYear(),
-      hoy.getMonth(),
-      0,
-      23,
-      59,
-      59
-    );
-    const inicioAnio = new Date(hoy.getFullYear(), 0, 1);
+    // Usar zona horaria de El Salvador (UTC-6)
+    const ahora = new Date();
+    const offsetElSalvador = -6 * 60; // UTC-6 en minutos
+    const offsetActual = ahora.getTimezoneOffset();
+    const diferenciaMinutos = offsetActual + offsetElSalvador;
+    const hoy = new Date(ahora.getTime() - diferenciaMinutos * 60 * 1000);
+    
+    const inicioMes = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1, 6, 0, 0)); // 00:00 El Salvador = 06:00 UTC
+    const inicioMesAnterior = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - 1, 1, 6, 0, 0));
+    const finMesAnterior = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1, 5, 59, 59)); // 23:59:59 del último día del mes anterior
+    const inicioAnio = new Date(Date.UTC(hoy.getUTCFullYear(), 0, 1, 6, 0, 0));
 
     // Obtener moneda principal
     const monedaPrincipal = await prisma.moneda.findFirst({
