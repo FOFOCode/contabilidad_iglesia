@@ -6,6 +6,7 @@ import {
   obtenerDatosReporte,
   obtenerDatosReporteAnalitico,
 } from "@/app/actions/operaciones";
+import { obtenerFechaElSalvador } from "@/lib/fechas";
 
 interface Sociedad {
   id: string;
@@ -79,6 +80,7 @@ type TipoVista =
 
 interface DatosAnaliticos {
   anio: number;
+  periodo?: string; // Nuevo campo para mostrar el período personalizado
   monedaSeleccionada: {
     id: string;
     codigo: string;
@@ -128,30 +130,56 @@ interface DatosAnaliticos {
 }
 
 function calcularFechas(periodo: string): { inicio: Date; fin: Date } {
-  const hoy = new Date();
-  hoy.setHours(23, 59, 59, 999);
-  const inicio = new Date();
+  // Usar hora de El Salvador para calcular períodos
+  const ahora = obtenerFechaElSalvador();
+
+  // Crear fecha de inicio: hoy a las 00:00:00
+  const inicio = new Date(ahora);
   inicio.setHours(0, 0, 0, 0);
+
+  // Crear fecha de fin (se ajustará según el período)
+  const fin = new Date(ahora);
+  fin.setHours(23, 59, 59, 999);
 
   switch (periodo) {
     case "hoy":
-      return { inicio, fin: hoy };
+      return { inicio, fin };
     case "semana":
-      inicio.setDate(inicio.getDate() - inicio.getDay());
-      return { inicio, fin: hoy };
+      // Retroceder al domingo de esta semana
+      const diaSemana = inicio.getDay();
+      inicio.setDate(inicio.getDate() - diaSemana);
+      inicio.setHours(0, 0, 0, 0);
+      // Fin de semana = sábado
+      fin.setDate(inicio.getDate() + 6);
+      fin.setHours(23, 59, 59, 999);
+      return { inicio, fin };
     case "mes":
+      // Primer día del mes actual
       inicio.setDate(1);
-      return { inicio, fin: hoy };
+      inicio.setHours(0, 0, 0, 0);
+      // Último día del mes actual
+      fin.setMonth(fin.getMonth() + 1, 0); // Día 0 del siguiente mes = último día del mes actual
+      fin.setHours(23, 59, 59, 999);
+      return { inicio, fin };
     case "trimestre":
       const mesActual = inicio.getMonth();
       const inicioTrimestre = mesActual - (mesActual % 3);
       inicio.setMonth(inicioTrimestre, 1);
-      return { inicio, fin: hoy };
+      inicio.setHours(0, 0, 0, 0);
+      // Último día del trimestre
+      fin.setMonth(inicioTrimestre + 3, 0);
+      fin.setHours(23, 59, 59, 999);
+      return { inicio, fin };
     case "anio":
+      // Primer día del año
       inicio.setMonth(0, 1);
-      return { inicio, fin: hoy };
+      inicio.setHours(0, 0, 0, 0);
+      // Último día del año
+      fin.setMonth(11, 31);
+      fin.setHours(23, 59, 59, 999);
+      return { inicio, fin };
     default:
-      return { inicio, fin: hoy };
+      return { inicio, fin };
   }
 }
 
@@ -172,8 +200,11 @@ export function ReportesClient({
     monedaId: "",
   });
   const [filtrosAnaliticos, setFiltrosAnaliticos] = useState({
-    anio: new Date().getFullYear(),
+    anio: obtenerFechaElSalvador().getFullYear(),
     monedaId: monedas.find((m) => m.esPrincipal)?.id || "",
+    modoFiltro: "anio" as "anio" | "rango", // Nuevo: modo de filtro
+    fechaInicio: "", // Nuevo: fecha inicio para rango
+    fechaFin: "", // Nuevo: fecha fin para rango
   });
   const [resultados, setResultados] = useState<MovimientoReporte[]>([]);
   const [datosAnaliticos, setDatosAnaliticos] =
@@ -216,18 +247,27 @@ export function ReportesClient({
 
   // Años disponibles para el reporte analítico
   const anioOptions = useMemo(() => {
-    const anioActual = new Date().getFullYear();
+    const anioActual = obtenerFechaElSalvador().getFullYear();
     return Array.from({ length: 5 }, (_, i) => ({
       value: (anioActual - i).toString(),
       label: (anioActual - i).toString(),
     }));
   }, []);
 
+  // Helper para mostrar el período en los títulos de reportes
+  const obtenerLabelPeriodo = useCallback(() => {
+    if (!datosAnaliticos) return "";
+    return datosAnaliticos.periodo || datosAnaliticos.anio.toString();
+  }, [datosAnaliticos]);
+
   const handleGenerarReporteAnalitico = () => {
     startTransition(async () => {
       const datos = await obtenerDatosReporteAnalitico({
         anio: filtrosAnaliticos.anio,
         monedaId: filtrosAnaliticos.monedaId || undefined,
+        usarRangoFechas: filtrosAnaliticos.modoFiltro === "rango",
+        fechaInicio: filtrosAnaliticos.fechaInicio || undefined,
+        fechaFin: filtrosAnaliticos.fechaFin || undefined,
       });
       setDatosAnaliticos(datos as DatosAnaliticos);
       setMostrarResultados(true);
@@ -254,9 +294,10 @@ export function ReportesClient({
         fechaFin = fechas.fin;
       }
 
+      // Enviar fechas como ISO strings para evitar problemas de serialización
       const datos = await obtenerDatosReporte({
-        fechaInicio,
-        fechaFin,
+        fechaInicio: fechaInicio?.toISOString(),
+        fechaFin: fechaFin?.toISOString(),
         cajaId: filtros.cajaId || undefined,
         sociedadId: filtros.sociedadId || undefined,
       });
@@ -407,7 +448,9 @@ export function ReportesClient({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `reporte_${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `reporte_${
+      obtenerFechaElSalvador().toISOString().split("T")[0]
+    }.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -436,7 +479,7 @@ export function ReportesClient({
       </head>
       <body>
         <h1>Reporte de Movimientos Contables</h1>
-        <p>Generado: ${new Date().toLocaleString("es-GT")}</p>
+        <p>Generado: ${obtenerFechaElSalvador().toLocaleString("es-GT")}</p>
         
         <h2>Resumen por Moneda</h2>
         <div class="resumen">
@@ -785,19 +828,86 @@ export function ReportesClient({
             Configurar Análisis
           </h3>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
-            <Combobox
-              label="Año"
-              options={anioOptions}
-              value={filtrosAnaliticos.anio.toString()}
-              onChange={(value) =>
+          {/* Selector de modo: Año o Rango de Fechas */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() =>
                 setFiltrosAnaliticos((prev) => ({
                   ...prev,
-                  anio: parseInt(value) || new Date().getFullYear(),
+                  modoFiltro: "anio",
                 }))
               }
-              searchable={false}
-            />
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filtrosAnaliticos.modoFiltro === "anio"
+                  ? "bg-[#40768c] text-white"
+                  : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
+              }`}
+            >
+              Por Año
+            </button>
+            <button
+              onClick={() =>
+                setFiltrosAnaliticos((prev) => ({
+                  ...prev,
+                  modoFiltro: "rango",
+                }))
+              }
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filtrosAnaliticos.modoFiltro === "rango"
+                  ? "bg-[#40768c] text-white"
+                  : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
+              }`}
+            >
+              Rango de Fechas
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
+            {/* Mostrar selector de Año si está en modo "anio" */}
+            {filtrosAnaliticos.modoFiltro === "anio" && (
+              <Combobox
+                label="Año"
+                options={anioOptions}
+                value={filtrosAnaliticos.anio.toString()}
+                onChange={(value) =>
+                  setFiltrosAnaliticos((prev) => ({
+                    ...prev,
+                    anio:
+                      parseInt(value) || obtenerFechaElSalvador().getFullYear(),
+                  }))
+                }
+                searchable={false}
+              />
+            )}
+
+            {/* Mostrar selectores de fecha si está en modo "rango" */}
+            {filtrosAnaliticos.modoFiltro === "rango" && (
+              <>
+                <Input
+                  label="Fecha Inicio"
+                  type="date"
+                  value={filtrosAnaliticos.fechaInicio}
+                  onChange={(e) =>
+                    setFiltrosAnaliticos((prev) => ({
+                      ...prev,
+                      fechaInicio: e.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  label="Fecha Fin"
+                  type="date"
+                  value={filtrosAnaliticos.fechaFin}
+                  onChange={(e) =>
+                    setFiltrosAnaliticos((prev) => ({
+                      ...prev,
+                      fechaFin: e.target.value,
+                    }))
+                  }
+                />
+              </>
+            )}
+
             <Combobox
               label="Moneda"
               options={monedaOptions}
@@ -814,7 +924,12 @@ export function ReportesClient({
           <div className="flex justify-end">
             <Button
               onClick={handleGenerarReporteAnalitico}
-              disabled={isPending}
+              disabled={
+                isPending ||
+                (filtrosAnaliticos.modoFiltro === "rango" &&
+                  (!filtrosAnaliticos.fechaInicio ||
+                    !filtrosAnaliticos.fechaFin))
+              }
             >
               {isPending ? (
                 "Analizando..."
@@ -974,7 +1089,7 @@ export function ReportesClient({
               <Card>
                 <div className="text-center">
                   <p className="text-xs text-[#73a9bf] uppercase mb-1">
-                    Total Ingresos {datosAnaliticos.anio}
+                    Total Ingresos {obtenerLabelPeriodo()}
                   </p>
                   <p className="text-2xl font-bold text-[#2ba193]">
                     {formatMonto(datosAnaliticos.totales.ingresos)}
@@ -987,7 +1102,7 @@ export function ReportesClient({
               <Card>
                 <div className="text-center">
                   <p className="text-xs text-[#73a9bf] uppercase mb-1">
-                    Total Egresos {datosAnaliticos.anio}
+                    Total Egresos {obtenerLabelPeriodo()}
                   </p>
                   <p className="text-2xl font-bold text-[#e0451f]">
                     {formatMonto(datosAnaliticos.totales.egresos)}
@@ -1000,7 +1115,7 @@ export function ReportesClient({
               <Card>
                 <div className="text-center">
                   <p className="text-xs text-[#73a9bf] uppercase mb-1">
-                    Balance {datosAnaliticos.anio}
+                    Balance {obtenerLabelPeriodo()}
                   </p>
                   <p
                     className={`text-2xl font-bold ${
@@ -1028,7 +1143,7 @@ export function ReportesClient({
             {/* Gráfica de barras */}
             <Card className="mb-5">
               <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
-                📊 Tendencia Mensual {datosAnaliticos.anio}
+                📊 Tendencia Mensual {obtenerLabelPeriodo()}
               </h3>
               <div className="space-y-3">
                 {datosAnaliticos.datosMensuales.map((mes) => (
@@ -1086,7 +1201,7 @@ export function ReportesClient({
       {vistaActiva === "sociedades" && mostrarResultados && datosAnaliticos && (
         <Card>
           <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
-            👥 Ingresos por Sociedad - {datosAnaliticos.anio}
+            👥 Ingresos por Sociedad - {obtenerLabelPeriodo()}
           </h3>
           {datosAnaliticos.porSociedad.length === 0 ? (
             <p className="text-center py-8 text-[#73a9bf]">
@@ -1147,7 +1262,7 @@ export function ReportesClient({
         datosAnaliticos && (
           <Card>
             <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
-              💰 Ingresos por Tipo - {datosAnaliticos.anio}
+              💰 Ingresos por Tipo - {obtenerLabelPeriodo()}
             </h3>
             {datosAnaliticos.porTipoIngreso.length === 0 ? (
               <p className="text-center py-8 text-[#73a9bf]">
@@ -1199,7 +1314,7 @@ export function ReportesClient({
       {vistaActiva === "tipoGasto" && mostrarResultados && datosAnaliticos && (
         <Card>
           <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
-            💸 Egresos por Tipo - {datosAnaliticos.anio}
+            💸 Egresos por Tipo - {obtenerLabelPeriodo()}
           </h3>
           {datosAnaliticos.porTipoGasto.length === 0 ? (
             <p className="text-center py-8 text-[#73a9bf]">
@@ -1249,7 +1364,7 @@ export function ReportesClient({
       {vistaActiva === "cajas" && mostrarResultados && datosAnaliticos && (
         <Card>
           <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
-            🏦 Movimientos por Caja - {datosAnaliticos.anio}
+            🏦 Movimientos por Caja - {obtenerLabelPeriodo()}
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full">

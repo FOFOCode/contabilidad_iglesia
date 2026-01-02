@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Input, Combobox, Button } from "@/components/ui";
 import { crearEgresosMultiples } from "@/app/actions/operaciones";
+import { obtenerFechaHoyElSalvador } from "@/lib/fechas";
 
 interface TipoGasto {
   id: string;
@@ -57,7 +58,7 @@ export function MultipleEgresoForm({
 
   const createEmptyRow = (id: number): EgresoRow => ({
     id,
-    fecha: new Date().toISOString().split("T")[0],
+    fecha: obtenerFechaHoyElSalvador(),
     solicitante: "",
     tipoGastoId: "",
     monto: "",

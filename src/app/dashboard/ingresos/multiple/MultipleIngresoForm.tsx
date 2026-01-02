@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Input, Combobox, Button } from "@/components/ui";
 import { crearIngresosMultiples } from "@/app/actions/operaciones";
+import { obtenerFechaHoyElSalvador } from "@/lib/fechas";
 
 interface Sociedad {
   id: string;
@@ -76,7 +77,7 @@ export function MultipleIngresoForm({
 
   const createEmptyRow = (id: number): IngresoRow => ({
     id,
-    fecha: new Date().toISOString().split("T")[0],
+    fecha: obtenerFechaHoyElSalvador(),
     sociedadId: "",
     servicioId: "",
     tipoIngresoId: "",

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Input, Combobox, TextArea, Button } from "@/components/ui";
 import { crearIngreso } from "@/app/actions/operaciones";
+import { obtenerFechaHoyElSalvador } from "@/lib/fechas";
 
 interface Sociedad {
   id: string;
@@ -72,7 +73,7 @@ export function NuevoIngresoForm({
     servicioId: "",
     tipoIngresoId: "",
     cajaId: "",
-    fechaRecaudacion: new Date().toISOString().split("T")[0],
+    fechaRecaudacion: obtenerFechaHoyElSalvador(),
     monto: "",
     monedaId: monedaPrincipal?.id || "",
     comentario: "",

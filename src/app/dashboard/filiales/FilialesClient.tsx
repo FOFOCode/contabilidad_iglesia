@@ -13,6 +13,7 @@ import {
   obtenerEgresosFiliales,
   obtenerSaldoFiliales,
 } from "@/app/actions/filiales";
+import { obtenerFechaElSalvador } from "@/lib/fechas";
 
 interface Moneda {
   id: string;
@@ -133,7 +134,7 @@ export function FilialesClient({
   const [filtroFilial, setFiltroFilial] = useState("");
   const [filtroMoneda, setFiltroMoneda] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(
-    new Date().getFullYear().toString()
+    obtenerFechaElSalvador().getFullYear().toString()
   );
 
   // Formulario de diezmo individual
@@ -141,8 +142,8 @@ export function FilialesClient({
     filialId: "",
     monto: "",
     monedaId: resumen.monedas[0]?.id || "",
-    mes: (new Date().getMonth() + 1).toString(),
-    anio: new Date().getFullYear().toString(),
+    mes: (obtenerFechaElSalvador().getMonth() + 1).toString(),
+    anio: obtenerFechaElSalvador().getFullYear().toString(),
     comentario: "",
   });
 
@@ -154,14 +155,14 @@ export function FilialesClient({
     montos: { [filialId: string]: string };
   }>({
     monedaId: resumen.monedas[0]?.id || "",
-    mes: (new Date().getMonth() + 1).toString(),
-    anio: new Date().getFullYear().toString(),
+    mes: (obtenerFechaElSalvador().getMonth() + 1).toString(),
+    anio: obtenerFechaElSalvador().getFullYear().toString(),
     montos: {},
   });
 
   // Formulario de egreso
   const [formEgreso, setFormEgreso] = useState({
-    fechaSalida: new Date().toISOString().split("T")[0],
+    fechaSalida: obtenerFechaElSalvador().toISOString().split("T")[0],
     solicitante: "",
     monto: "",
     monedaId: resumen.monedas[0]?.id || "",
@@ -169,6 +170,14 @@ export function FilialesClient({
     descripcionGasto: "",
     comentario: "",
   });
+
+  // Estado para vista de detalle de filial
+  const [filialSeleccionada, setFilialSeleccionada] = useState<string | null>(
+    null
+  );
+
+  // Estado para filtro por país en resumen
+  const [filtroPaisResumen, setFiltroPaisResumen] = useState<string>("");
 
   // Saldo disponible para egresos
   const [saldosFiliales, setSaldosFiliales] = useState<
@@ -219,9 +228,43 @@ export function FilialesClient({
   // Años únicos para filtro
   const aniosDisponibles = useMemo(() => {
     const anios = new Set(diezmosData.map((d) => d.anio));
-    anios.add(new Date().getFullYear());
+    anios.add(obtenerFechaElSalvador().getFullYear());
     return Array.from(anios).sort((a, b) => b - a);
   }, [diezmosData]);
+
+  // Países únicos para filtro en resumen
+  const paisesDisponibles = useMemo(() => {
+    const paisesMap = new Map<string, string>();
+    filialesData.forEach((f) => {
+      paisesMap.set(f.pais.id, f.pais.nombre);
+    });
+    return Array.from(paisesMap.entries()).map(([id, nombre]) => ({
+      id,
+      nombre,
+    }));
+  }, [filialesData]);
+
+  // Filiales filtradas por país
+  const filialesFiltradas = useMemo(() => {
+    if (!filtroPaisResumen) return filialesData;
+    return filialesData.filter((f) => f.pais.id === filtroPaisResumen);
+  }, [filialesData, filtroPaisResumen]);
+
+  // Diezmos de la filial seleccionada
+  const diezmosFilialSeleccionada = useMemo(() => {
+    if (!filialSeleccionada) return [];
+    return diezmosData
+      .filter((d) => d.filial.id === filialSeleccionada)
+      .sort((a, b) => {
+        if (a.anio !== b.anio) return b.anio - a.anio;
+        return b.mes - a.mes;
+      });
+  }, [diezmosData, filialSeleccionada]);
+
+  // Info de la filial seleccionada
+  const infoFilialSeleccionada = useMemo(() => {
+    return filialesData.find((f) => f.id === filialSeleccionada);
+  }, [filialesData, filialSeleccionada]);
 
   const refreshData = async () => {
     startTransition(async () => {
@@ -269,8 +312,8 @@ export function FilialesClient({
           filialId: "",
           monto: "",
           monedaId: resumen.monedas[0]?.id || "",
-          mes: (new Date().getMonth() + 1).toString(),
-          anio: new Date().getFullYear().toString(),
+          mes: (obtenerFechaElSalvador().getMonth() + 1).toString(),
+          anio: obtenerFechaElSalvador().getFullYear().toString(),
           comentario: "",
         });
         // Auto-ocultar mensaje de éxito
@@ -313,8 +356,8 @@ export function FilialesClient({
         );
         setFormDiezmoMultiple({
           monedaId: resumen.monedas[0]?.id || "",
-          mes: (new Date().getMonth() + 1).toString(),
-          anio: new Date().getFullYear().toString(),
+          mes: (obtenerFechaElSalvador().getMonth() + 1).toString(),
+          anio: obtenerFechaElSalvador().getFullYear().toString(),
           montos: {},
         });
         // Auto-ocultar mensaje de éxito
@@ -336,8 +379,14 @@ export function FilialesClient({
 
     startTransition(async () => {
       try {
+        // Crear fecha en zona horaria local para evitar desfase
+        const [year, month, day] = formEgreso.fechaSalida
+          .split("-")
+          .map(Number);
+        const fechaLocal = new Date(year, month - 1, day, 12, 0, 0);
+
         await crearEgresoFilial({
-          fechaSalida: new Date(formEgreso.fechaSalida),
+          fechaSalida: fechaLocal,
           solicitante: formEgreso.solicitante,
           monto: parseFloat(formEgreso.monto),
           monedaId: formEgreso.monedaId,
@@ -349,7 +398,7 @@ export function FilialesClient({
         await refreshData();
         setShowModal(null);
         setFormEgreso({
-          fechaSalida: new Date().toISOString().split("T")[0],
+          fechaSalida: obtenerFechaElSalvador().toISOString().split("T")[0],
           solicitante: "",
           monto: "",
           monedaId: resumen.monedas[0]?.id || "",
@@ -396,47 +445,85 @@ export function FilialesClient({
 
   return (
     <div className="p-6 space-y-6">
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200 pb-2">
+      {/* Tabs Mejorados */}
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
         {[
-          { key: "resumen" as TabType, label: "📊 Resumen", icon: "📊" },
-          { key: "diezmos" as TabType, label: "💵 Diezmos", icon: "💵" },
-          { key: "egresos" as TabType, label: "📤 Egresos", icon: "📤" },
+          {
+            key: "resumen" as TabType,
+            label: "Resumen",
+            icon: "📊",
+            description: "Vista general y saldos",
+          },
+          {
+            key: "diezmos" as TabType,
+            label: "Diezmos",
+            icon: "💵",
+            description: "Registrar y ver diezmos",
+          },
+          {
+            key: "egresos" as TabType,
+            label: "Egresos",
+            icon: "📤",
+            description: "Salidas de caja general",
+          },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-t-lg font-medium transition-colors ${
+            className={`flex items-center gap-3 px-5 py-3 rounded-xl font-medium transition-all ${
               activeTab === tab.key
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                ? "bg-[#40768c] text-white shadow-md"
+                : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef] hover:shadow-sm"
             }`}
           >
-            {tab.label}
+            <span className="text-xl">{tab.icon}</span>
+            <div className="text-left">
+              <div className="font-semibold">{tab.label}</div>
+              <div
+                className={`text-xs ${
+                  activeTab === tab.key ? "text-white/80" : "text-[#73a9bf]"
+                }`}
+              >
+                {tab.description}
+              </div>
+            </div>
           </button>
         ))}
       </div>
 
+      {/* Notificaciones mejoradas */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex justify-between items-center">
-          <span>⚠️ {error}</span>
+        <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg flex justify-between items-center shadow-sm animate-pulse">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="font-semibold">Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
           <button
             onClick={() => setError(null)}
-            className="ml-4 text-red-600 hover:text-red-800 font-medium"
+            className="ml-4 text-red-600 hover:text-red-800 font-bold text-xl"
           >
-            ✕
+            ×
           </button>
         </div>
       )}
 
       {successMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex justify-between items-center">
-          <span>✅ {successMessage}</span>
+        <div className="bg-green-50 border-l-4 border-green-500 text-green-700 px-4 py-3 rounded-r-lg flex justify-between items-center shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="font-semibold">¡Éxito!</p>
+              <p className="text-sm">{successMessage}</p>
+            </div>
+          </div>
           <button
             onClick={() => setSuccessMessage(null)}
-            className="ml-4 text-green-600 hover:text-green-800 font-medium"
+            className="ml-4 text-green-600 hover:text-green-800 font-bold text-xl"
           >
-            ✕
+            ×
           </button>
         </div>
       )}
@@ -444,6 +531,28 @@ export function FilialesClient({
       {/* TAB RESUMEN */}
       {activeTab === "resumen" && (
         <div className="space-y-6">
+          {/* Acciones Rápidas */}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => setShowModal("diezmo-multiple")}
+              className="bg-[#2ba193] hover:bg-[#239584]"
+            >
+              📋 Registro Múltiple de Diezmos
+            </Button>
+            <Button onClick={() => setShowModal("diezmo")} variant="secondary">
+              + Diezmo Individual
+            </Button>
+            <Button
+              onClick={() => {
+                setShowModal("egreso");
+                cargarSaldoFiliales();
+              }}
+              variant="secondary"
+            >
+              📤 Registrar Egreso
+            </Button>
+          </div>
+
           {/* Caja General */}
           <Card>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -478,13 +587,27 @@ export function FilialesClient({
 
           {/* Mini Cajas por Filial */}
           <Card>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
-                ⛪ Saldos por Iglesia Filial (Mini Cajas)
+                ⛪ Saldos por Iglesia Filial
+                <span className="text-sm font-normal text-[#73a9bf]">
+                  (Click para ver historial)
+                </span>
               </h3>
-              <Button onClick={() => setShowModal("diezmo")}>
-                + Registrar Diezmo
-              </Button>
+              <div className="flex gap-2 items-center">
+                <Combobox
+                  value={filtroPaisResumen}
+                  onChange={(value) => setFiltroPaisResumen(value)}
+                  options={paisesDisponibles.map((p) => ({
+                    value: p.id,
+                    label: p.nombre,
+                  }))}
+                  placeholder="🌍 Todos los países"
+                  clearable
+                  searchable={false}
+                  className="w-48"
+                />
+              </div>
             </div>
 
             {filialesData.length === 0 ? (
@@ -497,15 +620,18 @@ export function FilialesClient({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filialesData.map((filial) => (
+                {filialesFiltradas.map((filial) => (
                   <div
                     key={filial.id}
-                    className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:shadow-md transition-shadow"
+                    onClick={() => setFilialSeleccionada(filial.id)}
+                    className="p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 bg-gradient-to-br from-[#f8fbfc] to-white border-[#dceaef]"
                   >
-                    <div className="font-semibold text-[#203b46]">
-                      {filial.nombre}
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="font-semibold text-[#203b46]">
+                        {filial.nombre}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-500 mb-2">
+                    <div className="text-sm text-[#73a9bf] mb-3">
                       👤 {filial.pastor} | 🌍 {filial.pais.nombre}
                     </div>
                     <div className="space-y-1">
@@ -514,18 +640,23 @@ export function FilialesClient({
                           key={s.monedaId}
                           className="flex justify-between text-sm"
                         >
-                          <span className="text-gray-600">
+                          <span className="text-[#73a9bf]">
                             {s.monedaCodigo}:
                           </span>
                           <span
-                            className={`font-medium ${
-                              s.total >= 0 ? "text-green-600" : "text-red-600"
+                            className={`font-bold ${
+                              s.total >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
                             }`}
                           >
                             {formatMoney(s.total, s.monedaSimbolo)}
                           </span>
                         </div>
                       ))}
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-[#eef4f7] text-center">
+                      <span className="text-xs text-[#73a9bf]">
+                        Click para ver historial →
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1158,6 +1289,118 @@ export function FilialesClient({
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detalle de Filial */}
+      {filialSeleccionada && infoFilialSeleccionada && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+            {/* Header */}
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-[#203b46]">
+                  ⛪ {infoFilialSeleccionada.nombre}
+                </h3>
+                <p className="text-sm text-[#73a9bf]">
+                  👤 Pastor {infoFilialSeleccionada.pastor} | 🌍{" "}
+                  {infoFilialSeleccionada.pais.nombre}
+                </p>
+              </div>
+              <button
+                onClick={() => setFilialSeleccionada(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Saldos Actuales */}
+            <div className="mb-6">
+              <h4 className="text-sm font-semibold text-[#40768c] uppercase mb-3">
+                Saldos Actuales
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {infoFilialSeleccionada.saldos.map((s) => (
+                  <div
+                    key={s.monedaId}
+                    className={`p-3 rounded-lg ${
+                      s.total >= 0
+                        ? "bg-green-50 border border-green-200"
+                        : "bg-red-50 border border-red-200"
+                    }`}
+                  >
+                    <p className="text-xs text-gray-600">{s.monedaCodigo}</p>
+                    <p
+                      className={`text-xl font-bold ${
+                        s.total >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
+                      }`}
+                    >
+                      {formatMoney(s.total, s.monedaSimbolo)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Historial de Diezmos */}
+            <div>
+              <h4 className="text-sm font-semibold text-[#40768c] uppercase mb-3">
+                Historial de Diezmos ({diezmosFilialSeleccionada.length})
+              </h4>
+              {diezmosFilialSeleccionada.length === 0 ? (
+                <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                  No hay diezmos registrados para esta filial
+                </div>
+              ) : (
+                <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                  {diezmosFilialSeleccionada.map((d) => (
+                    <div
+                      key={d.id}
+                      className="p-3 hover:bg-gray-50 flex justify-between items-center"
+                    >
+                      <div>
+                        <p className="font-medium text-[#305969]">
+                          {MESES[d.mes - 1]} {d.anio}
+                        </p>
+                        {d.comentario && (
+                          <p className="text-xs text-gray-500">
+                            {d.comentario}
+                          </p>
+                        )}
+                      </div>
+                      <span className="font-bold text-[#2ba193]">
+                        {formatMoney(d.monto, d.moneda.simbolo)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Acciones */}
+            <div className="mt-6 pt-4 border-t flex justify-between items-center">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setFormDiezmo({
+                    ...formDiezmo,
+                    filialId: infoFilialSeleccionada.id,
+                  });
+                  setFilialSeleccionada(null);
+                  setShowModal("diezmo");
+                }}
+              >
+                + Registrar Diezmo
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setFilialSeleccionada(null)}
+              >
+                Cerrar
+              </Button>
+            </div>
           </div>
         </div>
       )}

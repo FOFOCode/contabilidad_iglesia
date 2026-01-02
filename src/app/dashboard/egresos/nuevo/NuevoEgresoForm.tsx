@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, Input, Combobox, TextArea, Button } from "@/components/ui";
 import { crearEgreso, obtenerSaldoCaja } from "@/app/actions/operaciones";
+import { obtenerFechaHoyElSalvador } from "@/lib/fechas";
 
 interface TipoGasto {
   id: string;
@@ -59,7 +60,7 @@ export function NuevoEgresoForm({
     tipoGastoId: "",
     cajaId: "",
     monedaId: monedaPrincipal?.id || "",
-    fechaSalida: new Date().toISOString().split("T")[0],
+    fechaSalida: obtenerFechaHoyElSalvador(),
     solicitante: "",
     monto: "",
     descripcionGasto: "",

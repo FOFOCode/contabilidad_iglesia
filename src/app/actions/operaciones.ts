@@ -541,8 +541,8 @@ export async function obtenerDatosFormularioEgreso() {
 // =====================
 
 interface FiltrosReporte {
-  fechaInicio?: Date;
-  fechaFin?: Date;
+  fechaInicio?: string | Date;
+  fechaFin?: string | Date;
   cajaId?: string;
   sociedadId?: string;
 }
@@ -551,24 +551,36 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
   const whereIngresos: any = {};
   const whereEgresos: any = {};
 
-  if (filtros.fechaInicio) {
+  // Convertir strings a Date si es necesario
+  const fechaInicio = filtros.fechaInicio
+    ? typeof filtros.fechaInicio === "string"
+      ? new Date(filtros.fechaInicio)
+      : filtros.fechaInicio
+    : undefined;
+  const fechaFin = filtros.fechaFin
+    ? typeof filtros.fechaFin === "string"
+      ? new Date(filtros.fechaFin)
+      : filtros.fechaFin
+    : undefined;
+
+  if (fechaInicio) {
     whereIngresos.fechaRecaudacion = {
       ...whereIngresos.fechaRecaudacion,
-      gte: filtros.fechaInicio,
+      gte: fechaInicio,
     };
     whereEgresos.fechaSalida = {
       ...whereEgresos.fechaSalida,
-      gte: filtros.fechaInicio,
+      gte: fechaInicio,
     };
   }
-  if (filtros.fechaFin) {
+  if (fechaFin) {
     whereIngresos.fechaRecaudacion = {
       ...whereIngresos.fechaRecaudacion,
-      lte: filtros.fechaFin,
+      lte: fechaFin,
     };
     whereEgresos.fechaSalida = {
       ...whereEgresos.fechaSalida,
-      lte: filtros.fechaFin,
+      lte: fechaFin,
     };
   }
   if (filtros.cajaId) {
@@ -677,13 +689,32 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
 interface FiltrosReporteAnalitico {
   anio: number;
   monedaId?: string;
+  fechaInicio?: string; // Formato ISO, opcional para rango personalizado
+  fechaFin?: string; // Formato ISO, opcional para rango personalizado
+  usarRangoFechas?: boolean; // Si es true, usa fechaInicio/fechaFin en lugar del año
 }
 
 export async function obtenerDatosReporteAnalitico(
   filtros: FiltrosReporteAnalitico
 ) {
-  const inicioAnio = new Date(filtros.anio, 0, 1, 0, 0, 0);
-  const finAnio = new Date(filtros.anio, 11, 31, 23, 59, 59);
+  // Determinar rango de fechas: personalizado o por año completo
+  let inicioRango: Date;
+  let finRango: Date;
+  let labelPeriodo: string;
+
+  if (filtros.usarRangoFechas && filtros.fechaInicio && filtros.fechaFin) {
+    // Usar rango personalizado
+    const [yi, mi, di] = filtros.fechaInicio.split("-").map(Number);
+    const [yf, mf, df] = filtros.fechaFin.split("-").map(Number);
+    inicioRango = new Date(yi, mi - 1, di, 0, 0, 0);
+    finRango = new Date(yf, mf - 1, df, 23, 59, 59);
+    labelPeriodo = `${filtros.fechaInicio} al ${filtros.fechaFin}`;
+  } else {
+    // Usar año completo
+    inicioRango = new Date(filtros.anio, 0, 1, 0, 0, 0);
+    finRango = new Date(filtros.anio, 11, 31, 23, 59, 59);
+    labelPeriodo = filtros.anio.toString();
+  }
 
   const [
     ingresos,
@@ -696,7 +727,7 @@ export async function obtenerDatosReporteAnalitico(
   ] = await Promise.all([
     prisma.ingreso.findMany({
       where: {
-        fechaRecaudacion: { gte: inicioAnio, lte: finAnio },
+        fechaRecaudacion: { gte: inicioRango, lte: finRango },
       },
       include: {
         sociedad: true,
@@ -707,7 +738,7 @@ export async function obtenerDatosReporteAnalitico(
     }),
     prisma.egreso.findMany({
       where: {
-        fechaSalida: { gte: inicioAnio, lte: finAnio },
+        fechaSalida: { gte: inicioRango, lte: finRango },
         ...(filtros.monedaId ? { monedaId: filtros.monedaId } : {}),
       },
       include: {
@@ -885,6 +916,7 @@ export async function obtenerDatosReporteAnalitico(
 
   return {
     anio: filtros.anio,
+    periodo: labelPeriodo, // Nuevo campo para mostrar el período seleccionado
     monedaSeleccionada,
     datosMensuales,
     porSociedad: porSociedad.filter((s) => s.total > 0 || s.cantidad > 0),
