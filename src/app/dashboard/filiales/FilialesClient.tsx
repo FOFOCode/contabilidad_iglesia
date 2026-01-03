@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useTransition, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useTransition,
+  useMemo,
+  useCallback,
+  useEffect,
+} from "react";
 import { Card, Button, Input, Badge, Table, Combobox } from "@/components/ui";
 import {
   crearDiezmoFilial,
@@ -136,6 +142,14 @@ export function FilialesClient({
   const [filtroAnio, setFiltroAnio] = useState(
     obtenerFechaElSalvador().getFullYear().toString()
   );
+
+  // Filtros y paginación para egresos
+  const [filtroEgresoTipo, setFiltroEgresoTipo] = useState("");
+  const [filtroEgresoFechaDesde, setFiltroEgresoFechaDesde] = useState("");
+  const [filtroEgresoFechaHasta, setFiltroEgresoFechaHasta] = useState("");
+  const [filtroEgresoMoneda, setFiltroEgresoMoneda] = useState("");
+  const [paginaEgreso, setPaginaEgreso] = useState(1);
+  const registrosPorPagina = 10;
 
   // Formulario de diezmo individual
   const [formDiezmo, setFormDiezmo] = useState({
@@ -442,6 +456,66 @@ export function FilialesClient({
       maximumFractionDigits: 2,
     })}`;
   };
+
+  // Filtrar egresos
+  const egresosFiltrados = useMemo(() => {
+    return egresosData.filter((egreso) => {
+      // Filtro por tipo de gasto
+      if (filtroEgresoTipo && egreso.tipoGasto.id !== filtroEgresoTipo) {
+        return false;
+      }
+
+      // Filtro por moneda
+      if (filtroEgresoMoneda && egreso.moneda.id !== filtroEgresoMoneda) {
+        return false;
+      }
+
+      // Filtro por fecha desde
+      if (filtroEgresoFechaDesde) {
+        const fechaEgreso = new Date(egreso.fechaSalida);
+        const fechaDesde = new Date(filtroEgresoFechaDesde);
+        if (fechaEgreso < fechaDesde) return false;
+      }
+
+      // Filtro por fecha hasta
+      if (filtroEgresoFechaHasta) {
+        const fechaEgreso = new Date(egreso.fechaSalida);
+        const fechaHasta = new Date(filtroEgresoFechaHasta);
+        fechaHasta.setHours(23, 59, 59, 999);
+        if (fechaEgreso > fechaHasta) return false;
+      }
+
+      return true;
+    });
+  }, [
+    egresosData,
+    filtroEgresoTipo,
+    filtroEgresoMoneda,
+    filtroEgresoFechaDesde,
+    filtroEgresoFechaHasta,
+  ]);
+
+  // Paginación de egresos
+  const totalPaginasEgresos = Math.ceil(
+    egresosFiltrados.length / registrosPorPagina
+  );
+  const egresosPaginados = useMemo(() => {
+    const inicio = (paginaEgreso - 1) * registrosPorPagina;
+    const fin = inicio + registrosPorPagina;
+    return egresosFiltrados.slice(inicio, fin);
+  }, [egresosFiltrados, paginaEgreso]);
+
+  // Resetear página cuando cambian los filtros
+  const resetearPaginaEgresos = () => {
+    setPaginaEgreso(1);
+  };
+
+  // Resetear paginación cuando se activa el tab de egresos
+  useEffect(() => {
+    if (activeTab === "egresos") {
+      setPaginaEgreso(1);
+    }
+  }, [activeTab]);
 
   return (
     <div className="p-6 space-y-6">
@@ -806,6 +880,109 @@ export function FilialesClient({
             </Button>
           </div>
 
+          {/* Filtros */}
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">
+              🔍 Filtros
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Fecha Desde
+                </label>
+                <Input
+                  type="date"
+                  value={filtroEgresoFechaDesde}
+                  onChange={(e) => {
+                    setFiltroEgresoFechaDesde(e.target.value);
+                    resetearPaginaEgresos();
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Fecha Hasta
+                </label>
+                <Input
+                  type="date"
+                  value={filtroEgresoFechaHasta}
+                  onChange={(e) => {
+                    setFiltroEgresoFechaHasta(e.target.value);
+                    resetearPaginaEgresos();
+                  }}
+                />
+              </div>
+              <Combobox
+                label="Tipo de Gasto"
+                value={filtroEgresoTipo}
+                onChange={(value) => {
+                  setFiltroEgresoTipo(value);
+                  resetearPaginaEgresos();
+                }}
+                options={[
+                  { value: "", label: "Todos los tipos" },
+                  ...resumen.tiposGasto.map((t) => ({
+                    value: t.id,
+                    label: t.nombre,
+                  })),
+                ]}
+                searchable={false}
+              />
+              <Combobox
+                label="Moneda"
+                value={filtroEgresoMoneda}
+                onChange={(value) => {
+                  setFiltroEgresoMoneda(value);
+                  resetearPaginaEgresos();
+                }}
+                options={[
+                  { value: "", label: "Todas las monedas" },
+                  ...resumen.monedas.map((m) => ({
+                    value: m.id,
+                    label: `${m.codigo} (${m.simbolo})`,
+                  })),
+                ]}
+                searchable={false}
+              />
+            </div>
+            {(filtroEgresoTipo ||
+              filtroEgresoMoneda ||
+              filtroEgresoFechaDesde ||
+              filtroEgresoFechaHasta) && (
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-gray-600">
+                  Mostrando {egresosFiltrados.length} de {egresosData.length}{" "}
+                  registros
+                </p>
+                <button
+                  onClick={() => {
+                    setFiltroEgresoTipo("");
+                    setFiltroEgresoMoneda("");
+                    setFiltroEgresoFechaDesde("");
+                    setFiltroEgresoFechaHasta("");
+                    resetearPaginaEgresos();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#40768c] hover:bg-[#305969] rounded-lg transition-colors shadow-sm"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
+          </div>
+
           <Table
             columns={[
               {
@@ -867,16 +1044,62 @@ export function FilialesClient({
                   ),
               },
             ]}
-            data={egresosData}
+            data={egresosPaginados}
             emptyMessage="No hay egresos registrados"
           />
+
+          {/* Paginación */}
+          {totalPaginasEgresos > 1 && (
+            <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
+              <p className="text-sm text-gray-600">
+                Página {paginaEgreso} de {totalPaginasEgresos} • Mostrando{" "}
+                {egresosPaginados.length} registros
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setPaginaEgreso(1)}
+                  disabled={paginaEgreso === 1}
+                >
+                  ««
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setPaginaEgreso((p) => Math.max(1, p - 1))}
+                  disabled={paginaEgreso === 1}
+                >
+                  ‹ Anterior
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    setPaginaEgreso((p) => Math.min(totalPaginasEgresos, p + 1))
+                  }
+                  disabled={paginaEgreso === totalPaginasEgresos}
+                >
+                  Siguiente ›
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setPaginaEgreso(totalPaginasEgresos)}
+                  disabled={paginaEgreso === totalPaginasEgresos}
+                >
+                  »»
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
       {/* Modal Diezmo */}
       {showModal === "diezmo" && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md my-8 shadow-xl">
             <h3 className="text-lg font-semibold mb-4">Registrar Diezmo</h3>
             <form onSubmit={handleSubmitDiezmo} className="space-y-4">
               <Combobox
@@ -977,8 +1200,8 @@ export function FilialesClient({
 
       {/* Modal Diezmo Múltiple */}
       {showModal === "diezmo-multiple" && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl my-8 shadow-xl">
             <h3 className="text-lg font-semibold mb-2">
               📋 Registro Múltiple de Diezmos
             </h3>
@@ -1108,8 +1331,8 @@ export function FilialesClient({
 
       {/* Modal Egreso */}
       {showModal === "egreso" && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg my-8 shadow-xl">
             <h3 className="text-lg font-semibold mb-4">Registrar Egreso</h3>
 
             {/* Preview de Saldo Disponible */}

@@ -18,6 +18,7 @@ interface CrearIngresoData {
   servicioId: string;
   tipoIngresoId: string;
   cajaId: string;
+  cajaSecundariaId?: string | null; // Caja de tracking por sociedad
   usuarioId: string;
   comentario?: string;
   montos: MontoIngreso[];
@@ -31,6 +32,7 @@ export async function crearIngreso(data: CrearIngresoData) {
       servicioId: data.servicioId,
       tipoIngresoId: data.tipoIngresoId,
       cajaId: data.cajaId,
+      cajaSecundariaId: data.cajaSecundariaId || null,
       usuarioId: data.usuarioId,
       comentario: data.comentario,
       montos: {
@@ -46,6 +48,7 @@ export async function crearIngreso(data: CrearIngresoData) {
       servicio: true,
       tipoIngreso: true,
       caja: true,
+      cajaSecundaria: true,
     },
   });
 }
@@ -65,6 +68,7 @@ interface FiltrosIngreso {
   sociedadId?: string;
   tipoIngresoId?: string;
   cajaId?: string;
+  incluirSecundaria?: boolean; // Incluir ingresos donde esta caja es secundaria
 }
 
 export async function obtenerIngresos(filtros?: FiltrosIngreso) {
@@ -77,13 +81,24 @@ export async function obtenerIngresos(filtros?: FiltrosIngreso) {
         },
         sociedadId: filtros?.sociedadId || undefined,
         tipoIngresoId: filtros?.tipoIngresoId || undefined,
-        cajaId: filtros?.cajaId || undefined,
+        // Si incluirSecundaria es true, buscar en caja principal O secundaria
+        ...(filtros?.cajaId && filtros?.incluirSecundaria
+          ? {
+              OR: [
+                { cajaId: filtros.cajaId },
+                { cajaSecundariaId: filtros.cajaId },
+              ],
+            }
+          : filtros?.cajaId
+          ? { cajaId: filtros.cajaId }
+          : {}),
       },
       include: {
         sociedad: true,
         servicio: true,
         tipoIngreso: true,
         caja: true,
+        cajaSecundaria: true,
         montos: { include: { moneda: true } },
         usuario: { select: { nombre: true, apellido: true } },
       },
@@ -101,6 +116,7 @@ export async function obtenerIngresoPorId(id: string) {
         servicio: true,
         tipoIngreso: true,
         caja: true,
+        cajaSecundaria: true,
         montos: { include: { moneda: true } },
         usuario: { select: { nombre: true, apellido: true } },
       },
@@ -322,10 +338,28 @@ export async function obtenerCajasConSaldos() {
     GROUP BY i."cajaId", im."monedaId"
   `;
 
-  // Mapa para acceso rápido a ingresos
-  const ingresosMap = new Map<string, number>();
+  // Obtener ingresos secundarios agrupados (para tracking)
+  const ingresosSecundariosAgrupados = await prisma.$queryRaw<
+    { cajaId: string; monedaId: string; total: number }[]
+  >`
+    SELECT i."cajaSecundariaId" as "cajaId", im."monedaId", SUM(im.monto)::float as total
+    FROM ingreso_montos im
+    INNER JOIN ingresos i ON im."ingresoId" = i.id
+    INNER JOIN cajas c ON i."cajaSecundariaId" = c.id
+    WHERE c.activa = true AND i."cajaSecundariaId" IS NOT NULL
+    GROUP BY i."cajaSecundariaId", im."monedaId"
+  `;
+
+  // Mapa para acceso rápido a ingresos principales
+  const ingresosPrincipalesMap = new Map<string, number>();
   ingresosAgrupados.forEach((ing) => {
-    ingresosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+    ingresosPrincipalesMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+  });
+
+  // Mapa separado para ingresos secundarios
+  const ingresosSecundariosMap = new Map<string, number>();
+  ingresosSecundariosAgrupados.forEach((ing) => {
+    ingresosSecundariosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
   });
 
   // Mapa para acceso rápido a egresos
@@ -341,7 +375,15 @@ export async function obtenerCajasConSaldos() {
   const cajasConSaldos = cajas.map((caja) => {
     const saldos = monedas.map((moneda) => {
       const key = `${caja.id}-${moneda.id}`;
-      const ingresos = ingresosMap.get(key) || 0;
+
+      // Para cajas de sociedades (no generales): solo mostrar ingresos secundarios (tracking)
+      // Para cajas generales u otras: mostrar ingresos principales (dinero real)
+      const esSubcaja =
+        !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
+      const ingresos = esSubcaja
+        ? ingresosSecundariosMap.get(key) || 0
+        : ingresosPrincipalesMap.get(key) || 0;
+
       const egresos = egresosMap.get(key) || 0;
 
       return {
@@ -377,6 +419,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
 
   if (!caja) return null;
 
+  // Ingresos donde esta caja es la principal
   const ingresos = await prisma.ingreso.findMany({
     where: { cajaId },
     include: {
@@ -384,6 +427,21 @@ export async function obtenerDetalleCaja(cajaId: string) {
       tipoIngreso: true,
       servicio: true,
       montos: { include: { moneda: true } },
+      cajaSecundaria: true,
+    },
+    orderBy: { fechaRecaudacion: "desc" },
+    take: 50,
+  });
+
+  // Ingresos donde esta caja es la secundaria (para tracking)
+  const ingresosSecundarios = await prisma.ingreso.findMany({
+    where: { cajaSecundariaId: cajaId },
+    include: {
+      sociedad: true,
+      tipoIngreso: true,
+      servicio: true,
+      montos: { include: { moneda: true } },
+      caja: true,
     },
     orderBy: { fechaRecaudacion: "desc" },
     take: 50,
@@ -435,6 +493,22 @@ export async function obtenerDetalleCaja(cajaId: string) {
   // Serializar ingresos para evitar Decimal en montos
   const ingresosSerializados = ingresos.map((ing) => ({
     ...ing,
+    esSecundario: false,
+    cajaPrincipal: null,
+    montos: ing.montos.map((m) => ({
+      ...m,
+      monto: Number(m.monto),
+      moneda: serializarMoneda(m.moneda),
+    })),
+  }));
+
+  // Serializar ingresos secundarios (donde esta caja es para tracking)
+  const ingresosSecundariosSerializados = ingresosSecundarios.map((ing) => ({
+    ...ing,
+    esSecundario: true,
+    cajaPrincipal: ing.caja
+      ? { id: ing.caja.id, nombre: ing.caja.nombre }
+      : null,
     montos: ing.montos.map((m) => ({
       ...m,
       monto: Number(m.monto),
@@ -452,6 +526,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
   return {
     caja,
     ingresos: ingresosSerializados,
+    ingresosSecundarios: ingresosSecundariosSerializados,
     egresos: egresosSerializados,
     saldos,
     monedas: monedas.map(serializarMoneda),
@@ -831,7 +906,7 @@ export async function obtenerDatosReporteAnalitico(
     };
   });
 
-  // 3. Desglose por Tipo de Ingreso
+  // 3. Desglose por Tipo de Ingreso (con desglose por sociedad)
   const porTipoIngreso = tiposIngreso.map((tipo) => {
     const ingresosDeT = ingresosFiltrados.filter(
       (ing) => ing.tipoIngresoId === tipo.id
@@ -844,11 +919,42 @@ export async function obtenerDatosReporteAnalitico(
         }
       });
     });
+
+    // Desglose por sociedad dentro de este tipo de ingreso
+    const porSociedadMap: Record<
+      string,
+      { nombre: string; total: number; cantidad: number }
+    > = {};
+    ingresosDeT.forEach((ing) => {
+      const socId = ing.sociedad.id;
+      const socNombre = ing.sociedad.nombre;
+      if (!porSociedadMap[socId]) {
+        porSociedadMap[socId] = { nombre: socNombre, total: 0, cantidad: 0 };
+      }
+      porSociedadMap[socId].cantidad += 1;
+      ing.montos.forEach((m) => {
+        if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
+          porSociedadMap[socId].total += Number(m.monto);
+        }
+      });
+    });
+
+    const porSociedad = Object.entries(porSociedadMap)
+      .map(([id, data]) => ({
+        id,
+        nombre: data.nombre,
+        total: data.total,
+        cantidad: data.cantidad,
+      }))
+      .filter((s) => s.total > 0)
+      .sort((a, b) => b.total - a.total);
+
     return {
       id: tipo.id,
       nombre: tipo.nombre,
       total,
       cantidad: ingresosDeT.length,
+      porSociedad, // NUEVO: desglose por sociedad
     };
   });
 

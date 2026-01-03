@@ -25,6 +25,7 @@ interface CajaData {
   nombre: string;
   descripcion: string | null;
   activa: boolean;
+  esGeneral: boolean;
   sociedad: { nombre: string } | null;
   tipoIngreso: { nombre: string } | null;
   saldos: SaldoCaja[];
@@ -39,6 +40,7 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
   const [expandedCaja, setExpandedCaja] = useState<string | null>(null);
 
   // Memoizar el cálculo de totales globales por moneda
+  // Solo contar cajas donde está el dinero real (generales o sin subcajas)
   const totalesGlobales = useMemo(
     () =>
       monedas
@@ -46,10 +48,17 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
           let totalIngresos = 0;
           let totalEgresos = 0;
           cajas.forEach((caja) => {
-            const saldo = caja.saldos.find((s) => s.monedaId === moneda.id);
-            if (saldo) {
-              totalIngresos += saldo.ingresos;
-              totalEgresos += saldo.egresos;
+            // Solo contar cajas que tienen el dinero real:
+            // - Cajas generales
+            // - Cajas sin sociedad/tipo (no son subcajas de tracking)
+            const esSubcaja =
+              !caja.esGeneral && (caja.sociedad || caja.tipoIngreso);
+            if (!esSubcaja) {
+              const saldo = caja.saldos.find((s) => s.monedaId === moneda.id);
+              if (saldo) {
+                totalIngresos += saldo.ingresos;
+                totalEgresos += saldo.egresos;
+              }
             }
           });
           return {
@@ -156,6 +165,13 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
               {/* Saldos por moneda */}
               {hasSaldos ? (
                 <div className="space-y-2">
+                  {!caja.esGeneral && caja.sociedad && (
+                    <div className="bg-[#fff4e6] border border-[#ffa94d] rounded px-2 py-1 mb-2">
+                      <span className="text-xs text-[#c77700] font-medium">
+                        📊 Montos de seguimiento
+                      </span>
+                    </div>
+                  )}
                   {caja.saldos
                     .filter((s) => s.ingresos > 0 || s.egresos > 0)
                     .map((saldo) => (

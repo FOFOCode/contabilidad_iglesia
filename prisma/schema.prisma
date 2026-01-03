@@ -242,8 +242,10 @@ model Caja {
   tipoIngresoId String?
   tipoIngreso   TipoIngreso? @relation(fields: [tipoIngresoId], references: [id], onDelete: SetNull)
 
-  ingresos Ingreso[]
-  egresos  Egreso[]
+  // Relaciones con ingresos (principal y secundaria para tracking)
+  ingresos            Ingreso[] @relation("CajaPrincipal")
+  ingresosSecundarios Ingreso[] @relation("CajaSecundaria")
+  egresos             Egreso[]
 
   @@index([sociedadId])
   @@index([tipoIngresoId])
@@ -288,8 +290,13 @@ model Ingreso {
   tipoIngresoId String
   tipoIngreso   TipoIngreso  @relation(fields: [tipoIngresoId], references: [id], onDelete: Restrict)
   
+  // Caja principal donde está el dinero físicamente
   cajaId        String
-  caja          Caja         @relation(fields: [cajaId], references: [id], onDelete: Restrict)
+  caja          Caja         @relation("CajaPrincipal", fields: [cajaId], references: [id], onDelete: Restrict)
+  
+  // Caja secundaria para tracking por sociedad (opcional, no afecta saldo real)
+  cajaSecundariaId String?
+  cajaSecundaria   Caja?    @relation("CajaSecundaria", fields: [cajaSecundariaId], references: [id], onDelete: SetNull)
   
   usuarioId     String
   usuario       Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
@@ -297,6 +304,7 @@ model Ingreso {
   montos        IngresoMonto[]
 
   @@index([cajaId])
+  @@index([cajaSecundariaId])
   @@index([usuarioId])
   @@index([sociedadId])
   @@index([servicioId])
@@ -304,6 +312,7 @@ model Ingreso {
   @@index([fechaRecaudacion])
   // Índices compuestos para consultas de reportes y dashboard
   @@index([cajaId, fechaRecaudacion])
+  @@index([cajaSecundariaId, fechaRecaudacion])
   @@index([sociedadId, fechaRecaudacion])
   @@index([fechaRecaudacion, cajaId, sociedadId])
   @@index([creadoEn]) // Para ordenar últimos movimientos

@@ -71,12 +71,20 @@ export async function getUsuarioActual() {
     const sessionCookie = cookieStore.get("session");
 
     if (!sessionCookie) {
+      console.log("[Auth] No hay cookie de sesión");
       return null;
     }
 
-    const sessionData = JSON.parse(
-      Buffer.from(sessionCookie.value, "base64").toString()
-    );
+    let sessionData;
+    try {
+      sessionData = JSON.parse(
+        Buffer.from(sessionCookie.value, "base64").toString()
+      );
+    } catch (parseError) {
+      console.error("[Auth] Error al parsear cookie de sesión:", parseError);
+      // No podemos borrar la cookie aquí porque podría ser llamado desde un Server Component
+      return null;
+    }
 
     // Verificar que el usuario sigue existiendo y activo
     const usuario = await prisma.usuario.findUnique({
@@ -90,14 +98,20 @@ export async function getUsuarioActual() {
       },
     });
 
-    if (!usuario || !usuario.activo) {
-      const store = await cookies();
-      store.delete("session");
+    if (!usuario) {
+      console.log("[Auth] Usuario no encontrado en BD, id:", sessionData.id);
+      // No podemos borrar la cookie aquí porque podría ser llamado desde un Server Component
+      return null;
+    }
+
+    if (!usuario.activo) {
+      console.log("[Auth] Usuario desactivado, id:", sessionData.id);
       return null;
     }
 
     return usuario;
-  } catch {
+  } catch (error) {
+    console.error("[Auth] Error en getUsuarioActual:", error);
     return null;
   }
 }

@@ -11,6 +11,7 @@ export default async function CajasPage() {
     nombre: c.nombre,
     descripcion: c.descripcion,
     activa: c.activa,
+    esGeneral: c.esGeneral,
     sociedad: c.sociedad ? { nombre: c.sociedad.nombre } : null,
     tipoIngreso: c.tipoIngreso ? { nombre: c.tipoIngreso.nombre } : null,
     saldos: c.saldos,
@@ -25,10 +26,7 @@ export default async function CajasPage() {
 
   return (
     <div className="min-h-screen">
-      <Header
-        title="🗃️ Cajas"
-        subtitle="Administra el dinero de cada caja"
-      />
+      <Header title="🗃️ Cajas" subtitle="Administra el dinero de cada caja" />
       <CajasClient cajas={cajasData} monedas={monedasData} />
     </div>
   );

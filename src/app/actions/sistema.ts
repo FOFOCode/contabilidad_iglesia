@@ -441,6 +441,7 @@ export async function obtenerResumenDashboard() {
       ultimosIngresos,
       ultimosEgresos,
       sociedades,
+      tiposIngreso,
     ] = await Promise.all([
       prisma.ingreso.count({ where: { fechaRecaudacion: { gte: inicioMes } } }),
       prisma.egreso.count({ where: { fechaSalida: { gte: inicioMes } } }),
@@ -465,7 +466,130 @@ export async function obtenerResumenDashboard() {
         },
       }),
       prisma.sociedad.findMany({ where: { activa: true } }),
+      prisma.tipoIngreso.findMany({
+        where: { activo: true },
+        orderBy: { orden: "asc" },
+      }),
     ]);
+
+    // =====================
+    // CAJAS VIRTUALES POR TIPO DE INGRESO
+    // =====================
+    // Agrupa todos los ingresos del mes por tipo de ingreso + sociedad
+    // Esto permite ver "cuánto hay en ofrendas" independiente de la caja física
+    const ingresosPorTipoIngreso = await prisma.ingreso.findMany({
+      where: { fechaRecaudacion: { gte: inicioMes } },
+      select: {
+        tipoIngreso: { select: { id: true, nombre: true } },
+        sociedad: { select: { id: true, nombre: true } },
+        montos: {
+          select: {
+            monto: true,
+            moneda: { select: { id: true, simbolo: true, codigo: true } },
+          },
+        },
+      },
+    });
+
+    // Procesar datos para cajas virtuales
+    // Estructura: { tipoIngresoId: { nombre, totalPorMoneda: {...}, porSociedad: {...} } }
+    const cajasVirtualesMap: Record<
+      string,
+      {
+        id: string;
+        nombre: string;
+        totalPorMoneda: Record<
+          string,
+          { monto: number; simbolo: string; codigo: string }
+        >;
+        porSociedad: Record<
+          string,
+          {
+            id: string;
+            nombre: string;
+            montos: Record<
+              string,
+              { monto: number; simbolo: string; codigo: string }
+            >;
+          }
+        >;
+      }
+    > = {};
+
+    ingresosPorTipoIngreso.forEach((ingreso) => {
+      const tipoId = ingreso.tipoIngreso.id;
+      const tipoNombre = ingreso.tipoIngreso.nombre;
+      const socId = ingreso.sociedad.id;
+      const socNombre = ingreso.sociedad.nombre;
+
+      if (!cajasVirtualesMap[tipoId]) {
+        cajasVirtualesMap[tipoId] = {
+          id: tipoId,
+          nombre: tipoNombre,
+          totalPorMoneda: {},
+          porSociedad: {},
+        };
+      }
+
+      // Acumular por sociedad
+      if (!cajasVirtualesMap[tipoId].porSociedad[socId]) {
+        cajasVirtualesMap[tipoId].porSociedad[socId] = {
+          id: socId,
+          nombre: socNombre,
+          montos: {},
+        };
+      }
+
+      ingreso.montos.forEach((m) => {
+        const monedaId = m.moneda.id;
+        const monto = Number(m.monto);
+
+        // Acumular total del tipo de ingreso
+        if (!cajasVirtualesMap[tipoId].totalPorMoneda[monedaId]) {
+          cajasVirtualesMap[tipoId].totalPorMoneda[monedaId] = {
+            monto: 0,
+            simbolo: m.moneda.simbolo,
+            codigo: m.moneda.codigo,
+          };
+        }
+        cajasVirtualesMap[tipoId].totalPorMoneda[monedaId].monto += monto;
+
+        // Acumular por sociedad dentro del tipo
+        if (!cajasVirtualesMap[tipoId].porSociedad[socId].montos[monedaId]) {
+          cajasVirtualesMap[tipoId].porSociedad[socId].montos[monedaId] = {
+            monto: 0,
+            simbolo: m.moneda.simbolo,
+            codigo: m.moneda.codigo,
+          };
+        }
+        cajasVirtualesMap[tipoId].porSociedad[socId].montos[monedaId].monto +=
+          monto;
+      });
+    });
+
+    // Convertir a array para enviar al cliente
+    const cajasVirtuales = Object.values(cajasVirtualesMap).map((cv) => ({
+      id: cv.id,
+      nombre: cv.nombre,
+      totalPorMoneda: Object.entries(cv.totalPorMoneda).map(
+        ([monedaId, datos]) => ({
+          monedaId,
+          monto: datos.monto,
+          simbolo: datos.simbolo,
+          codigo: datos.codigo,
+        })
+      ),
+      porSociedad: Object.values(cv.porSociedad).map((soc) => ({
+        id: soc.id,
+        nombre: soc.nombre,
+        montos: Object.entries(soc.montos).map(([monedaId, datos]) => ({
+          monedaId,
+          monto: datos.monto,
+          simbolo: datos.simbolo,
+          codigo: datos.codigo,
+        })),
+      })),
+    }));
 
     return {
       monedaPrincipal,
@@ -478,7 +602,9 @@ export async function obtenerResumenDashboard() {
       ingresosPorSociedad,
       egresosPorTipo,
       tiposGasto,
+      tiposIngreso,
       cajasConSaldos,
+      cajasVirtuales, // NUEVO: Cajas virtuales por tipo de ingreso
       totalIngresos,
       totalEgresos,
       totalCajas,

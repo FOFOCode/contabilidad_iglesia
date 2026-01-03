@@ -63,6 +63,7 @@ export function NuevoIngresoForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccess, setShowSuccess] = useState(false);
   const [cajaAsignada, setCajaAsignada] = useState<Caja | null>(null);
+  const [cajaSecundaria, setCajaSecundaria] = useState<Caja | null>(null);
   const [cajaSugerida, setCajaSugerida] = useState(false);
 
   // Moneda principal por defecto
@@ -109,63 +110,87 @@ export function NuevoIngresoForm({
     [monedas]
   );
 
-  // Buscar caja sugerida basada en sociedad y tipo de ingreso
+  // Buscar caja principal y secundaria basada en sociedad y tipo de ingreso
   useEffect(() => {
     if (formData.sociedadId && formData.tipoIngresoId) {
-      // Obtener el nombre del tipo de ingreso seleccionado
-      const tipoSeleccionado = tiposIngreso.find(
-        (t) => t.id === formData.tipoIngresoId
+      let cajaPrincipal: Caja | undefined;
+      let cajaSecundariaEncontrada: Caja | undefined;
+
+      // Buscar caja general
+      const cajaGeneral = cajas.find((c) => c.esGeneral);
+
+      // Buscar caja específica de la sociedad + tipo de ingreso
+      const cajaEspecifica = cajas.find(
+        (c) =>
+          c.sociedadId === formData.sociedadId &&
+          c.tipoIngresoId === formData.tipoIngresoId &&
+          !c.esGeneral
       );
 
-      let cajaEncontrada;
+      // Buscar caja solo por sociedad (sin tipo específico)
+      const cajaPorSociedad = cajas.find(
+        (c) =>
+          c.sociedadId === formData.sociedadId &&
+          !c.tipoIngresoId &&
+          !c.esGeneral
+      );
 
-      // Si es OFRENDA, buscar la caja general primero
-      if (tipoSeleccionado?.nombre.toUpperCase() === "OFRENDA") {
-        cajaEncontrada = cajas.find((c) => c.esGeneral);
+      // Buscar caja por tipo de ingreso (acepta todas las sociedades)
+      const cajaPorTipo = cajas.find(
+        (c) =>
+          c.tipoIngresoId === formData.tipoIngresoId &&
+          !c.sociedadId &&
+          !c.esGeneral
+      );
+
+      // Lógica de asignación:
+      // 1. Si hay caja general Y (caja específica O caja por tipo) → dinero va a general, tracking en la otra
+      // 2. Si hay caja general Y caja por sociedad → dinero va a general, tracking en sociedad
+      // 3. Si solo hay caja general → dinero va a general
+      // 4. Si solo hay caja específica → dinero va ahí
+      // 5. Si solo hay caja por tipo (todas las sociedades) → dinero va ahí
+      // 6. Si solo hay caja por sociedad → dinero va ahí
+
+      if (cajaGeneral) {
+        cajaPrincipal = cajaGeneral;
+        // Buscar caja secundaria para tracking (prioridad: específica > tipo > sociedad)
+        if (cajaEspecifica) {
+          cajaSecundariaEncontrada = cajaEspecifica;
+        } else if (cajaPorTipo) {
+          cajaSecundariaEncontrada = cajaPorTipo;
+        } else if (cajaPorSociedad) {
+          cajaSecundariaEncontrada = cajaPorSociedad;
+        }
+      } else if (cajaEspecifica) {
+        cajaPrincipal = cajaEspecifica;
+      } else if (cajaPorTipo) {
+        cajaPrincipal = cajaPorTipo;
+      } else if (cajaPorSociedad) {
+        cajaPrincipal = cajaPorSociedad;
       }
 
-      // Si no se encontró caja general o no es ofrenda, usar la lógica normal
-      if (!cajaEncontrada) {
-        // Buscar caja que coincida con sociedad Y tipo de ingreso
-        cajaEncontrada = cajas.find(
-          (c) =>
-            c.sociedadId === formData.sociedadId &&
-            c.tipoIngresoId === formData.tipoIngresoId
-        );
-
-        // Si no hay, buscar solo por tipo de ingreso (cajas generales sin sociedad)
-        if (!cajaEncontrada) {
-          cajaEncontrada = cajas.find(
-            (c) => c.tipoIngresoId === formData.tipoIngresoId && !c.sociedadId
-          );
-        }
-
-        // Si no hay, buscar solo por sociedad
-        if (!cajaEncontrada) {
-          cajaEncontrada = cajas.find(
-            (c) => c.sociedadId === formData.sociedadId && !c.tipoIngresoId
-          );
-        }
-      }
-
-      if (cajaEncontrada) {
-        setCajaAsignada(cajaEncontrada);
-        setFormData((prev) => ({ ...prev, cajaId: cajaEncontrada!.id }));
+      if (cajaPrincipal) {
+        setCajaAsignada(cajaPrincipal);
+        setCajaSecundaria(cajaSecundariaEncontrada || null);
+        setFormData((prev) => ({ ...prev, cajaId: cajaPrincipal!.id }));
         setCajaSugerida(true);
       } else {
         setCajaAsignada(null);
+        setCajaSecundaria(null);
         setCajaSugerida(false);
       }
     } else {
       setCajaSugerida(false);
+      setCajaSecundaria(null);
     }
-  }, [formData.sociedadId, formData.tipoIngresoId, cajas, tiposIngreso]);
+  }, [formData.sociedadId, formData.tipoIngresoId, cajas]);
 
   // Si se selecciona caja manualmente
   useEffect(() => {
     if (formData.cajaId && !cajaSugerida) {
       const caja = cajas.find((c) => c.id === formData.cajaId);
       setCajaAsignada(caja || null);
+      setCajaSecundaria(null); // Al seleccionar manual, no hay secundaria automática
     }
   }, [formData.cajaId, cajas, cajaSugerida]);
 
@@ -230,6 +255,7 @@ export function NuevoIngresoForm({
           servicioId: formData.servicioId,
           tipoIngresoId: formData.tipoIngresoId,
           cajaId: formData.cajaId,
+          cajaSecundariaId: cajaSecundaria?.id || null,
           usuarioId,
           comentario: formData.comentario || undefined,
           montos: [
@@ -356,6 +382,16 @@ export function NuevoIngresoForm({
                         {cajaAsignada.nombre}
                       </span>
                     </div>
+                    {cajaSecundaria && (
+                      <div className="mt-2 pt-2 border-t border-[#aeeae3]">
+                        <p className="text-xs text-[#40768c] font-medium">
+                          También se registra en:
+                        </p>
+                        <span className="text-sm text-[#15514a]">
+                          {cajaSecundaria.nombre}
+                        </span>
+                      </div>
+                    )}
                     <p className="text-xs text-[#2ba193] mt-1">
                       Sugerida automáticamente
                     </p>
@@ -365,6 +401,7 @@ export function NuevoIngresoForm({
                         setCajaSugerida(false);
                         setFormData((prev) => ({ ...prev, cajaId: "" }));
                         setCajaAsignada(null);
+                        setCajaSecundaria(null);
                       }}
                       className="text-xs text-[#40768c] underline mt-1"
                     >

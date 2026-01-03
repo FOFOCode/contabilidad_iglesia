@@ -6,7 +6,9 @@ interface CajaDetallePageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function CajaDetallePage({ params }: CajaDetallePageProps) {
+export default async function CajaDetallePage({
+  params,
+}: CajaDetallePageProps) {
   const { id } = await params;
   const datos = await obtenerDetalleCaja(id);
 
@@ -14,7 +16,8 @@ export default async function CajaDetallePage({ params }: CajaDetallePageProps) 
     notFound();
   }
 
-  const { caja, ingresos, egresos, saldos, monedas } = datos;
+  const { caja, ingresos, ingresosSecundarios, egresos, saldos, monedas } =
+    datos;
 
   // Combinar y formatear movimientos
   const movimientos = [
@@ -23,6 +26,22 @@ export default async function CajaDetallePage({ params }: CajaDetallePageProps) 
       fecha: ing.fechaRecaudacion,
       tipo: "ingreso" as const,
       concepto: `${ing.tipoIngreso.nombre} - ${ing.sociedad.nombre}`,
+      esSecundario: false,
+      cajaPrincipal: null as { id: string; nombre: string } | null,
+      montos: ing.montos.map((m) => ({
+        monto: m.monto,
+        monedaId: m.monedaId,
+        monedaCodigo: m.moneda.codigo,
+        monedaSimbolo: m.moneda.simbolo,
+      })),
+    })),
+    ...ingresosSecundarios.map((ing) => ({
+      id: ing.id,
+      fecha: ing.fechaRecaudacion,
+      tipo: "ingreso" as const,
+      concepto: `${ing.tipoIngreso.nombre} - ${ing.sociedad.nombre}`,
+      esSecundario: true,
+      cajaPrincipal: ing.cajaPrincipal,
       montos: ing.montos.map((m) => ({
         monto: m.monto,
         monedaId: m.monedaId,
@@ -35,6 +54,8 @@ export default async function CajaDetallePage({ params }: CajaDetallePageProps) 
       fecha: eg.fechaSalida,
       tipo: "egreso" as const,
       concepto: eg.descripcionGasto || eg.tipoGasto.nombre,
+      esSecundario: false,
+      cajaPrincipal: null as { id: string; nombre: string } | null,
       montos: [
         {
           monto: eg.monto,

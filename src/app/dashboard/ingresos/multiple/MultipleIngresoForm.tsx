@@ -54,6 +54,9 @@ interface IngresoRow {
   servicioId: string;
   tipoIngresoId: string;
   cajaId: string;
+  cajaSecundariaId: string;
+  cajaNombre?: string;
+  cajaSecundariaNombre?: string;
   monto: string;
   monedaId: string;
   comentario: string;
@@ -82,6 +85,9 @@ export function MultipleIngresoForm({
     servicioId: "",
     tipoIngresoId: "",
     cajaId: "",
+    cajaSecundariaId: "",
+    cajaNombre: "",
+    cajaSecundariaNombre: "",
     monto: "",
     monedaId: monedaPrincipal?.id || "",
     comentario: "",
@@ -124,40 +130,75 @@ export function MultipleIngresoForm({
     [monedas]
   );
 
-  // Función para encontrar caja sugerida
-  const findSuggestedCaja = (
+  // Función para encontrar cajas (principal y secundaria)
+  const findSuggestedCajas = (
     sociedadId: string,
     tipoIngresoId: string
-  ): string => {
-    if (!sociedadId || !tipoIngresoId) return "";
-
-    // Obtener el nombre del tipo de ingreso seleccionado
-    const tipoSeleccionado = tiposIngreso.find((t) => t.id === tipoIngresoId);
-
-    // Si es OFRENDA, buscar la caja general primero
-    if (tipoSeleccionado?.nombre.toUpperCase() === "OFRENDA") {
-      const cajaGeneral = cajas.find((c) => c.esGeneral);
-      if (cajaGeneral) return cajaGeneral.id;
+  ): { principal: Caja | null; secundaria: Caja | null } => {
+    if (!sociedadId || !tipoIngresoId) {
+      return { principal: null, secundaria: null };
     }
 
-    // Buscar caja que coincida con sociedad Y tipo de ingreso
-    let caja = cajas.find(
+    // Buscar Caja General
+    const cajaGeneral = cajas.find((c) => c.esGeneral);
+
+    // Buscar caja específica: Sociedad + Tipo de Ingreso
+    const cajaEspecifica = cajas.find(
       (c) => c.sociedadId === sociedadId && c.tipoIngresoId === tipoIngresoId
     );
 
-    // Si no hay, buscar solo por tipo de ingreso
-    if (!caja) {
-      caja = cajas.find(
-        (c) => c.tipoIngresoId === tipoIngresoId && !c.sociedadId
-      );
+    // Buscar caja solo por sociedad
+    const cajaPorSociedad = cajas.find(
+      (c) => c.sociedadId === sociedadId && !c.tipoIngresoId
+    );
+
+    // Buscar caja solo por tipo de ingreso
+    const cajaPorTipo = cajas.find(
+      (c) => c.tipoIngresoId === tipoIngresoId && !c.sociedadId
+    );
+
+    // Lógica de asignación dual:
+    // Si existe Caja General Y una caja específica → Principal=General, Secundaria=Específica
+    if (cajaGeneral && cajaEspecifica) {
+      return { principal: cajaGeneral, secundaria: cajaEspecifica };
     }
 
-    // Si no hay, buscar solo por sociedad
-    if (!caja) {
-      caja = cajas.find((c) => c.sociedadId === sociedadId && !c.tipoIngresoId);
+    // Si existe Caja General Y caja por tipo (todas las sociedades) → Principal=General, Secundaria=Tipo
+    if (cajaGeneral && cajaPorTipo) {
+      return { principal: cajaGeneral, secundaria: cajaPorTipo };
     }
 
-    return caja?.id || "";
+    // Si existe Caja General Y caja por sociedad → Principal=General, Secundaria=Sociedad
+    if (cajaGeneral && cajaPorSociedad) {
+      return { principal: cajaGeneral, secundaria: cajaPorSociedad };
+    }
+
+    // Si solo existe General → Principal=General
+    if (cajaGeneral) {
+      return { principal: cajaGeneral, secundaria: null };
+    }
+
+    // Si solo existe específica → Principal=Específica
+    if (cajaEspecifica) {
+      return { principal: cajaEspecifica, secundaria: null };
+    }
+
+    // Si solo existe por tipo (todas las sociedades) → Principal=Tipo
+    if (cajaPorTipo) {
+      return { principal: cajaPorTipo, secundaria: null };
+    }
+
+    // Si solo existe por sociedad → Principal=Sociedad
+    if (cajaPorSociedad) {
+      return { principal: cajaPorSociedad, secundaria: null };
+    }
+
+    // Si solo existe por tipo → Principal=Tipo
+    if (cajaPorTipo) {
+      return { principal: cajaPorTipo, secundaria: null };
+    }
+
+    return { principal: null, secundaria: null };
   };
 
   const addRow = () => {
@@ -182,15 +223,26 @@ export function MultipleIngresoForm({
 
         const updatedRow = { ...row, [field]: value };
 
-        // Auto-asignar caja cuando se selecciona sociedad o tipo de ingreso
+        // Auto-asignar cajas cuando se selecciona sociedad o tipo de ingreso
         if (field === "sociedadId" || field === "tipoIngresoId") {
           const sociedadId =
             field === "sociedadId" ? (value as string) : row.sociedadId;
           const tipoIngresoId =
             field === "tipoIngresoId" ? (value as string) : row.tipoIngresoId;
-          const suggestedCajaId = findSuggestedCaja(sociedadId, tipoIngresoId);
-          if (suggestedCajaId) {
-            updatedRow.cajaId = suggestedCajaId;
+          const { principal, secundaria } = findSuggestedCajas(
+            sociedadId,
+            tipoIngresoId
+          );
+          if (principal) {
+            updatedRow.cajaId = principal.id;
+            updatedRow.cajaNombre = principal.nombre;
+          }
+          if (secundaria) {
+            updatedRow.cajaSecundariaId = secundaria.id;
+            updatedRow.cajaSecundariaNombre = secundaria.nombre;
+          } else {
+            updatedRow.cajaSecundariaId = "";
+            updatedRow.cajaSecundariaNombre = "";
           }
         }
 
@@ -267,6 +319,7 @@ export function MultipleIngresoForm({
             servicioId: row.servicioId,
             tipoIngresoId: row.tipoIngresoId,
             cajaId: row.cajaId,
+            cajaSecundariaId: row.cajaSecundariaId || null,
             usuarioId,
             comentario: row.comentario || undefined,
             montos: [
@@ -468,6 +521,18 @@ export function MultipleIngresoForm({
                 required
               />
             </div>
+
+            {/* Mostrar caja secundaria si existe */}
+            {row.cajaSecundariaId && row.cajaSecundariaNombre && (
+              <div className="mt-2 px-3 py-2 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg">
+                <p className="text-xs text-[#40768c] font-medium mb-1">
+                  📊 También se registra en:
+                </p>
+                <span className="text-sm text-[#15514a] font-medium">
+                  {row.cajaSecundariaNombre}
+                </span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
               <Input

@@ -59,6 +59,26 @@ interface CajaConSaldo {
   saldos: { monedaId: string; saldo: number }[];
 }
 
+interface CajaVirtualMonto {
+  monedaId: string;
+  monto: number;
+  simbolo: string;
+  codigo: string;
+}
+
+interface CajaVirtualSociedad {
+  id: string;
+  nombre: string;
+  montos: CajaVirtualMonto[];
+}
+
+interface CajaVirtual {
+  id: string;
+  nombre: string;
+  totalPorMoneda: CajaVirtualMonto[];
+  porSociedad: CajaVirtualSociedad[];
+}
+
 interface DashboardClientProps {
   monedas: Moneda[];
   ingresosMes: MontoAgrupado[];
@@ -71,6 +91,7 @@ interface DashboardClientProps {
   egresosPorTipo: EgresoPorTipo[];
   tiposGasto: TipoGasto[];
   cajasConSaldos: CajaConSaldo[];
+  cajasVirtuales: CajaVirtual[];
   totalIngresos: number;
   totalEgresos: number;
   totalCajas: number;
@@ -91,6 +112,7 @@ export function DashboardClient({
   egresosPorTipo,
   tiposGasto,
   cajasConSaldos,
+  cajasVirtuales,
   totalIngresos,
   totalEgresos,
   totalCajas,
@@ -405,6 +427,78 @@ export function DashboardClient({
                   </div>
                 </Card>
               </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* CAJAS VIRTUALES POR TIPO DE INGRESO */}
+      {cajasVirtuales.length > 0 && (
+        <section>
+          <h2 className="text-base md:text-lg font-semibold text-[#203b46] mb-2 md:mb-3">
+            💰 Recaudación por Tipo de Ingreso (Mes)
+          </h2>
+          <p className="text-sm text-[#73a9bf] mb-3">
+            Vista consolidada de ingresos agrupados por tipo, independiente de
+            la caja física
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+            {cajasVirtuales.map((cajaVirtual) => (
+              <Card
+                key={cajaVirtual.id}
+                className="bg-gradient-to-br from-[#f0f9f7] to-white border-[#aeeae3]"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">💵</span>
+                  <h4 className="font-semibold text-[#203b46]">
+                    {cajaVirtual.nombre}
+                  </h4>
+                </div>
+
+                {/* Totales del tipo de ingreso */}
+                <div className="mb-3 pb-3 border-b border-[#dceaef]">
+                  <div className="text-xs text-[#73a9bf] mb-1">
+                    Total recaudado:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {cajaVirtual.totalPorMoneda.map((m) => (
+                      <span
+                        key={m.monedaId}
+                        className="text-lg font-bold text-[#2ba193]"
+                      >
+                        {formatMonto(m.monto, m.simbolo)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Desglose por sociedad */}
+                <div className="space-y-2">
+                  <div className="text-xs text-[#73a9bf] font-medium">
+                    Desglose por origen:
+                  </div>
+                  {cajaVirtual.porSociedad.map((soc) => (
+                    <div
+                      key={soc.id}
+                      className="flex justify-between items-center py-1 px-2 bg-[#f8fbfc] rounded"
+                    >
+                      <span className="text-sm text-[#40768c]">
+                        {soc.nombre}
+                      </span>
+                      <div className="flex gap-2">
+                        {soc.montos.map((m) => (
+                          <span
+                            key={m.monedaId}
+                            className="text-sm font-medium text-[#305969]"
+                          >
+                            {formatMonto(m.monto, m.simbolo)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
             ))}
           </div>
         </section>

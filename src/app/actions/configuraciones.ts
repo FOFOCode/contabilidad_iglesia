@@ -429,6 +429,7 @@ export async function registrarSaldoInicial(data: {
   }
 
   // Crear el ingreso como saldo inicial
+  // IMPORTANTE: No asignar caja secundaria para saldos iniciales
   return prisma.ingreso.create({
     data: {
       fechaRecaudacion: new Date(),
@@ -437,6 +438,7 @@ export async function registrarSaldoInicial(data: {
       servicioId: tipoServicioSistema.id,
       tipoIngresoId: tipoIngresoSaldoInicial.id,
       cajaId: data.cajaId,
+      cajaSecundariaId: null, // Explícitamente null para evitar asignación automática
       usuarioId: data.usuarioId,
       montos: {
         create: {

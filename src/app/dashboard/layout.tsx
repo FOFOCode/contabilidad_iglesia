@@ -9,9 +9,10 @@ export default async function DashboardLayout({
 }) {
   // Verificar sesión del lado del servidor
   const usuario = await getUsuarioActual();
-  
+
   if (!usuario) {
-    redirect("/login");
+    // Redirigir al endpoint de logout que borrará la cookie y redirigirá a login
+    redirect("/api/auth/logout");
   }
 
   return (

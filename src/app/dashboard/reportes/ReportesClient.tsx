@@ -1,11 +1,22 @@
 "use client";
 
-import { useState, useTransition, useMemo, useCallback } from "react";
+import {
+  useState,
+  useTransition,
+  useMemo,
+  useCallback,
+  useEffect,
+} from "react";
 import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
 import {
   obtenerDatosReporte,
   obtenerDatosReporteAnalitico,
 } from "@/app/actions/operaciones";
+import {
+  obtenerReporteDiezmosFiliales,
+  obtenerReporteCajaFiliales,
+  obtenerPaises,
+} from "@/app/actions/filiales";
 import { obtenerFechaElSalvador } from "@/lib/fechas";
 
 interface Sociedad {
@@ -24,6 +35,14 @@ interface Moneda {
   nombre: string;
   simbolo: string;
   esPrincipal: boolean;
+}
+
+interface Pais {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  orden: number;
+  activo: boolean;
 }
 
 interface MovimientoReporte {
@@ -76,7 +95,9 @@ type TipoVista =
   | "sociedades"
   | "tipoIngreso"
   | "tipoGasto"
-  | "cajas";
+  | "cajas"
+  | "diezmosFiliales"
+  | "cajaFiliales";
 
 interface DatosAnaliticos {
   anio: number;
@@ -105,6 +126,12 @@ interface DatosAnaliticos {
     nombre: string;
     total: number;
     cantidad: number;
+    porSociedad?: {
+      id: string;
+      nombre: string;
+      total: number;
+      cantidad: number;
+    }[];
   }[];
   porTipoGasto: {
     id: string;
@@ -190,6 +217,7 @@ export function ReportesClient({
 }: ReportesClientProps) {
   const [isPending, startTransition] = useTransition();
   const [vistaActiva, setVistaActiva] = useState<TipoVista>("movimientos");
+  const [paises, setPaises] = useState<Pais[]>([]);
   const [filtros, setFiltros] = useState({
     tipoReporte: "todos",
     periodo: "mes",
@@ -206,9 +234,20 @@ export function ReportesClient({
     fechaInicio: "", // Nuevo: fecha inicio para rango
     fechaFin: "", // Nuevo: fecha fin para rango
   });
+  const [filtrosDiezmosFiliales, setFiltrosDiezmosFiliales] = useState({
+    anio: obtenerFechaElSalvador().getFullYear(),
+    monedaId: "",
+    paisId: "",
+  });
+  const [filtrosCajaFiliales, setFiltrosCajaFiliales] = useState({
+    anio: obtenerFechaElSalvador().getFullYear(),
+    monedaId: "",
+  });
   const [resultados, setResultados] = useState<MovimientoReporte[]>([]);
   const [datosAnaliticos, setDatosAnaliticos] =
     useState<DatosAnaliticos | null>(null);
+  const [datosDiezmosFiliales, setDatosDiezmosFiliales] = useState<any>(null);
+  const [datosCajaFiliales, setDatosCajaFiliales] = useState<any>(null);
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<MovimientoReporte | null>(null);
@@ -231,6 +270,15 @@ export function ReportesClient({
         label: `${m.simbolo} ${m.codigo}`,
       })),
     [monedas]
+  );
+
+  const paisOptions = useMemo(
+    () =>
+      paises.map((p) => ({
+        value: p.id,
+        label: p.nombre,
+      })),
+    [paises]
   );
 
   const handleComboboxChange = useCallback((name: string, value: string) => {
@@ -333,6 +381,38 @@ export function ReportesClient({
       setMostrarResultados(true);
     });
   };
+
+  const handleGenerarReporteDiezmosFiliales = () => {
+    startTransition(async () => {
+      const datos = await obtenerReporteDiezmosFiliales({
+        anio: filtrosDiezmosFiliales.anio,
+        monedaId: filtrosDiezmosFiliales.monedaId || undefined,
+        paisId: filtrosDiezmosFiliales.paisId || undefined,
+      });
+      setDatosDiezmosFiliales(datos);
+      setMostrarResultados(true);
+    });
+  };
+
+  const handleGenerarReporteCajaFiliales = () => {
+    startTransition(async () => {
+      const datos = await obtenerReporteCajaFiliales({
+        anio: filtrosCajaFiliales.anio,
+        monedaId: filtrosCajaFiliales.monedaId || undefined,
+      });
+      setDatosCajaFiliales(datos);
+      setMostrarResultados(true);
+    });
+  };
+
+  // Cargar países al montar
+  useEffect(() => {
+    const cargarPaises = async () => {
+      const paisesData = await obtenerPaises();
+      setPaises(paisesData);
+    };
+    cargarPaises();
+  }, []);
 
   // Calcular totales por moneda - memoizado
   const calcularTotales = useCallback(() => {
@@ -675,6 +755,8 @@ export function ReportesClient({
           { id: "tipoIngreso", label: "💰 Ingresos" },
           { id: "tipoGasto", label: "💸 Gastos" },
           { id: "cajas", label: "🏦 Cajas" },
+          { id: "diezmosFiliales", label: "⛪ Diezmos Filiales" },
+          { id: "cajaFiliales", label: "💵 Caja General Filiales" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -809,152 +891,155 @@ export function ReportesClient({
       )}
 
       {/* Panel de Filtros - Reportes Analíticos */}
-      {vistaActiva !== "movimientos" && (
-        <Card className="mb-4 md:mb-5">
-          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-              />
-            </svg>
-            Configurar Análisis
-          </h3>
+      {vistaActiva !== "movimientos" &&
+        vistaActiva !== "diezmosFiliales" &&
+        vistaActiva !== "cajaFiliales" && (
+          <Card className="mb-4 md:mb-5">
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+              Configurar Análisis
+            </h3>
 
-          {/* Selector de modo: Año o Rango de Fechas */}
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() =>
-                setFiltrosAnaliticos((prev) => ({
-                  ...prev,
-                  modoFiltro: "anio",
-                }))
-              }
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filtrosAnaliticos.modoFiltro === "anio"
-                  ? "bg-[#40768c] text-white"
-                  : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
-              }`}
-            >
-              Por Año
-            </button>
-            <button
-              onClick={() =>
-                setFiltrosAnaliticos((prev) => ({
-                  ...prev,
-                  modoFiltro: "rango",
-                }))
-              }
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filtrosAnaliticos.modoFiltro === "rango"
-                  ? "bg-[#40768c] text-white"
-                  : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
-              }`}
-            >
-              Rango de Fechas
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
-            {/* Mostrar selector de Año si está en modo "anio" */}
-            {filtrosAnaliticos.modoFiltro === "anio" && (
-              <Combobox
-                label="Año"
-                options={anioOptions}
-                value={filtrosAnaliticos.anio.toString()}
-                onChange={(value) =>
+            {/* Selector de modo: Año o Rango de Fechas */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() =>
                   setFiltrosAnaliticos((prev) => ({
                     ...prev,
-                    anio:
-                      parseInt(value) || obtenerFechaElSalvador().getFullYear(),
+                    modoFiltro: "anio",
                   }))
                 }
-                searchable={false}
-              />
-            )}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filtrosAnaliticos.modoFiltro === "anio"
+                    ? "bg-[#40768c] text-white"
+                    : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
+                }`}
+              >
+                Por Año
+              </button>
+              <button
+                onClick={() =>
+                  setFiltrosAnaliticos((prev) => ({
+                    ...prev,
+                    modoFiltro: "rango",
+                  }))
+                }
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filtrosAnaliticos.modoFiltro === "rango"
+                    ? "bg-[#40768c] text-white"
+                    : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
+                }`}
+              >
+                Rango de Fechas
+              </button>
+            </div>
 
-            {/* Mostrar selectores de fecha si está en modo "rango" */}
-            {filtrosAnaliticos.modoFiltro === "rango" && (
-              <>
-                <Input
-                  label="Fecha Inicio"
-                  type="date"
-                  value={filtrosAnaliticos.fechaInicio}
-                  onChange={(e) =>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
+              {/* Mostrar selector de Año si está en modo "anio" */}
+              {filtrosAnaliticos.modoFiltro === "anio" && (
+                <Combobox
+                  label="Año"
+                  options={anioOptions}
+                  value={filtrosAnaliticos.anio.toString()}
+                  onChange={(value) =>
                     setFiltrosAnaliticos((prev) => ({
                       ...prev,
-                      fechaInicio: e.target.value,
+                      anio:
+                        parseInt(value) ||
+                        obtenerFechaElSalvador().getFullYear(),
                     }))
                   }
+                  searchable={false}
                 />
-                <Input
-                  label="Fecha Fin"
-                  type="date"
-                  value={filtrosAnaliticos.fechaFin}
-                  onChange={(e) =>
-                    setFiltrosAnaliticos((prev) => ({
-                      ...prev,
-                      fechaFin: e.target.value,
-                    }))
-                  }
-                />
-              </>
-            )}
+              )}
 
-            <Combobox
-              label="Moneda"
-              options={monedaOptions}
-              value={filtrosAnaliticos.monedaId}
-              onChange={(value) =>
-                setFiltrosAnaliticos((prev) => ({ ...prev, monedaId: value }))
-              }
-              placeholder="Todas las monedas"
-              clearable
-              searchable={false}
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <Button
-              onClick={handleGenerarReporteAnalitico}
-              disabled={
-                isPending ||
-                (filtrosAnaliticos.modoFiltro === "rango" &&
-                  (!filtrosAnaliticos.fechaInicio ||
-                    !filtrosAnaliticos.fechaFin))
-              }
-            >
-              {isPending ? (
-                "Analizando..."
-              ) : (
+              {/* Mostrar selectores de fecha si está en modo "rango" */}
+              {filtrosAnaliticos.modoFiltro === "rango" && (
                 <>
-                  <svg
-                    className="w-4 h-4 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                    />
-                  </svg>
-                  Generar Análisis
+                  <Input
+                    label="Fecha Inicio"
+                    type="date"
+                    value={filtrosAnaliticos.fechaInicio}
+                    onChange={(e) =>
+                      setFiltrosAnaliticos((prev) => ({
+                        ...prev,
+                        fechaInicio: e.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Fecha Fin"
+                    type="date"
+                    value={filtrosAnaliticos.fechaFin}
+                    onChange={(e) =>
+                      setFiltrosAnaliticos((prev) => ({
+                        ...prev,
+                        fechaFin: e.target.value,
+                      }))
+                    }
+                  />
                 </>
               )}
-            </Button>
-          </div>
-        </Card>
-      )}
+
+              <Combobox
+                label="Moneda"
+                options={monedaOptions}
+                value={filtrosAnaliticos.monedaId}
+                onChange={(value) =>
+                  setFiltrosAnaliticos((prev) => ({ ...prev, monedaId: value }))
+                }
+                placeholder="Todas las monedas"
+                clearable
+                searchable={false}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={handleGenerarReporteAnalitico}
+                disabled={
+                  isPending ||
+                  (filtrosAnaliticos.modoFiltro === "rango" &&
+                    (!filtrosAnaliticos.fechaInicio ||
+                      !filtrosAnaliticos.fechaFin))
+                }
+              >
+                {isPending ? (
+                  "Analizando..."
+                ) : (
+                  <>
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                      />
+                    </svg>
+                    Generar Análisis
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+        )}
 
       {/* Resultados - Movimientos */}
       {vistaActiva === "movimientos" && mostrarResultados && (
@@ -1256,14 +1341,18 @@ export function ReportesClient({
         </Card>
       )}
 
-      {/* Resultados - Por Tipo de Ingreso */}
+      {/* Resultados - Por Tipo de Ingreso (Cajas Virtuales) */}
       {vistaActiva === "tipoIngreso" &&
         mostrarResultados &&
         datosAnaliticos && (
           <Card>
-            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-2">
               💰 Ingresos por Tipo - {obtenerLabelPeriodo()}
             </h3>
+            <p className="text-xs text-[#73a9bf] mb-4">
+              Vista consolidada de ingresos agrupados por tipo (cajas
+              virtuales), con desglose por sociedad
+            </p>
             {datosAnaliticos.porTipoIngreso.length === 0 ? (
               <p className="text-center py-8 text-[#73a9bf]">
                 No hay datos para mostrar
@@ -1284,7 +1373,7 @@ export function ReportesClient({
                       >
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="font-medium text-[#305969]">
-                            {tipo.nombre}
+                            💵 {tipo.nombre}
                           </h4>
                           <Badge variant="success">
                             {porcentaje.toFixed(1)}%
@@ -1293,15 +1382,50 @@ export function ReportesClient({
                         <p className="text-xl font-bold text-[#2ba193]">
                           {formatMonto(tipo.total)}
                         </p>
-                        <p className="text-xs text-[#73a9bf]">
+                        <p className="text-xs text-[#73a9bf] mb-2">
                           {tipo.cantidad} registros
                         </p>
-                        <div className="h-2 bg-[#dceaef] rounded-full overflow-hidden mt-2">
+                        <div className="h-2 bg-[#dceaef] rounded-full overflow-hidden mb-3">
                           <div
                             className="h-full bg-[#2ba193] rounded-full"
                             style={{ width: `${porcentaje}%` }}
                           />
                         </div>
+
+                        {/* Desglose por sociedad */}
+                        {tipo.porSociedad && tipo.porSociedad.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-[#dceaef]">
+                            <p className="text-xs font-medium text-[#73a9bf] mb-2">
+                              Desglose por origen:
+                            </p>
+                            <div className="space-y-1">
+                              {tipo.porSociedad.map((soc) => {
+                                const socPorcentaje =
+                                  tipo.total > 0
+                                    ? (soc.total / tipo.total) * 100
+                                    : 0;
+                                return (
+                                  <div
+                                    key={soc.id}
+                                    className="flex justify-between items-center text-sm"
+                                  >
+                                    <span className="text-[#40768c]">
+                                      {soc.nombre}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-[#305969]">
+                                        {formatMonto(soc.total)}
+                                      </span>
+                                      <span className="text-xs text-[#73a9bf]">
+                                        ({socPorcentaje.toFixed(0)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1619,6 +1743,562 @@ export function ReportesClient({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Vista: Diezmos Filiales - Panel de Filtros */}
+      {vistaActiva === "diezmosFiliales" && (
+        <Card className="mb-4 md:mb-5">
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+              />
+            </svg>
+            Configurar Reporte de Diezmos
+          </h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
+            <Combobox
+              label="Año"
+              options={anioOptions}
+              value={filtrosDiezmosFiliales.anio.toString()}
+              onChange={(value) =>
+                setFiltrosDiezmosFiliales({
+                  ...filtrosDiezmosFiliales,
+                  anio:
+                    parseInt(value) || obtenerFechaElSalvador().getFullYear(),
+                })
+              }
+              searchable={false}
+            />
+            <Combobox
+              label="País"
+              options={[
+                { value: "", label: "Todos los países" },
+                ...paisOptions,
+              ]}
+              value={filtrosDiezmosFiliales.paisId}
+              onChange={(value) =>
+                setFiltrosDiezmosFiliales({
+                  ...filtrosDiezmosFiliales,
+                  paisId: value,
+                })
+              }
+              placeholder="Todos los países"
+              clearable
+              searchable={false}
+            />
+            <Combobox
+              label="Moneda"
+              options={[
+                { value: "", label: "Todas las monedas" },
+                ...monedaOptions,
+              ]}
+              value={filtrosDiezmosFiliales.monedaId}
+              onChange={(value) =>
+                setFiltrosDiezmosFiliales({
+                  ...filtrosDiezmosFiliales,
+                  monedaId: value,
+                })
+              }
+              placeholder="Todas las monedas"
+              clearable
+              searchable={false}
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              onClick={handleGenerarReporteDiezmosFiliales}
+              disabled={isPending}
+            >
+              {isPending ? (
+                "Generando..."
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                  Generar Reporte
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Vista: Diezmos Filiales - Resultados */}
+      {vistaActiva === "diezmosFiliales" && datosDiezmosFiliales && (
+        <>
+          {/* Resumen General */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
+            <Card>
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                  Total Diezmos
+                </h4>
+                <p className="text-2xl font-bold text-[#2ba193]">
+                  $
+                  {datosDiezmosFiliales.total.toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
+              </div>
+            </Card>
+            <Card>
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                  Registros
+                </h4>
+                <p className="text-2xl font-bold text-[#203b46]">
+                  {datosDiezmosFiliales.cantidadRegistros}
+                </p>
+              </div>
+            </Card>
+            <Card>
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                  Filiales Activas
+                </h4>
+                <p className="text-2xl font-bold text-[#203b46]">
+                  {datosDiezmosFiliales.porFilial.length}
+                </p>
+              </div>
+            </Card>
+          </div>
+
+          {/* Diezmos por Filial */}
+          <Card className="mb-4 md:mb-5">
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
+              ⛪ Diezmos por Iglesia Filial
+            </h3>
+            {datosDiezmosFiliales.porFilial.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#f8fbfc]">
+                    <tr>
+                      <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                        Iglesia
+                      </th>
+                      <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                        Pastor
+                      </th>
+                      <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                        País
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-[#40768c]">
+                        Total
+                      </th>
+                      <th className="text-center py-3 px-4 font-medium text-[#40768c]">
+                        Registros
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosDiezmosFiliales.porFilial.map((filial: any) => (
+                      <tr
+                        key={filial.id}
+                        className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                      >
+                        <td className="font-medium py-3 px-4 text-[#203b46]">
+                          {filial.nombre}
+                        </td>
+                        <td className="py-3 px-4 text-[#305969]">
+                          {filial.pastor}
+                        </td>
+                        <td className="py-3 px-4 text-[#305969]">
+                          {filial.pais}
+                        </td>
+                        <td className="text-right font-semibold py-3 px-4 text-[#2ba193]">
+                          $
+                          {filial.total.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="text-center py-3 px-4 text-[#305969]">
+                          {filial.cantidad}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-[#73a9bf] text-center py-8">
+                No hay datos de diezmos para mostrar
+              </p>
+            )}
+          </Card>
+
+          {/* Diezmos por País */}
+          {datosDiezmosFiliales.porPais.length > 0 && (
+            <Card className="mb-4 md:mb-5">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
+                🌎 Diezmos por País
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#f8fbfc]">
+                    <tr>
+                      <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                        País
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-[#40768c]">
+                        Total
+                      </th>
+                      <th className="text-center py-3 px-4 font-medium text-[#40768c]">
+                        Registros
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosDiezmosFiliales.porPais.map((pais: any) => (
+                      <tr
+                        key={pais.id}
+                        className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                      >
+                        <td className="font-medium py-3 px-4 text-[#203b46]">
+                          {pais.nombre}
+                        </td>
+                        <td className="text-right font-semibold py-3 px-4 text-[#2ba193]">
+                          $
+                          {pais.total.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="text-center py-3 px-4 text-[#305969]">
+                          {pais.cantidad}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Diezmos por Mes */}
+          <Card>
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
+              📅 Diezmos por Mes - {datosDiezmosFiliales.anio}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#f8fbfc]">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                      Mes
+                    </th>
+                    <th className="text-right py-3 px-4 font-medium text-[#40768c]">
+                      Total
+                    </th>
+                    <th className="text-center py-3 px-4 font-medium text-[#40768c]">
+                      Registros
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {datosDiezmosFiliales.porMes
+                    .filter((m: any) => m.cantidad > 0)
+                    .map((mes: any) => (
+                      <tr
+                        key={mes.mes}
+                        className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                      >
+                        <td className="font-medium capitalize py-3 px-4 text-[#203b46]">
+                          {mes.nombreMes}
+                        </td>
+                        <td className="text-right font-semibold py-3 px-4 text-[#2ba193]">
+                          $
+                          {mes.total.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="text-center py-3 px-4 text-[#305969]">
+                          {mes.cantidad}
+                        </td>
+                      </tr>
+                    ))}
+                  {datosDiezmosFiliales.porMes.filter(
+                    (m: any) => m.cantidad > 0
+                  ).length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="text-center py-8 text-[#73a9bf]"
+                      >
+                        No hay datos de diezmos por mes
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* Vista: Caja General Filiales - Panel de Filtros */}
+      {vistaActiva === "cajaFiliales" && (
+        <Card className="mb-4 md:mb-5">
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+              />
+            </svg>
+            Configurar Reporte de Caja
+          </h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
+            <Combobox
+              label="Año"
+              options={anioOptions}
+              value={filtrosCajaFiliales.anio.toString()}
+              onChange={(value) =>
+                setFiltrosCajaFiliales({
+                  ...filtrosCajaFiliales,
+                  anio:
+                    parseInt(value) || obtenerFechaElSalvador().getFullYear(),
+                })
+              }
+              searchable={false}
+            />
+            <Combobox
+              label="Moneda"
+              options={[
+                { value: "", label: "Todas las monedas" },
+                ...monedaOptions,
+              ]}
+              value={filtrosCajaFiliales.monedaId}
+              onChange={(value) =>
+                setFiltrosCajaFiliales({
+                  ...filtrosCajaFiliales,
+                  monedaId: value,
+                })
+              }
+              placeholder="Todas las monedas"
+              clearable
+              searchable={false}
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              onClick={handleGenerarReporteCajaFiliales}
+              disabled={isPending}
+            >
+              {isPending ? (
+                "Generando..."
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                  Generar Reporte
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Vista: Caja General Filiales - Resultados */}
+      {vistaActiva === "cajaFiliales" && datosCajaFiliales && (
+        <>
+          {/* Resumen de Saldos */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
+            {datosCajaFiliales.saldos.map((saldo: any) => (
+              <Card key={saldo.monedaId}>
+                <div className="text-center">
+                  <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                    Saldo {saldo.monedaCodigo}
+                  </h4>
+                  <p className="text-2xl font-bold text-[#2ba193]">
+                    {saldo.monedaSimbolo}
+                    {saldo.saldo.toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                  <p className="text-xs text-[#73a9bf] mt-1">
+                    Diezmos: {saldo.monedaSimbolo}
+                    {saldo.ingresos.toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Resumen de Egresos */}
+          <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
+            <Card>
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                  Total Egresos {datosCajaFiliales.anio}
+                </h4>
+                <p className="text-2xl font-bold text-[#ee5f40]">
+                  $
+                  {datosCajaFiliales.totalEgresos.toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
+              </div>
+            </Card>
+            <Card>
+              <div className="text-center">
+                <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                  Cantidad de Egresos
+                </h4>
+                <p className="text-2xl font-bold text-[#203b46]">
+                  {datosCajaFiliales.cantidadEgresos}
+                </p>
+              </div>
+            </Card>
+          </div>
+
+          {/* Egresos por Tipo de Gasto */}
+          {datosCajaFiliales.porTipoGasto.length > 0 && (
+            <Card className="mb-4 md:mb-5">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
+                📋 Egresos por Tipo de Gasto
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#f8fbfc]">
+                    <tr>
+                      <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                        Tipo de Gasto
+                      </th>
+                      <th className="text-right py-3 px-4 font-medium text-[#40768c]">
+                        Total
+                      </th>
+                      <th className="text-center py-3 px-4 font-medium text-[#40768c]">
+                        Cantidad
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosCajaFiliales.porTipoGasto.map((tipo: any) => (
+                      <tr
+                        key={tipo.id}
+                        className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                      >
+                        <td className="font-medium py-3 px-4 text-[#203b46]">
+                          {tipo.nombre}
+                        </td>
+                        <td className="text-right font-semibold py-3 px-4 text-[#ee5f40]">
+                          $
+                          {tipo.total.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="text-center py-3 px-4 text-[#305969]">
+                          {tipo.cantidad}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Egresos por Mes */}
+          <Card>
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
+              📅 Egresos por Mes - {datosCajaFiliales.anio}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#f8fbfc]">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-[#40768c]">
+                      Mes
+                    </th>
+                    <th className="text-right py-3 px-4 font-medium text-[#40768c]">
+                      Total
+                    </th>
+                    <th className="text-center py-3 px-4 font-medium text-[#40768c]">
+                      Cantidad
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {datosCajaFiliales.porMes
+                    .filter((m: any) => m.cantidad > 0)
+                    .map((mes: any) => (
+                      <tr
+                        key={mes.mes}
+                        className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                      >
+                        <td className="font-medium capitalize py-3 px-4 text-[#203b46]">
+                          {mes.nombreMes}
+                        </td>
+                        <td className="text-right font-semibold py-3 px-4 text-[#ee5f40]">
+                          $
+                          {mes.total.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="text-center py-3 px-4 text-[#305969]">
+                          {mes.cantidad}
+                        </td>
+                      </tr>
+                    ))}
+                  {datosCajaFiliales.porMes.filter((m: any) => m.cantidad > 0)
+                    .length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="text-center py-8 text-[#73a9bf]"
+                      >
+                        No hay egresos registrados este año
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
       )}
     </div>
   );

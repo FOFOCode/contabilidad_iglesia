@@ -25,6 +25,8 @@ interface Movimiento {
   fecha: Date;
   tipo: "ingreso" | "egreso";
   concepto: string;
+  esSecundario?: boolean;
+  cajaPrincipal?: { id: string; nombre: string } | null;
   montos: {
     monto: number;
     monedaId: string;
@@ -123,16 +125,30 @@ export function CajaDetalleClient({
       key: "tipo",
       header: "Tipo",
       render: (item: Movimiento) => (
-        <Badge variant={item.tipo === "ingreso" ? "success" : "danger"}>
-          {item.tipo === "ingreso" ? "Ingreso" : "Egreso"}
-        </Badge>
+        <div className="flex flex-col gap-1">
+          <Badge variant={item.tipo === "ingreso" ? "success" : "danger"}>
+            {item.tipo === "ingreso" ? "Ingreso" : "Egreso"}
+          </Badge>
+          {item.esSecundario && (
+            <Badge variant="info" size="sm">
+              Tracking
+            </Badge>
+          )}
+        </div>
       ),
     },
     {
       key: "concepto",
       header: "Concepto",
       render: (item: Movimiento) => (
-        <span className="font-medium text-[#203b46]">{item.concepto}</span>
+        <div>
+          <span className="font-medium text-[#203b46]">{item.concepto}</span>
+          {item.esSecundario && item.cajaPrincipal && (
+            <p className="text-xs text-[#73a9bf] mt-1">
+              Dinero en: {item.cajaPrincipal.nombre}
+            </p>
+          )}
+        </div>
       ),
     },
     {

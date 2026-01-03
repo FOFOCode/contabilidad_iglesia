@@ -504,3 +504,163 @@ export async function obtenerSaldoFiliales() {
     return saldos;
   });
 }
+
+// =====================
+// REPORTES ANALÍTICOS DE FILIALES
+// =====================
+
+export async function obtenerReporteDiezmosFiliales(filtros?: {
+  anio?: number;
+  monedaId?: string;
+  paisId?: string;
+}) {
+  const anio = filtros?.anio || new Date().getFullYear();
+
+  // Obtener filiales activas
+  const filiales = await prisma.filial.findMany({
+    where: {
+      activa: true,
+      ...(filtros?.paisId ? { paisId: filtros.paisId } : {}),
+    },
+    include: { pais: true },
+    orderBy: { nombre: "asc" },
+  });
+
+  // Obtener diezmos del año
+  const diezmos = await prisma.diezmoFilial.findMany({
+    where: {
+      anio,
+      ...(filtros?.monedaId ? { monedaId: filtros.monedaId } : {}),
+      ...(filtros?.paisId ? { filial: { paisId: filtros.paisId } } : {}),
+    },
+    include: {
+      filial: { include: { pais: true } },
+      moneda: true,
+    },
+  });
+
+  // Agrupar por filial
+  const porFilial = filiales.map((filial) => {
+    const diezmosFilial = diezmos.filter((d) => d.filialId === filial.id);
+    const total = diezmosFilial.reduce((sum, d) => sum + Number(d.monto), 0);
+
+    return {
+      id: filial.id,
+      nombre: filial.nombre,
+      pastor: filial.pastor,
+      pais: filial.pais.nombre,
+      total,
+      cantidad: diezmosFilial.length,
+    };
+  });
+
+  // Agrupar por mes
+  const porMes = Array.from({ length: 12 }, (_, i) => {
+    const mes = i + 1;
+    const diezmosMes = diezmos.filter((d) => d.mes === mes);
+    const total = diezmosMes.reduce((sum, d) => sum + Number(d.monto), 0);
+
+    return {
+      mes,
+      nombreMes: new Date(2024, i).toLocaleDateString("es-GT", {
+        month: "long",
+      }),
+      total,
+      cantidad: diezmosMes.length,
+    };
+  });
+
+  // Agrupar por país
+  const porPais = Object.values(
+    diezmos.reduce((acc, d) => {
+      const paisId = d.filial.pais.id;
+      const paisNombre = d.filial.pais.nombre;
+      if (!acc[paisId]) {
+        acc[paisId] = { id: paisId, nombre: paisNombre, total: 0, cantidad: 0 };
+      }
+      acc[paisId].total += Number(d.monto);
+      acc[paisId].cantidad += 1;
+      return acc;
+    }, {} as Record<string, { id: string; nombre: string; total: number; cantidad: number }>)
+  );
+
+  const totalGeneral = diezmos.reduce((sum, d) => sum + Number(d.monto), 0);
+
+  return {
+    anio,
+    porFilial: porFilial.sort((a, b) => b.total - a.total),
+    porMes,
+    porPais: porPais.sort((a, b) => b.total - a.total),
+    total: totalGeneral,
+    cantidadRegistros: diezmos.length,
+  };
+}
+
+export async function obtenerReporteCajaFiliales(filtros?: {
+  anio?: number;
+  monedaId?: string;
+}) {
+  const anio = filtros?.anio || new Date().getFullYear();
+
+  // Obtener egresos del año
+  const egresos = await prisma.egresoFilial.findMany({
+    where: {
+      fechaSalida: {
+        gte: new Date(anio, 0, 1),
+        lte: new Date(anio, 11, 31, 23, 59, 59),
+      },
+      ...(filtros?.monedaId ? { monedaId: filtros.monedaId } : {}),
+    },
+    include: {
+      tipoGasto: true,
+      moneda: true,
+    },
+    orderBy: { fechaSalida: "desc" },
+  });
+
+  // Agrupar por tipo de gasto
+  const porTipoGasto = Object.values(
+    egresos.reduce((acc, e) => {
+      const tipoId = e.tipoGasto.id;
+      const tipoNombre = e.tipoGasto.nombre;
+      if (!acc[tipoId]) {
+        acc[tipoId] = { id: tipoId, nombre: tipoNombre, total: 0, cantidad: 0 };
+      }
+      acc[tipoId].total += Number(e.monto);
+      acc[tipoId].cantidad += 1;
+      return acc;
+    }, {} as Record<string, { id: string; nombre: string; total: number; cantidad: number }>)
+  );
+
+  // Agrupar por mes
+  const porMes = Array.from({ length: 12 }, (_, i) => {
+    const mes = i + 1;
+    const egresosMes = egresos.filter(
+      (e) => new Date(e.fechaSalida).getMonth() === i
+    );
+    const total = egresosMes.reduce((sum, e) => sum + Number(e.monto), 0);
+
+    return {
+      mes,
+      nombreMes: new Date(2024, i).toLocaleDateString("es-GT", {
+        month: "long",
+      }),
+      total,
+      cantidad: egresosMes.length,
+    };
+  });
+
+  // Obtener saldo actual
+  const saldos = await obtenerSaldoFiliales();
+
+  const totalEgresos = egresos.reduce((sum, e) => sum + Number(e.monto), 0);
+
+  return {
+    anio,
+    porTipoGasto: porTipoGasto.sort((a, b) => b.total - a.total),
+    porMes,
+    saldos,
+    totalEgresos,
+    cantidadEgresos: egresos.length,
+  };
+}

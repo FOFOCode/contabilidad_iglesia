@@ -45,27 +45,43 @@ async function limpiarDatos() {
     const egresos = await prisma.egreso.deleteMany({});
     console.log(`✓ ${egresos.count} egresos eliminados`);
 
-    // 4. Eliminar cajas (depende de sociedades y tipos de ingreso)
+    // 4. Eliminar egresos de filiales
+    const egresosFiliales = await prisma.egresoFilial.deleteMany({});
+    console.log(`✓ ${egresosFiliales.count} egresos de filiales eliminados`);
+
+    // 5. Eliminar diezmos de filiales
+    const diezmosFiliales = await prisma.diezmoFilial.deleteMany({});
+    console.log(`✓ ${diezmosFiliales.count} diezmos de filiales eliminados`);
+
+    // 6. Eliminar filiales
+    const filiales = await prisma.filial.deleteMany({});
+    console.log(`✓ ${filiales.count} filiales eliminadas`);
+
+    // 7. Eliminar países
+    const paises = await prisma.pais.deleteMany({});
+    console.log(`✓ ${paises.count} países eliminados`);
+
+    // 8. Eliminar cajas (depende de sociedades y tipos de ingreso)
     const cajas = await prisma.caja.deleteMany({});
     console.log(`✓ ${cajas.count} cajas eliminadas`);
 
-    // 5. Eliminar sociedades
+    // 9. Eliminar sociedades
     const sociedades = await prisma.sociedad.deleteMany({});
     console.log(`✓ ${sociedades.count} sociedades eliminadas`);
 
-    // 6. Eliminar tipos de servicio
+    // 10. Eliminar tipos de servicio
     const tiposServicio = await prisma.tipoServicio.deleteMany({});
     console.log(`✓ ${tiposServicio.count} tipos de servicio eliminados`);
 
-    // 7. Eliminar tipos de ingreso
+    // 11. Eliminar tipos de ingreso
     const tiposIngreso = await prisma.tipoIngreso.deleteMany({});
     console.log(`✓ ${tiposIngreso.count} tipos de ingreso eliminados`);
 
-    // 8. Eliminar tipos de gasto
+    // 12. Eliminar tipos de gasto
     const tiposGasto = await prisma.tipoGasto.deleteMany({});
     console.log(`✓ ${tiposGasto.count} tipos de gasto eliminados`);
 
-    // 9. Eliminar monedas
+    // 13. Eliminar monedas
     const monedas = await prisma.moneda.deleteMany({});
     console.log(`✓ ${monedas.count} monedas eliminadas`);
 
@@ -96,6 +112,8 @@ if (args.includes("--force") || args.includes("-f")) {
     "⚠️  ADVERTENCIA: Este script eliminará TODOS los datos excepto usuarios."
   );
   console.log("   - Ingresos y egresos");
+  console.log("   - Diezmos y egresos de filiales");
+  console.log("   - Filiales y países");
   console.log("   - Cajas");
   console.log(
     "   - Sociedades, tipos de servicio, tipos de ingreso, tipos de gasto"

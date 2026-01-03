@@ -25,6 +25,7 @@ export default async function DashboardPage() {
         egresosPorTipo={[]}
         tiposGasto={[]}
         cajasConSaldos={[]}
+        cajasVirtuales={[]}
         totalIngresos={0}
         totalEgresos={0}
         totalCajas={0}
@@ -155,6 +156,9 @@ export default async function DashboardPage() {
     nombre: t.nombre,
   }));
 
+  // Cajas Virtuales por Tipo de Ingreso (NUEVO)
+  const cajasVirtuales = resumen.cajasVirtuales || [];
+
   return (
     <DashboardClient
       monedas={monedas}
@@ -168,6 +172,7 @@ export default async function DashboardPage() {
       egresosPorTipo={egresosPorTipo}
       tiposGasto={tiposGasto}
       cajasConSaldos={cajasConSaldos}
+      cajasVirtuales={cajasVirtuales}
       totalIngresos={resumen.totalIngresos}
       totalEgresos={resumen.totalEgresos}
       totalCajas={resumen.totalCajas}
