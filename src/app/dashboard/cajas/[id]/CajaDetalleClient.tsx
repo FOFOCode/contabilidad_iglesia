@@ -16,6 +16,7 @@ interface Moneda {
 interface Saldo {
   moneda: Moneda;
   ingresos: number;
+  donaciones: number;
   egresos: number;
   saldo: number;
 }
@@ -27,6 +28,22 @@ interface Movimiento {
   concepto: string;
   esSecundario?: boolean;
   cajaPrincipal?: { id: string; nombre: string } | null;
+  origen: "ingreso" | "egreso" | "donacion" | "diezmoFilial" | "egresoFilial";
+  montos: {
+    monto: number;
+    monedaId: string;
+    monedaCodigo: string;
+    monedaSimbolo: string;
+  }[];
+}
+
+interface MovimientoFilial {
+  id: string;
+  fecha: Date;
+  tipo: "ingreso" | "egreso";
+  concepto: string;
+  filial: string;
+  origen: "diezmoFilial" | "egresoFilial";
   montos: {
     monto: number;
     monedaId: string;
@@ -48,6 +65,7 @@ interface Caja {
 interface CajaDetalleClientProps {
   caja: Caja;
   movimientos: Movimiento[];
+  movimientosFiliales: MovimientoFilial[];
   saldos: Saldo[];
   monedas: Moneda[];
 }
@@ -55,6 +73,7 @@ interface CajaDetalleClientProps {
 export function CajaDetalleClient({
   caja,
   movimientos: movimientosIniciales,
+  movimientosFiliales,
   saldos,
   monedas,
 }: CajaDetalleClientProps) {
@@ -132,6 +151,21 @@ export function CajaDetalleClient({
           {item.esSecundario && (
             <Badge variant="info" size="sm">
               Tracking
+            </Badge>
+          )}
+          {item.origen === "donacion" && (
+            <Badge variant="warning" size="sm">
+              Donación
+            </Badge>
+          )}
+          {item.origen === "diezmoFilial" && (
+            <Badge variant="info" size="sm">
+              Diezmo Filial
+            </Badge>
+          )}
+          {item.origen === "egresoFilial" && (
+            <Badge variant="warning" size="sm">
+              Egreso Filial
             </Badge>
           )}
         </div>
@@ -365,6 +399,101 @@ export function CajaDetalleClient({
             />
           </div>
         </Card>
+
+        {/* Movimientos de Filiales */}
+        {movimientosFiliales.length > 0 && (
+          <Card className="bg-gradient-to-br from-[#f8f3ff] to-white border-[#d4c5e8]">
+            <div className="flex items-center gap-2 mb-4">
+              <svg
+                className="w-5 h-5 text-[#6b4b9c]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                />
+              </svg>
+              <h3 className="text-sm font-semibold text-[#6b4b9c] uppercase tracking-wide">
+                Movimientos de Filiales (Referencia)
+              </h3>
+              <Badge variant="info" size="sm">
+                {movimientosFiliales.length} movimientos
+              </Badge>
+            </div>
+            <p className="text-sm text-[#8b7ba8] mb-4">
+              Los movimientos de filiales se registran en una "Caja Filiales"
+              virtual y se muestran aquí como referencia.
+            </p>
+            <div className="overflow-x-auto">
+              <Table
+                columns={[
+                  {
+                    key: "fecha",
+                    header: "Fecha",
+                    render: (item: MovimientoFilial) =>
+                      new Date(item.fecha).toLocaleDateString("es-GT"),
+                  },
+                  {
+                    key: "tipo",
+                    header: "Tipo",
+                    render: (item: MovimientoFilial) => (
+                      <Badge
+                        variant={item.tipo === "ingreso" ? "success" : "danger"}
+                      >
+                        {item.tipo === "ingreso" ? "Diezmo" : "Egreso"}
+                      </Badge>
+                    ),
+                  },
+                  {
+                    key: "filial",
+                    header: "Filial",
+                    render: (item: MovimientoFilial) => (
+                      <Badge variant="info">{item.filial}</Badge>
+                    ),
+                  },
+                  {
+                    key: "concepto",
+                    header: "Concepto",
+                    render: (item: MovimientoFilial) => (
+                      <span className="text-[#203b46]">{item.concepto}</span>
+                    ),
+                  },
+                  {
+                    key: "monto",
+                    header: "Monto",
+                    className: "text-right",
+                    render: (item: MovimientoFilial) => (
+                      <div>
+                        {item.montos.map((m, idx) => (
+                          <span
+                            key={idx}
+                            className={`block font-medium ${
+                              item.tipo === "ingreso"
+                                ? "text-[#2ba193]"
+                                : "text-[#e0451f]"
+                            }`}
+                          >
+                            {item.tipo === "ingreso" ? "+" : "-"}
+                            {m.monedaSimbolo}
+                            {m.monto.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                        ))}
+                      </div>
+                    ),
+                  },
+                ]}
+                data={movimientosFiliales}
+                emptyMessage="No hay movimientos de filiales"
+              />
+            </div>
+          </Card>
+        )}
 
         {/* Acciones */}
         <div className="flex flex-col sm:flex-row gap-4">

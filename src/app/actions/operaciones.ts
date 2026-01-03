@@ -260,6 +260,16 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
       _sum: { monto: true },
     });
 
+    // Donaciones agrupadas por moneda (también son ingresos)
+    const donacionesPorMoneda = await prisma.donacion.groupBy({
+      by: ["monedaId"],
+      where: {
+        cajaId,
+        ...(monedaId ? { monedaId } : {}),
+      },
+      _sum: { monto: true },
+    });
+
     // Egresos agrupados por moneda
     const egresosPorMoneda = await prisma.egreso.groupBy({
       by: ["monedaId"],
@@ -274,16 +284,20 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
       const ingresos =
         ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
         new Prisma.Decimal(0);
+      const donaciones =
+        donacionesPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
+        new Prisma.Decimal(0);
       const egresos =
         egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
         new Prisma.Decimal(0);
-      const saldo = Number(ingresos) - Number(egresos);
+      const totalIngresos = Number(ingresos) + Number(donaciones);
+      const saldo = totalIngresos - Number(egresos);
 
       return {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
         monedaSimbolo: moneda.simbolo,
-        ingresos: Number(ingresos),
+        ingresos: totalIngresos,
         egresos: Number(egresos),
         saldo,
       };
@@ -299,32 +313,39 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
 
 export async function obtenerCajasConSaldos() {
   // Obtener datos base en paralelo
-  const [cajas, monedas, todosIngresos, todosEgresos] = await Promise.all([
-    prisma.caja.findMany({
-      where: { activa: true },
-      include: {
-        sociedad: true,
-        tipoIngreso: true,
-      },
-      orderBy: { orden: "asc" },
-    }),
-    prisma.moneda.findMany({
-      where: { activa: true },
-      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
-    }),
-    // Una sola consulta para TODOS los ingresos agrupados por caja y moneda
-    prisma.ingresoMonto.groupBy({
-      by: ["monedaId"],
-      where: { ingreso: { caja: { activa: true } } },
-      _sum: { monto: true },
-    }),
-    // Una sola consulta para TODOS los egresos agrupados por caja y moneda
-    prisma.egreso.groupBy({
-      by: ["monedaId", "cajaId"],
-      where: { caja: { activa: true } },
-      _sum: { monto: true },
-    }),
-  ]);
+  const [cajas, monedas, todosIngresos, todosEgresos, todasDonaciones] =
+    await Promise.all([
+      prisma.caja.findMany({
+        where: { activa: true },
+        include: {
+          sociedad: true,
+          tipoIngreso: true,
+        },
+        orderBy: { orden: "asc" },
+      }),
+      prisma.moneda.findMany({
+        where: { activa: true },
+        orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+      }),
+      // Una sola consulta para TODOS los ingresos agrupados por caja y moneda
+      prisma.ingresoMonto.groupBy({
+        by: ["monedaId"],
+        where: { ingreso: { caja: { activa: true } } },
+        _sum: { monto: true },
+      }),
+      // Una sola consulta para TODOS los egresos agrupados por caja y moneda
+      prisma.egreso.groupBy({
+        by: ["monedaId", "cajaId"],
+        where: { caja: { activa: true } },
+        _sum: { monto: true },
+      }),
+      // Donaciones agrupadas por caja y moneda
+      prisma.donacion.groupBy({
+        by: ["monedaId", "cajaId"],
+        where: { caja: { activa: true } },
+        _sum: { monto: true },
+      }),
+    ]);
 
   // Obtener ingresos agrupados por caja y moneda en una sola consulta
   const ingresosAgrupados = await prisma.$queryRaw<
@@ -362,6 +383,15 @@ export async function obtenerCajasConSaldos() {
     ingresosSecundariosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
   });
 
+  // Mapa para donaciones (también son ingresos)
+  const donacionesMap = new Map<string, number>();
+  todasDonaciones.forEach((don) => {
+    donacionesMap.set(
+      `${don.cajaId}-${don.monedaId}`,
+      Number(don._sum.monto || 0)
+    );
+  });
+
   // Mapa para acceso rápido a egresos
   const egresosMap = new Map<string, number>();
   todosEgresos.forEach((egr) => {
@@ -380,9 +410,13 @@ export async function obtenerCajasConSaldos() {
       // Para cajas generales u otras: mostrar ingresos principales (dinero real)
       const esSubcaja =
         !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
-      const ingresos = esSubcaja
+      const ingresosBase = esSubcaja
         ? ingresosSecundariosMap.get(key) || 0
         : ingresosPrincipalesMap.get(key) || 0;
+
+      // Las donaciones solo se suman a la caja general (donde esGeneral = true)
+      const donaciones = caja.esGeneral ? donacionesMap.get(key) || 0 : 0;
+      const ingresos = ingresosBase + donaciones;
 
       const egresos = egresosMap.get(key) || 0;
 
@@ -402,13 +436,292 @@ export async function obtenerCajasConSaldos() {
     };
   });
 
+  // Crear cajas virtuales para Filiales y Donaciones
+  const cajasVirtuales = [];
+
+  // 1. Caja Virtual de Donaciones (si hay donaciones)
+  const donacionesPorMoneda = await prisma.donacion.groupBy({
+    by: ["monedaId"],
+    _sum: { monto: true },
+  });
+
+  if (donacionesPorMoneda.length > 0) {
+    const saldosDonaciones = monedas.map((moneda) => {
+      const don = donacionesPorMoneda.find((d) => d.monedaId === moneda.id);
+      const total = Number(don?._sum.monto || 0);
+      return {
+        monedaId: moneda.id,
+        monedaCodigo: moneda.codigo,
+        monedaSimbolo: moneda.simbolo,
+        ingresos: total,
+        egresos: 0,
+        saldo: total,
+      };
+    });
+
+    cajasVirtuales.push({
+      id: "virtual-donaciones",
+      nombre: "Donaciones",
+      descripcion: "Resumen de todas las donaciones recibidas",
+      activa: true,
+      esGeneral: false,
+      sociedadId: null,
+      tipoIngresoId: null,
+      sociedad: null,
+      tipoIngreso: null,
+      orden: 9998,
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+      saldos: saldosDonaciones,
+      esVirtual: true,
+    });
+  }
+
+  // 2. Caja Virtual de Filiales
+  const [diezmosFilialesPorMoneda, egresosFilialesPorMoneda] =
+    await Promise.all([
+      prisma.diezmoFilial.groupBy({
+        by: ["monedaId"],
+        _sum: { monto: true },
+      }),
+      prisma.egresoFilial.groupBy({
+        by: ["monedaId"],
+        _sum: { monto: true },
+      }),
+    ]);
+
+  if (
+    diezmosFilialesPorMoneda.length > 0 ||
+    egresosFilialesPorMoneda.length > 0
+  ) {
+    const saldosFiliales = monedas.map((moneda) => {
+      const diezmo = diezmosFilialesPorMoneda.find(
+        (d) => d.monedaId === moneda.id
+      );
+      const egreso = egresosFilialesPorMoneda.find(
+        (e) => e.monedaId === moneda.id
+      );
+      const ingresos = Number(diezmo?._sum.monto || 0);
+      const egresos = Number(egreso?._sum.monto || 0);
+      return {
+        monedaId: moneda.id,
+        monedaCodigo: moneda.codigo,
+        monedaSimbolo: moneda.simbolo,
+        ingresos,
+        egresos,
+        saldo: ingresos - egresos,
+      };
+    });
+
+    cajasVirtuales.push({
+      id: "virtual-filiales",
+      nombre: "Filiales",
+      descripcion: "Diezmos y egresos de todas las filiales",
+      activa: true,
+      esGeneral: false,
+      sociedadId: null,
+      tipoIngresoId: null,
+      sociedad: null,
+      tipoIngreso: null,
+      orden: 9999,
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+      saldos: saldosFiliales,
+      esVirtual: true,
+    });
+  }
+
+  // Combinar cajas reales con cajas virtuales
+  const todasLasCajas = [...cajasConSaldos, ...cajasVirtuales];
+
   // Serializar monedas para evitar Decimal
   const monedasSerializadas = monedas.map(serializarMoneda);
 
-  return { cajas: cajasConSaldos, monedas: monedasSerializadas };
+  return { cajas: todasLasCajas, monedas: monedasSerializadas };
+}
+
+// =====================
+// CAJAS VIRTUALES - DETALLE
+// =====================
+
+async function obtenerDetalleCajaDonaciones() {
+  const monedas = await prisma.moneda.findMany({
+    where: { activa: true },
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  });
+
+  const donaciones = await prisma.donacion.findMany({
+    include: {
+      tipoOfrenda: true,
+      moneda: true,
+      usuario: {
+        select: {
+          id: true,
+          nombre: true,
+        },
+      },
+    },
+    orderBy: { fecha: "desc" },
+    take: 100,
+  });
+
+  // Calcular saldos
+  const donacionesPorMoneda = await prisma.donacion.groupBy({
+    by: ["monedaId"],
+    _sum: { monto: true },
+  });
+
+  const saldos = monedas.map((moneda) => {
+    const total =
+      donacionesPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    return {
+      moneda: serializarMoneda(moneda),
+      ingresos: Number(total),
+      donaciones: Number(total),
+      egresos: 0,
+      saldo: Number(total),
+    };
+  });
+
+  const donacionesSerializadas = donaciones.map((don) => ({
+    ...don,
+    monto: Number(don.monto),
+    moneda: serializarMoneda(don.moneda),
+  }));
+
+  return {
+    caja: {
+      id: "virtual-donaciones",
+      nombre: "Donaciones",
+      descripcion: "Resumen de todas las donaciones recibidas",
+      activa: true,
+      esGeneral: false,
+      sociedadId: null,
+      tipoIngresoId: null,
+      sociedad: null,
+      tipoIngreso: null,
+    },
+    ingresos: [],
+    ingresosSecundarios: [],
+    egresos: [],
+    donaciones: donacionesSerializadas,
+    diezmosFiliales: [],
+    egresosFiliales: [],
+    saldos,
+    monedas: monedas.map(serializarMoneda),
+  };
+}
+
+async function obtenerDetalleCajaFiliales() {
+  const monedas = await prisma.moneda.findMany({
+    where: { activa: true },
+    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+  });
+
+  const [diezmos, egresos] = await Promise.all([
+    prisma.diezmoFilial.findMany({
+      include: {
+        filial: true,
+        moneda: true,
+        usuario: {
+          select: {
+            id: true,
+            nombre: true,
+          },
+        },
+      },
+      orderBy: [{ anio: "desc" }, { mes: "desc" }],
+      take: 100,
+    }),
+    prisma.egresoFilial.findMany({
+      include: {
+        tipoGasto: true,
+        moneda: true,
+        usuario: {
+          select: {
+            id: true,
+            nombre: true,
+          },
+        },
+      },
+      orderBy: { fechaSalida: "desc" },
+      take: 100,
+    }),
+  ]);
+
+  // Calcular saldos
+  const [diezmosPorMoneda, egresosPorMoneda] = await Promise.all([
+    prisma.diezmoFilial.groupBy({
+      by: ["monedaId"],
+      _sum: { monto: true },
+    }),
+    prisma.egresoFilial.groupBy({
+      by: ["monedaId"],
+      _sum: { monto: true },
+    }),
+  ]);
+
+  const saldos = monedas.map((moneda) => {
+    const totalIngresos =
+      diezmosPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    const totalEgresos =
+      egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
+      new Prisma.Decimal(0);
+    return {
+      moneda: serializarMoneda(moneda),
+      ingresos: Number(totalIngresos),
+      donaciones: 0,
+      egresos: Number(totalEgresos),
+      saldo: Number(totalIngresos) - Number(totalEgresos),
+    };
+  });
+
+  const diezmosSerializados = diezmos.map((dz) => ({
+    ...dz,
+    monto: Number(dz.monto),
+    moneda: serializarMoneda(dz.moneda),
+  }));
+
+  const egresosSerializados = egresos.map((eg) => ({
+    ...eg,
+    monto: Number(eg.monto),
+    moneda: serializarMoneda(eg.moneda),
+  }));
+
+  return {
+    caja: {
+      id: "virtual-filiales",
+      nombre: "Filiales",
+      descripcion: "Diezmos y egresos de todas las filiales",
+      activa: true,
+      esGeneral: false,
+      sociedadId: null,
+      tipoIngresoId: null,
+      sociedad: null,
+      tipoIngreso: null,
+    },
+    ingresos: [],
+    ingresosSecundarios: [],
+    egresos: [],
+    donaciones: [],
+    diezmosFiliales: diezmosSerializados,
+    egresosFiliales: egresosSerializados,
+    saldos,
+    monedas: monedas.map(serializarMoneda),
+  };
 }
 
 export async function obtenerDetalleCaja(cajaId: string) {
+  // Verificar si es caja virtual
+  if (cajaId === "virtual-donaciones") {
+    return await obtenerDetalleCajaDonaciones();
+  }
+  if (cajaId === "virtual-filiales") {
+    return await obtenerDetalleCajaFiliales();
+  }
+
   const caja = await prisma.caja.findUnique({
     where: { id: cajaId },
     include: {
@@ -457,6 +770,56 @@ export async function obtenerDetalleCaja(cajaId: string) {
     take: 50,
   });
 
+  // Si es caja general, obtener también donaciones
+  const donaciones = caja.esGeneral
+    ? await prisma.donacion.findMany({
+        where: { cajaId },
+        include: {
+          tipoOfrenda: true,
+          moneda: true,
+          usuario: {
+            select: {
+              id: true,
+              nombre: true,
+            },
+          },
+        },
+        orderBy: { fecha: "desc" },
+        take: 50,
+      })
+    : [];
+
+  // Obtener movimientos de filiales (conceptualmente asociados a "Caja Filiales" pero mostramos aquí para info)
+  const diezmosFiliales = await prisma.diezmoFilial.findMany({
+    include: {
+      filial: true,
+      moneda: true,
+      usuario: {
+        select: {
+          id: true,
+          nombre: true,
+        },
+      },
+    },
+    orderBy: [{ anio: "desc" }, { mes: "desc" }],
+    take: 30,
+  });
+
+  const egresosFiliales = await prisma.egresoFilial.findMany({
+    include: {
+      tipoGasto: true,
+      moneda: true,
+      usuario: {
+        select: {
+          id: true,
+          nombre: true,
+        },
+      },
+    },
+    orderBy: { fechaSalida: "desc" },
+    take: 30,
+  });
+
   const monedas = await prisma.moneda.findMany({
     where: { activa: true },
     orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
@@ -475,6 +838,15 @@ export async function obtenerDetalleCaja(cajaId: string) {
     _sum: { monto: true },
   });
 
+  // Si es caja general, agregar donaciones a los totales
+  const donacionesPorMoneda = caja.esGeneral
+    ? await prisma.donacion.groupBy({
+        by: ["monedaId"],
+        where: { cajaId },
+        _sum: { monto: true },
+      })
+    : [];
+
   const saldos = monedas.map((moneda) => {
     const totalIngresos =
       ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
@@ -482,11 +854,19 @@ export async function obtenerDetalleCaja(cajaId: string) {
     const totalEgresos =
       egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
       new Prisma.Decimal(0);
+    const totalDonaciones = caja.esGeneral
+      ? donacionesPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
+        new Prisma.Decimal(0)
+      : new Prisma.Decimal(0);
+
+    const totalIngresosConDonaciones = totalIngresos.add(totalDonaciones);
+
     return {
       moneda: serializarMoneda(moneda),
       ingresos: Number(totalIngresos),
+      donaciones: Number(totalDonaciones),
       egresos: Number(totalEgresos),
-      saldo: Number(totalIngresos) - Number(totalEgresos),
+      saldo: Number(totalIngresosConDonaciones) - Number(totalEgresos),
     };
   });
 
@@ -523,11 +903,34 @@ export async function obtenerDetalleCaja(cajaId: string) {
     moneda: serializarMoneda(eg.moneda),
   }));
 
+  // Serializar donaciones
+  const donacionesSerializadas = donaciones.map((don) => ({
+    ...don,
+    monto: Number(don.monto),
+    moneda: serializarMoneda(don.moneda),
+  }));
+
+  // Serializar movimientos de filiales
+  const diezmosFilialesSerializados = diezmosFiliales.map((dz) => ({
+    ...dz,
+    monto: Number(dz.monto),
+    moneda: serializarMoneda(dz.moneda),
+  }));
+
+  const egresosFilialesSerializados = egresosFiliales.map((eg) => ({
+    ...eg,
+    monto: Number(eg.monto),
+    moneda: serializarMoneda(eg.moneda),
+  }));
+
   return {
     caja,
     ingresos: ingresosSerializados,
     ingresosSecundarios: ingresosSecundariosSerializados,
     egresos: egresosSerializados,
+    donaciones: donacionesSerializadas,
+    diezmosFiliales: diezmosFilialesSerializados,
+    egresosFiliales: egresosFilialesSerializados,
     saldos,
     monedas: monedas.map(serializarMoneda),
   };
@@ -625,6 +1028,9 @@ interface FiltrosReporte {
 export async function obtenerDatosReporte(filtros: FiltrosReporte) {
   const whereIngresos: any = {};
   const whereEgresos: any = {};
+  const whereDonaciones: any = {};
+  const whereDiezmosFiliales: any = {};
+  const whereEgresosFiliales: any = {};
 
   // Convertir strings a Date si es necesario
   const fechaInicio = filtros.fechaInicio
@@ -647,6 +1053,18 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
       ...whereEgresos.fechaSalida,
       gte: fechaInicio,
     };
+    whereDonaciones.fecha = {
+      ...whereDonaciones.fecha,
+      gte: fechaInicio,
+    };
+    whereDiezmosFiliales.creadoEn = {
+      ...whereDiezmosFiliales.creadoEn,
+      gte: fechaInicio,
+    };
+    whereEgresosFiliales.fechaSalida = {
+      ...whereEgresosFiliales.fechaSalida,
+      gte: fechaInicio,
+    };
   }
   if (fechaFin) {
     whereIngresos.fechaRecaudacion = {
@@ -657,16 +1075,39 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
       ...whereEgresos.fechaSalida,
       lte: fechaFin,
     };
+    whereDonaciones.fecha = {
+      ...whereDonaciones.fecha,
+      lte: fechaFin,
+    };
+    whereDiezmosFiliales.creadoEn = {
+      ...whereDiezmosFiliales.creadoEn,
+      lte: fechaFin,
+    };
+    whereEgresosFiliales.fechaSalida = {
+      ...whereEgresosFiliales.fechaSalida,
+      lte: fechaFin,
+    };
   }
   if (filtros.cajaId) {
     whereIngresos.cajaId = filtros.cajaId;
     whereEgresos.cajaId = filtros.cajaId;
+    whereDonaciones.cajaId = filtros.cajaId;
+    // No aplicar filtro de caja a filiales ya que tienen su propia caja
   }
   if (filtros.sociedadId) {
     whereIngresos.sociedadId = filtros.sociedadId;
   }
 
-  const [ingresos, egresos, sociedades, cajas, monedasRaw] = await Promise.all([
+  const [
+    ingresos,
+    egresos,
+    donaciones,
+    diezmosFiliales,
+    egresosFiliales,
+    sociedades,
+    cajas,
+    monedasRaw,
+  ] = await Promise.all([
     prisma.ingreso.findMany({
       where: whereIngresos,
       include: {
@@ -684,6 +1125,34 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
       include: {
         tipoGasto: true,
         caja: true,
+        moneda: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fechaSalida: "desc" },
+    }),
+    prisma.donacion.findMany({
+      where: whereDonaciones,
+      include: {
+        tipoOfrenda: true,
+        caja: true,
+        moneda: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fecha: "desc" },
+    }),
+    prisma.diezmoFilial.findMany({
+      where: whereDiezmosFiliales,
+      include: {
+        filial: { include: { pais: true } },
+        moneda: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { creadoEn: "desc" },
+    }),
+    prisma.egresoFilial.findMany({
+      where: whereEgresosFiliales,
+      include: {
+        tipoGasto: true,
         moneda: true,
         usuario: { select: { nombre: true, apellido: true } },
       },
@@ -725,6 +1194,50 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     })),
   }));
 
+  const donacionesSerializadas = donaciones.map((don) => ({
+    id: don.id,
+    fecha: don.fecha,
+    tipo: "Ingreso" as const,
+    concepto: `Donación - ${don.nombre}`,
+    sociedad: "Donación" as string,
+    caja: don.caja.nombre,
+    tipoIngreso: don.tipoOfrenda.nombre,
+    comentario: don.comentario || undefined,
+    usuario: don.usuario
+      ? `${don.usuario.nombre} ${don.usuario.apellido}`
+      : undefined,
+    montos: [
+      {
+        monto: Number(don.monto),
+        monedaId: don.monedaId,
+        monedaCodigo: don.moneda.codigo,
+        monedaSimbolo: don.moneda.simbolo,
+      },
+    ],
+  }));
+
+  const diezmosSerializados = diezmosFiliales.map((dz) => ({
+    id: dz.id,
+    fecha: dz.creadoEn,
+    tipo: "Ingreso" as const,
+    concepto: `Diezmo Filial - ${dz.filial.nombre} (${dz.filial.pais.nombre})`,
+    sociedad: "Filial" as string,
+    caja: "Caja Filiales",
+    tipoIngreso: "Diezmo Filial",
+    comentario: dz.comentario || undefined,
+    usuario: dz.usuario
+      ? `${dz.usuario.nombre} ${dz.usuario.apellido}`
+      : undefined,
+    montos: [
+      {
+        monto: Number(dz.monto),
+        monedaId: dz.monedaId,
+        monedaCodigo: dz.moneda.codigo,
+        monedaSimbolo: dz.moneda.simbolo,
+      },
+    ],
+  }));
+
   const egresosSerializados = egresos.map((eg) => ({
     id: eg.id,
     fecha: eg.fechaSalida,
@@ -748,9 +1261,36 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     ],
   }));
 
+  const egresosFilalesSerializados = egresosFiliales.map((eg) => ({
+    id: eg.id,
+    fecha: eg.fechaSalida,
+    tipo: "Egreso" as const,
+    concepto: eg.descripcionGasto || eg.tipoGasto.nombre,
+    sociedad: null,
+    caja: "Caja Filiales",
+    tipoGasto: eg.tipoGasto.nombre,
+    solicitante: eg.solicitante,
+    comentario: eg.comentario || undefined,
+    usuario: eg.usuario
+      ? `${eg.usuario.nombre} ${eg.usuario.apellido}`
+      : undefined,
+    montos: [
+      {
+        monto: Number(eg.monto),
+        monedaId: eg.monedaId,
+        monedaCodigo: eg.moneda.codigo,
+        monedaSimbolo: eg.moneda.simbolo,
+      },
+    ],
+  }));
+
   return {
-    ingresos: ingresosSerializados,
-    egresos: egresosSerializados,
+    ingresos: [
+      ...ingresosSerializados,
+      ...donacionesSerializadas,
+      ...diezmosSerializados,
+    ],
+    egresos: [...egresosSerializados, ...egresosFilalesSerializados],
     sociedades,
     cajas,
     monedas: monedasRaw.map(serializarMoneda),
@@ -794,6 +1334,9 @@ export async function obtenerDatosReporteAnalitico(
   const [
     ingresos,
     egresos,
+    donaciones,
+    diezmosFiliales,
+    egresosFiliales,
     tiposIngreso,
     tiposGasto,
     sociedades,
@@ -822,6 +1365,37 @@ export async function obtenerDatosReporteAnalitico(
         moneda: true,
       },
     }),
+    prisma.donacion.findMany({
+      where: {
+        fecha: { gte: inicioRango, lte: finRango },
+        ...(filtros.monedaId ? { monedaId: filtros.monedaId } : {}),
+      },
+      include: {
+        tipoOfrenda: true,
+        caja: true,
+        moneda: true,
+      },
+    }),
+    prisma.diezmoFilial.findMany({
+      where: {
+        creadoEn: { gte: inicioRango, lte: finRango },
+        ...(filtros.monedaId ? { monedaId: filtros.monedaId } : {}),
+      },
+      include: {
+        filial: true,
+        moneda: true,
+      },
+    }),
+    prisma.egresoFilial.findMany({
+      where: {
+        fechaSalida: { gte: inicioRango, lte: finRango },
+        ...(filtros.monedaId ? { monedaId: filtros.monedaId } : {}),
+      },
+      include: {
+        tipoGasto: true,
+        moneda: true,
+      },
+    }),
     prisma.tipoIngreso.findMany({ where: { activo: true } }),
     prisma.tipoGasto.findMany({ where: { activo: true } }),
     prisma.sociedad.findMany({ where: { activa: true } }),
@@ -844,7 +1418,16 @@ export async function obtenerDatosReporteAnalitico(
     const ingresosDelMes = ingresosFiltrados.filter(
       (ing) => new Date(ing.fechaRecaudacion).getMonth() === mes
     );
+    const donacionesDelMes = donaciones.filter(
+      (don) => new Date(don.fecha).getMonth() === mes
+    );
+    const diezmosDelMes = diezmosFiliales.filter(
+      (dz) => new Date(dz.creadoEn).getMonth() === mes
+    );
     const egresosDelMes = egresos.filter(
+      (eg) => new Date(eg.fechaSalida).getMonth() === mes
+    );
+    const egresosFilalesDelMes = egresosFiliales.filter(
       (eg) => new Date(eg.fechaSalida).getMonth() === mes
     );
 
@@ -859,7 +1442,19 @@ export async function obtenerDatosReporteAnalitico(
       });
     });
 
+    donacionesDelMes.forEach((don) => {
+      totalIngresos += Number(don.monto);
+    });
+
+    diezmosDelMes.forEach((dz) => {
+      totalIngresos += Number(dz.monto);
+    });
+
     egresosDelMes.forEach((eg) => {
+      totalEgresos += Number(eg.monto);
+    });
+
+    egresosFilalesDelMes.forEach((eg) => {
       totalEgresos += Number(eg.monto);
     });
 
@@ -975,6 +1570,7 @@ export async function obtenerDatosReporteAnalitico(
     const ingresosDeCaja = ingresosFiltrados.filter(
       (ing) => ing.cajaId === caja.id
     );
+    const donacionesDeCaja = donaciones.filter((don) => don.cajaId === caja.id);
     const egresosDeCaja = egresos.filter((eg) => eg.cajaId === caja.id);
 
     let totalIngresos = 0;
@@ -985,6 +1581,11 @@ export async function obtenerDatosReporteAnalitico(
         }
       });
     });
+
+    donacionesDeCaja.forEach((don) => {
+      totalIngresos += Number(don.monto);
+    });
+
     const totalEgresos = egresosDeCaja.reduce(
       (sum, eg) => sum + Number(eg.monto),
       0
@@ -999,9 +1600,30 @@ export async function obtenerDatosReporteAnalitico(
     };
   });
 
+  // Agregar "Caja Filiales" (virtual) si hay movimientos de filiales
+  const totalDiezmosFiliales = diezmosFiliales.reduce(
+    (sum, dz) => sum + Number(dz.monto),
+    0
+  );
+  const totalEgresosFiliales = egresosFiliales.reduce(
+    (sum, eg) => sum + Number(eg.monto),
+    0
+  );
+
+  if (totalDiezmosFiliales > 0 || totalEgresosFiliales > 0) {
+    porCaja.push({
+      id: "filiales",
+      nombre: "Caja Filiales",
+      ingresos: totalDiezmosFiliales,
+      egresos: totalEgresosFiliales,
+      balance: totalDiezmosFiliales - totalEgresosFiliales,
+    });
+  }
+
   // 6. Totales generales
   let totalIngresosAnio = 0;
   let totalEgresosAnio = 0;
+
   ingresosFiltrados.forEach((ing) => {
     ing.montos.forEach((m) => {
       if (!filtros.monedaId || m.monedaId === filtros.monedaId) {
@@ -1009,7 +1631,20 @@ export async function obtenerDatosReporteAnalitico(
       }
     });
   });
+
+  donaciones.forEach((don) => {
+    totalIngresosAnio += Number(don.monto);
+  });
+
+  diezmosFiliales.forEach((dz) => {
+    totalIngresosAnio += Number(dz.monto);
+  });
+
   totalEgresosAnio = egresos.reduce((sum, eg) => sum + Number(eg.monto), 0);
+  totalEgresosAnio += egresosFiliales.reduce(
+    (sum, eg) => sum + Number(eg.monto),
+    0
+  );
 
   // Serializar moneda seleccionada
   const monedaSeleccionadaRaw = filtros.monedaId
@@ -1033,8 +1668,9 @@ export async function obtenerDatosReporteAnalitico(
       ingresos: totalIngresosAnio,
       egresos: totalEgresosAnio,
       balance: totalIngresosAnio - totalEgresosAnio,
-      cantidadIngresos: ingresosFiltrados.length,
-      cantidadEgresos: egresos.length,
+      cantidadIngresos:
+        ingresosFiltrados.length + donaciones.length + diezmosFiliales.length,
+      cantidadEgresos: egresos.length + egresosFiliales.length,
     },
     monedas: monedasRaw.map(serializarMoneda),
   };

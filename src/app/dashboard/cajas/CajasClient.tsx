@@ -29,6 +29,7 @@ interface CajaData {
   sociedad: { nombre: string } | null;
   tipoIngreso: { nombre: string } | null;
   saldos: SaldoCaja[];
+  esVirtual?: boolean;
 }
 
 interface CajasClientProps {
@@ -133,34 +134,54 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
             (s) => s.ingresos > 0 || s.egresos > 0
           );
 
+          // Diseño especial para cajas virtuales
+          const cardClassName = caja.esVirtual
+            ? "hover:shadow-lg transition-shadow border-2 border-dashed border-[#9775c4] bg-gradient-to-br from-[#f8f3ff] to-white"
+            : "hover:shadow-lg transition-shadow";
+
           return (
-            <Card key={caja.id} className="hover:shadow-lg transition-shadow">
+            <Card key={caja.id} className={cardClassName}>
               <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-[#203b46]">
-                    {caja.nombre}
-                  </h3>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-[#203b46]">
+                      {caja.nombre}
+                    </h3>
+                    {caja.esVirtual && (
+                      <Badge variant="info" size="sm">
+                        Virtual
+                      </Badge>
+                    )}
+                  </div>
                   {caja.descripcion && (
-                    <p className="text-sm text-[#73a9bf]">{caja.descripcion}</p>
+                    <p className="text-sm text-[#73a9bf] mt-1">
+                      {caja.descripcion}
+                    </p>
                   )}
                 </div>
-                <Badge variant={caja.activa ? "success" : "default"}>
-                  {caja.activa ? "Activa" : "Inactiva"}
-                </Badge>
+                {!caja.esVirtual && (
+                  <Badge variant={caja.activa ? "success" : "default"}>
+                    {caja.activa ? "Activa" : "Inactiva"}
+                  </Badge>
+                )}
               </div>
 
               {/* Tags de asignación */}
-              <div className="flex flex-wrap gap-1 mb-3">
-                {caja.sociedad && (
-                  <Badge variant="info">{caja.sociedad.nombre}</Badge>
-                )}
-                {caja.tipoIngreso && (
-                  <Badge variant="warning">{caja.tipoIngreso.nombre}</Badge>
-                )}
-                {!caja.sociedad && !caja.tipoIngreso && (
-                  <span className="text-xs text-[#73a9bf] italic">General</span>
-                )}
-              </div>
+              {!caja.esVirtual && (
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {caja.sociedad && (
+                    <Badge variant="info">{caja.sociedad.nombre}</Badge>
+                  )}
+                  {caja.tipoIngreso && (
+                    <Badge variant="warning">{caja.tipoIngreso.nombre}</Badge>
+                  )}
+                  {!caja.sociedad && !caja.tipoIngreso && (
+                    <span className="text-xs text-[#73a9bf] italic">
+                      General
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Saldos por moneda */}
               {hasSaldos ? (
