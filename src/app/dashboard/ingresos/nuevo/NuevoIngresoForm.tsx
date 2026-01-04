@@ -110,16 +110,24 @@ export function NuevoIngresoForm({
     [monedas]
   );
 
-  // Buscar caja principal y secundaria basada en sociedad y tipo de ingreso
+  // Buscar caja basada en sociedad y tipo de ingreso
   useEffect(() => {
     if (formData.sociedadId && formData.tipoIngresoId) {
       let cajaPrincipal: Caja | undefined;
       let cajaSecundariaEncontrada: Caja | undefined;
 
+      // Obtener el tipo de ingreso seleccionado
+      const tipoIngresoSeleccionado = tiposIngreso.find(
+        (t) => t.id === formData.tipoIngresoId
+      );
+      const esOfrenda = tipoIngresoSeleccionado?.nombre
+        .toLowerCase()
+        .includes("ofrenda");
+
       // Buscar caja general
       const cajaGeneral = cajas.find((c) => c.esGeneral);
 
-      // Buscar caja específica de la sociedad + tipo de ingreso
+      // Buscar caja específica: sociedad + tipo de ingreso
       const cajaEspecifica = cajas.find(
         (c) =>
           c.sociedadId === formData.sociedadId &&
@@ -127,15 +135,7 @@ export function NuevoIngresoForm({
           !c.esGeneral
       );
 
-      // Buscar caja solo por sociedad (sin tipo específico)
-      const cajaPorSociedad = cajas.find(
-        (c) =>
-          c.sociedadId === formData.sociedadId &&
-          !c.tipoIngresoId &&
-          !c.esGeneral
-      );
-
-      // Buscar caja por tipo de ingreso (acepta todas las sociedades)
+      // Buscar caja solo por tipo de ingreso (cualquier sociedad)
       const cajaPorTipo = cajas.find(
         (c) =>
           c.tipoIngresoId === formData.tipoIngresoId &&
@@ -143,30 +143,36 @@ export function NuevoIngresoForm({
           !c.esGeneral
       );
 
-      // Lógica de asignación:
-      // 1. Si hay caja general Y (caja específica O caja por tipo) → dinero va a general, tracking en la otra
-      // 2. Si hay caja general Y caja por sociedad → dinero va a general, tracking en sociedad
-      // 3. Si solo hay caja general → dinero va a general
-      // 4. Si solo hay caja específica → dinero va ahí
-      // 5. Si solo hay caja por tipo (todas las sociedades) → dinero va ahí
-      // 6. Si solo hay caja por sociedad → dinero va ahí
+      // Buscar caja solo por sociedad (cualquier tipo de ingreso)
+      const cajaPorSociedad = cajas.find(
+        (c) =>
+          c.sociedadId === formData.sociedadId &&
+          !c.tipoIngresoId &&
+          !c.esGeneral
+      );
 
-      if (cajaGeneral) {
-        cajaPrincipal = cajaGeneral;
-        // Buscar caja secundaria para tracking (prioridad: específica > tipo > sociedad)
-        if (cajaEspecifica) {
-          cajaSecundariaEncontrada = cajaEspecifica;
-        } else if (cajaPorTipo) {
-          cajaSecundariaEncontrada = cajaPorTipo;
-        } else if (cajaPorSociedad) {
-          cajaSecundariaEncontrada = cajaPorSociedad;
+      if (esOfrenda) {
+        // TIPO OFRENDA: Usa sistema dual (General + tracking por sociedad)
+        if (cajaGeneral) {
+          cajaPrincipal = cajaGeneral;
+          // Prioridad para tracking: específica > por sociedad
+          cajaSecundariaEncontrada =
+            cajaEspecifica || cajaPorSociedad || undefined;
         }
-      } else if (cajaEspecifica) {
-        cajaPrincipal = cajaEspecifica;
-      } else if (cajaPorTipo) {
-        cajaPrincipal = cajaPorTipo;
-      } else if (cajaPorSociedad) {
-        cajaPrincipal = cajaPorSociedad;
+      } else {
+        // OTROS TIPOS: Van directo a su caja específica (sin tracking)
+        // Prioridad: específica (sociedad+tipo) > por tipo > general
+        if (cajaEspecifica) {
+          cajaPrincipal = cajaEspecifica;
+          cajaSecundariaEncontrada = undefined;
+        } else if (cajaPorTipo) {
+          cajaPrincipal = cajaPorTipo;
+          cajaSecundariaEncontrada = undefined;
+        } else if (cajaGeneral) {
+          // Si no hay caja específica, usar general (sin tracking)
+          cajaPrincipal = cajaGeneral;
+          cajaSecundariaEncontrada = undefined;
+        }
       }
 
       if (cajaPrincipal) {
@@ -183,7 +189,7 @@ export function NuevoIngresoForm({
       setCajaSugerida(false);
       setCajaSecundaria(null);
     }
-  }, [formData.sociedadId, formData.tipoIngresoId, cajas]);
+  }, [formData.sociedadId, formData.tipoIngresoId, cajas, tiposIngreso]);
 
   // Si se selecciona caja manualmente
   useEffect(() => {

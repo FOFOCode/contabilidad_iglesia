@@ -386,8 +386,14 @@ export async function obtenerResumenDashboard() {
     // Obtener IDs de cajas para filtrar
     const cajaIds = cajasActivas.map((c) => c.id);
 
-    // Consultas optimizadas: una sola consulta para todos los ingresos y egresos
-    const [ingresosAgrupados, egresosAgrupados] = await Promise.all([
+    // Consultas optimizadas: obtener ingresos principales, secundarios, egresos y donaciones
+    const [
+      ingresosPrincipalesAgrupados,
+      ingresosSecundariosAgrupados,
+      egresosAgrupados,
+      donacionesAgrupadas,
+    ] = await Promise.all([
+      // Ingresos principales (cajas generales)
       prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
         SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
         FROM ingreso_montos im
@@ -395,7 +401,22 @@ export async function obtenerResumenDashboard() {
         WHERE i."cajaId" = ANY(${cajaIds}::text[])
         GROUP BY i."cajaId", im."monedaId"
       `,
+      // Ingresos secundarios (cajas de tracking)
+      prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
+        SELECT i."cajaSecundariaId" as "cajaId", im."monedaId", SUM(im.monto)::float as total
+        FROM ingreso_montos im
+        INNER JOIN ingresos i ON im."ingresoId" = i.id
+        WHERE i."cajaSecundariaId" = ANY(${cajaIds}::text[])
+        GROUP BY i."cajaSecundariaId", im."monedaId"
+      `,
+      // Egresos
       prisma.egreso.groupBy({
+        by: ["cajaId", "monedaId"],
+        where: { cajaId: { in: cajaIds } },
+        _sum: { monto: true },
+      }),
+      // Donaciones (solo se suman a cajas generales)
+      prisma.donacion.groupBy({
         by: ["cajaId", "monedaId"],
         where: { cajaId: { in: cajaIds } },
         _sum: { monto: true },
@@ -403,9 +424,22 @@ export async function obtenerResumenDashboard() {
     ]);
 
     // Mapas para acceso rápido
-    const ingresosMap = new Map<string, number>();
-    ingresosAgrupados.forEach((ing) => {
-      ingresosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+    const ingresosPrincipalesMap = new Map<string, number>();
+    ingresosPrincipalesAgrupados.forEach((ing) => {
+      ingresosPrincipalesMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+    });
+
+    const ingresosSecundariosMap = new Map<string, number>();
+    ingresosSecundariosAgrupados.forEach((ing) => {
+      ingresosSecundariosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+    });
+
+    const donacionesMap = new Map<string, number>();
+    donacionesAgrupadas.forEach((don) => {
+      donacionesMap.set(
+        `${don.cajaId}-${don.monedaId}`,
+        Number(don._sum.monto || 0)
+      );
     });
 
     const egresosMap = new Map<string, number>();
@@ -424,8 +458,17 @@ export async function obtenerResumenDashboard() {
       ...caja,
       saldos: monedas.map((moneda) => {
         const key = `${caja.id}-${moneda.id}`;
-        const ingresos = ingresosMap.get(key) || 0;
+
+        // Para cajas generales: usar ingresos principales + donaciones
+        // Para cajas de tracking (no generales): usar ingresos secundarios
+        const ingresosBase = caja.esGeneral
+          ? ingresosPrincipalesMap.get(key) || 0
+          : ingresosSecundariosMap.get(key) || 0;
+
+        const donaciones = caja.esGeneral ? donacionesMap.get(key) || 0 : 0;
+        const ingresos = ingresosBase + donaciones;
         const egresos = egresosMap.get(key) || 0;
+
         return {
           monedaId: moneda.id,
           saldo: ingresos - egresos,

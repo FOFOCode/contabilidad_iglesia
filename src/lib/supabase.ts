@@ -5,16 +5,28 @@ import {
 } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+// Singleton para el cliente browser (evita múltiples instancias en el cliente)
+let browserClient: ReturnType<typeof createBrowserClient> | null = null;
+
 export class SupabaseService {
   private static supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   private static supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  // Client-side Supabase client
+  // Client-side Supabase client con patrón Singleton
   static createClient() {
-    return createBrowserClient(this.supabaseUrl, this.supabaseKey);
+    if (typeof window === "undefined") {
+      // En el servidor, siempre crear nueva instancia
+      return createBrowserClient(this.supabaseUrl, this.supabaseKey);
+    }
+
+    // En el navegador, reutilizar instancia existente
+    if (!browserClient) {
+      browserClient = createBrowserClient(this.supabaseUrl, this.supabaseKey);
+    }
+    return browserClient;
   }
 
-  // Server-side Supabase client
+  // Server-side Supabase client (siempre crea nueva instancia con cookies)
   static async createServerClient() {
     const cookieStore = await cookies();
 

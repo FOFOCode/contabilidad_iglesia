@@ -25,32 +25,34 @@ interface CrearIngresoData {
 }
 
 export async function crearIngreso(data: CrearIngresoData) {
-  return prisma.ingreso.create({
-    data: {
-      fechaRecaudacion: data.fechaRecaudacion,
-      sociedadId: data.sociedadId,
-      servicioId: data.servicioId,
-      tipoIngresoId: data.tipoIngresoId,
-      cajaId: data.cajaId,
-      cajaSecundariaId: data.cajaSecundariaId || null,
-      usuarioId: data.usuarioId,
-      comentario: data.comentario,
-      montos: {
-        create: data.montos.map((m) => ({
-          monedaId: m.monedaId,
-          monto: m.monto,
-        })),
+  return withRetry(() =>
+    prisma.ingreso.create({
+      data: {
+        fechaRecaudacion: data.fechaRecaudacion,
+        sociedadId: data.sociedadId,
+        servicioId: data.servicioId,
+        tipoIngresoId: data.tipoIngresoId,
+        cajaId: data.cajaId,
+        cajaSecundariaId: data.cajaSecundariaId || null,
+        usuarioId: data.usuarioId,
+        comentario: data.comentario,
+        montos: {
+          create: data.montos.map((m) => ({
+            monedaId: m.monedaId,
+            monto: m.monto,
+          })),
+        },
       },
-    },
-    include: {
-      montos: { include: { moneda: true } },
-      sociedad: true,
-      servicio: true,
-      tipoIngreso: true,
-      caja: true,
-      cajaSecundaria: true,
-    },
-  });
+      include: {
+        montos: { include: { moneda: true } },
+        sociedad: true,
+        servicio: true,
+        tipoIngreso: true,
+        caja: true,
+        cajaSecundaria: true,
+      },
+    })
+  );
 }
 
 export async function crearIngresosMultiples(ingresos: CrearIngresoData[]) {
@@ -1089,13 +1091,22 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     };
   }
   if (filtros.cajaId) {
-    whereIngresos.cajaId = filtros.cajaId;
+    // Para ingresos, buscar tanto en caja principal como en caja secundaria
+    // (el tracking secundario solo se usa para ofrendas)
+    whereIngresos.OR = [
+      { cajaId: filtros.cajaId },
+      { cajaSecundariaId: filtros.cajaId },
+    ];
     whereEgresos.cajaId = filtros.cajaId;
     whereDonaciones.cajaId = filtros.cajaId;
-    // No aplicar filtro de caja a filiales ya que tienen su propia caja
+    // Los movimientos de filiales NO deben aparecer cuando se filtra por caja específica
+    // ya que tienen su propia "Caja Filiales" virtual
   }
   if (filtros.sociedadId) {
     whereIngresos.sociedadId = filtros.sociedadId;
+    // Las donaciones, diezmos y egresos de filiales NO tienen sociedad asociada
+    // Por lo tanto, cuando se filtra por sociedad, NO debemos mostrarlos
+    // Solo mostramos ingresos de esa sociedad específica
   }
 
   const [
@@ -1130,8 +1141,10 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
       },
       orderBy: { fechaSalida: "desc" },
     }),
+    // Si hay filtro de sociedad, NO traer donaciones ni diezmos filiales
+    // porque estos no pertenecen a ninguna sociedad específica
     prisma.donacion.findMany({
-      where: whereDonaciones,
+      where: filtros.sociedadId ? { id: "none-match" } : whereDonaciones,
       include: {
         tipoOfrenda: true,
         caja: true,
@@ -1141,7 +1154,10 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
       orderBy: { fecha: "desc" },
     }),
     prisma.diezmoFilial.findMany({
-      where: whereDiezmosFiliales,
+      where:
+        filtros.sociedadId || filtros.cajaId
+          ? { id: "none-match" }
+          : whereDiezmosFiliales,
       include: {
         filial: { include: { pais: true } },
         moneda: true,
@@ -1150,7 +1166,10 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
       orderBy: { creadoEn: "desc" },
     }),
     prisma.egresoFilial.findMany({
-      where: whereEgresosFiliales,
+      where:
+        filtros.sociedadId || filtros.cajaId
+          ? { id: "none-match" }
+          : whereEgresosFiliales,
       include: {
         tipoGasto: true,
         moneda: true,
@@ -1567,8 +1586,10 @@ export async function obtenerDatosReporteAnalitico(
 
   // 5. Desglose por Caja
   const porCaja = cajas.map((caja) => {
+    // Incluir ingresos donde esta caja es principal O secundaria
+    // (tracking secundario solo para ofrendas)
     const ingresosDeCaja = ingresosFiltrados.filter(
-      (ing) => ing.cajaId === caja.id
+      (ing) => ing.cajaId === caja.id || ing.cajaSecundariaId === caja.id
     );
     const donacionesDeCaja = donaciones.filter((don) => don.cajaId === caja.id);
     const egresosDeCaja = egresos.filter((eg) => eg.cajaId === caja.id);

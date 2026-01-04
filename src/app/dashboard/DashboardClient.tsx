@@ -372,63 +372,186 @@ export function DashboardClient({
         )}
       </section>
 
-      {/* Cajas con mayor saldo */}
+      {/* Saldos por Caja - Diseño Simplificado */}
       {cajasConSaldos.length > 0 && (
         <section>
-          <h2 className="text-base md:text-lg font-semibold text-[#203b46] mb-2 md:mb-3">
-            🗃️ Saldos por Caja
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-            {cajasConSaldos.map((caja) => (
-              <Link key={caja.id} href={`/dashboard/cajas/${caja.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-[#203b46]">
-                      {caja.nombre}
-                    </h4>
-                    {caja.esGeneral && (
-                      <Badge variant="info" size="sm">
-                        General
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base md:text-lg font-semibold text-[#203b46]">
+                💰 Estado de Cajas
+              </h2>
+              <p className="text-xs text-[#73a9bf] mt-1">
+                Dinero total y distribución por origen
+              </p>
+            </div>
+            <Link href="/dashboard/cajas">
+              <button className="text-sm text-[#2ba193] hover:underline font-medium">
+                Ver todas →
+              </button>
+            </Link>
+          </div>
+
+          {/* Caja General - Destacada */}
+          {cajasConSaldos
+            .filter((caja) => caja.esGeneral)
+            .map((caja) => (
+              <div key={caja.id} className="mb-5">
+                <Link href={`/dashboard/cajas/${caja.id}`}>
+                  <Card className="hover:shadow-xl transition-all cursor-pointer border-2 border-[#2ba193]/30 bg-gradient-to-br from-[#f0f9f7] to-white">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#2ba193] to-[#238a7e] flex items-center justify-center text-2xl shadow-lg">
+                          🏦
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[#203b46] text-lg">
+                            {caja.nombre}
+                          </h3>
+                          <p className="text-xs text-[#73a9bf]">
+                            Dinero Total Disponible
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="success" size="sm" className="text-xs">
+                        PRINCIPAL
                       </Badge>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    {caja.saldos.length > 0 ? (
-                      caja.saldos.map((saldo) => {
-                        const moneda = monedas.find(
-                          (m) => m.id === saldo.monedaId
-                        );
-                        if (!moneda || saldo.saldo === 0) return null;
-                        return (
-                          <div
-                            key={saldo.monedaId}
-                            className="flex justify-between"
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {caja.saldos.length > 0 ? (
+                        caja.saldos.map((saldo) => {
+                          const moneda = monedas.find(
+                            (m) => m.id === saldo.monedaId
+                          );
+                          if (!moneda || saldo.saldo === 0) return null;
+                          return (
+                            <div
+                              key={saldo.monedaId}
+                              className="bg-white rounded-lg p-4 border border-[#dceaef] shadow-sm"
+                            >
+                              <div className="text-xs text-[#73a9bf] mb-1">
+                                Saldo en {moneda.codigo}
+                              </div>
+                              <div
+                                className={`text-2xl font-bold ${
+                                  saldo.saldo >= 0
+                                    ? "text-[#2ba193]"
+                                    : "text-[#e0451f]"
+                                }`}
+                              >
+                                {formatMonto(saldo.saldo, moneda.simbolo)}
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="col-span-2 text-center text-sm text-[#73a9bf] py-4">
+                          Sin movimientos
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </Link>
+              </div>
+            ))}
+
+          {/* Cajas de Desglose - Tabla Simple */}
+          {cajasConSaldos.filter((caja) => !caja.esGeneral).length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-[#eef4f7] flex items-center justify-center text-sm">
+                  📊
+                </div>
+                <h3 className="font-semibold text-[#305969]">
+                  Desglose por Origen
+                </h3>
+              </div>
+
+              <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#eef4f7] bg-[#f8fbfc]">
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-[#305969]">
+                          Caja
+                        </th>
+                        {monedas.map((moneda) => (
+                          <th
+                            key={moneda.id}
+                            className="text-right py-3 px-4 text-xs font-semibold text-[#305969]"
                           >
-                            <span className="text-sm text-[#73a9bf]">
-                              {moneda.codigo}:
-                            </span>
-                            <span
-                              className={`font-semibold ${
-                                saldo.saldo >= 0
-                                  ? "text-[#2ba193]"
-                                  : "text-[#e0451f]"
+                            {moneda.codigo}
+                          </th>
+                        ))}
+                        <th className="py-3 px-4"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cajasConSaldos
+                        .filter((caja) => !caja.esGeneral)
+                        .map((caja, idx) => {
+                          const tieneSaldo = caja.saldos.some(
+                            (s) => s.saldo !== 0
+                          );
+                          return (
+                            <tr
+                              key={caja.id}
+                              className={`border-b border-[#eef4f7] hover:bg-[#f8fbfc] transition-colors ${
+                                idx % 2 === 0 ? "bg-white" : "bg-[#fcfdfe]"
                               }`}
                             >
-                              {formatMonto(saldo.saldo, moneda.simbolo)}
-                            </span>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <span className="text-sm text-[#73a9bf]">
-                        Sin movimientos
-                      </span>
-                    )}
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">📦</span>
+                                  <span className="text-sm font-medium text-[#203b46]">
+                                    {caja.nombre}
+                                  </span>
+                                </div>
+                              </td>
+                              {monedas.map((moneda) => {
+                                const saldo = caja.saldos.find(
+                                  (s) => s.monedaId === moneda.id
+                                );
+                                const valor = saldo?.saldo || 0;
+                                return (
+                                  <td
+                                    key={moneda.id}
+                                    className="text-right py-3 px-4"
+                                  >
+                                    {valor !== 0 ? (
+                                      <span
+                                        className={`text-sm font-semibold ${
+                                          valor >= 0
+                                            ? "text-[#2ba193]"
+                                            : "text-[#e0451f]"
+                                        }`}
+                                      >
+                                        {formatMonto(valor, moneda.simbolo)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-[#dceaef]">
+                                        —
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              <td className="py-3 px-4 text-right">
+                                <Link href={`/dashboard/cajas/${caja.id}`}>
+                                  <button className="text-xs text-[#40768c] hover:text-[#2ba193] font-medium">
+                                    Ver →
+                                  </button>
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          )}
         </section>
       )}
 

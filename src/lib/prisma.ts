@@ -11,12 +11,20 @@ function createPool() {
   const connectionString = process.env.DATABASE_URL;
   return new Pool({
     connectionString,
-    // Configuración optimizada para Supabase/serverless
-    max: 10, // Máximo de conexiones en el pool
-    min: 2, // Mínimo de conexiones mantenidas
-    idleTimeoutMillis: 30000, // Cerrar conexiones inactivas después de 30s
-    connectionTimeoutMillis: 10000, // Timeout de conexión: 10s
+    // Configuración optimizada para Vercel Serverless + Supabase Pooler
+    max: 1, // CRÍTICO: Una conexión por instancia serverless
+    min: 0, // Sin conexiones mínimas (serverless debe ser stateless)
+    idleTimeoutMillis: 10000, // Cerrar conexiones inactivas rápido (10s)
+    connectionTimeoutMillis: 5000, // Timeout más agresivo (5s)
     allowExitOnIdle: true, // Permitir que el proceso termine si está idle
+
+    // Configuración adicional para resiliencia en móviles
+    statement_timeout: 20000, // 20s timeout para queries largas
+    query_timeout: 20000, // 20s timeout general
+
+    // Habilitar keep-alive para conexiones más estables
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
 }
 

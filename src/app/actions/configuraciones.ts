@@ -22,12 +22,14 @@ export async function createMoneda(data: {
   esPrincipal?: boolean;
   orden?: number;
 }) {
-  return prisma.moneda.create({
-    data: {
-      ...data,
-      tasaCambio: data.tasaCambio ?? 1,
-    },
-  });
+  return withRetry(() =>
+    prisma.moneda.create({
+      data: {
+        ...data,
+        tasaCambio: data.tasaCambio ?? 1,
+      },
+    })
+  );
 }
 
 export async function updateMoneda(
@@ -42,16 +44,20 @@ export async function updateMoneda(
     orden?: number;
   }
 ) {
-  return prisma.moneda.update({
-    where: { id },
-    data,
-  });
+  return withRetry(() =>
+    prisma.moneda.update({
+      where: { id },
+      data,
+    })
+  );
 }
 
 export async function deleteMoneda(id: string) {
-  return prisma.moneda.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.moneda.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================
@@ -71,7 +77,7 @@ export async function createSociedad(data: {
   descripcion?: string;
   orden?: number;
 }) {
-  return prisma.sociedad.create({ data });
+  return withRetry(() => prisma.sociedad.create({ data }));
 }
 
 export async function updateSociedad(
@@ -83,16 +89,20 @@ export async function updateSociedad(
     orden?: number;
   }
 ) {
-  return prisma.sociedad.update({
-    where: { id },
-    data,
-  });
+  return withRetry(() =>
+    prisma.sociedad.update({
+      where: { id },
+      data,
+    })
+  );
 }
 
 export async function deleteSociedad(id: string) {
-  return prisma.sociedad.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.sociedad.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================
@@ -112,7 +122,7 @@ export async function createTipoServicio(data: {
   descripcion?: string;
   orden?: number;
 }) {
-  return prisma.tipoServicio.create({ data });
+  return withRetry(() => prisma.tipoServicio.create({ data }));
 }
 
 export async function updateTipoServicio(
@@ -124,16 +134,20 @@ export async function updateTipoServicio(
     orden?: number;
   }
 ) {
-  return prisma.tipoServicio.update({
-    where: { id },
-    data,
-  });
+  return withRetry(() =>
+    prisma.tipoServicio.update({
+      where: { id },
+      data,
+    })
+  );
 }
 
 export async function deleteTipoServicio(id: string) {
-  return prisma.tipoServicio.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.tipoServicio.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================
@@ -153,7 +167,7 @@ export async function createTipoIngreso(data: {
   descripcion?: string;
   orden?: number;
 }) {
-  return prisma.tipoIngreso.create({ data });
+  return withRetry(() => prisma.tipoIngreso.create({ data }));
 }
 
 export async function updateTipoIngreso(
@@ -165,16 +179,20 @@ export async function updateTipoIngreso(
     orden?: number;
   }
 ) {
-  return prisma.tipoIngreso.update({
-    where: { id },
-    data,
-  });
+  return withRetry(() =>
+    prisma.tipoIngreso.update({
+      where: { id },
+      data,
+    })
+  );
 }
 
 export async function deleteTipoIngreso(id: string) {
-  return prisma.tipoIngreso.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.tipoIngreso.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================
@@ -194,7 +212,7 @@ export async function createTipoGasto(data: {
   descripcion?: string;
   orden?: number;
 }) {
-  return prisma.tipoGasto.create({ data });
+  return withRetry(() => prisma.tipoGasto.create({ data }));
 }
 
 export async function updateTipoGasto(
@@ -206,16 +224,20 @@ export async function updateTipoGasto(
     orden?: number;
   }
 ) {
-  return prisma.tipoGasto.update({
-    where: { id },
-    data,
-  });
+  return withRetry(() =>
+    prisma.tipoGasto.update({
+      where: { id },
+      data,
+    })
+  );
 }
 
 export async function deleteTipoGasto(id: string) {
-  return prisma.tipoGasto.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.tipoGasto.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================
@@ -242,7 +264,7 @@ export async function createCaja(data: {
   sociedadId?: string;
   tipoIngresoId?: string;
 }) {
-  return prisma.caja.create({ data });
+  return withRetry(() => prisma.caja.create({ data }));
 }
 
 export async function updateCaja(
@@ -257,16 +279,20 @@ export async function updateCaja(
     tipoIngresoId?: string | null;
   }
 ) {
-  return prisma.caja.update({
-    where: { id },
-    data,
-  });
+  return withRetry(() =>
+    prisma.caja.update({
+      where: { id },
+      data,
+    })
+  );
 }
 
 export async function deleteCaja(id: string) {
-  return prisma.caja.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.caja.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================
@@ -298,19 +324,21 @@ export async function createUsuario(data: {
 }) {
   // Hash simple para la contraseña (en producción usar bcrypt)
   const contrasenaHash = Buffer.from(data.contrasena).toString("base64");
-  return prisma.usuario.create({
-    data: {
-      ...data,
-      contrasena: contrasenaHash,
-    },
-    select: {
-      id: true,
-      nombre: true,
-      apellido: true,
-      correo: true,
-      activo: true,
-    },
-  });
+  return withRetry(() =>
+    prisma.usuario.create({
+      data: {
+        ...data,
+        contrasena: contrasenaHash,
+      },
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        activo: true,
+      },
+    })
+  );
 }
 
 export async function updateUsuario(
@@ -327,23 +355,27 @@ export async function updateUsuario(
   if (data.contrasena) {
     updateData.contrasena = Buffer.from(data.contrasena).toString("base64");
   }
-  return prisma.usuario.update({
-    where: { id },
-    data: updateData,
-    select: {
-      id: true,
-      nombre: true,
-      apellido: true,
-      correo: true,
-      activo: true,
-    },
-  });
+  return withRetry(() =>
+    prisma.usuario.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        activo: true,
+      },
+    })
+  );
 }
 
 export async function deleteUsuario(id: string) {
-  return prisma.usuario.delete({
-    where: { id },
-  });
+  return withRetry(() =>
+    prisma.usuario.delete({
+      where: { id },
+    })
+  );
 }
 
 // =====================

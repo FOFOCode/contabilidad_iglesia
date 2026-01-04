@@ -746,37 +746,325 @@ export function ReportesClient({
 
   return (
     <div className="p-4 md:p-5 lg:p-6">
-      {/* Pestañas de tipo de reporte */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {[
-          { id: "movimientos", label: "📋 Movimientos" },
-          { id: "comparativo", label: "📈 Comparativo" },
-          { id: "sociedades", label: "👥 Sociedades" },
-          { id: "tipoIngreso", label: "💰 Ingresos" },
-          { id: "tipoGasto", label: "💸 Gastos" },
-          { id: "cajas", label: "🏦 Cajas" },
-          { id: "diezmosFiliales", label: "⛪ Diezmos Filiales" },
-          { id: "cajaFiliales", label: "💵 Caja General Filiales" },
-        ].map((tab) => (
+      {/* Selector de Reportes - Diseño Compacto */}
+      {!mostrarResultados && (
+        <div className="mb-6">
+          {/* Header */}
+          <div className="mb-4">
+            <h1 className="text-xl md:text-2xl font-bold text-[#203b46]">
+              📊 Generador de Reportes
+            </h1>
+            <p className="text-sm text-[#73a9bf]">
+              Selecciona el tipo de análisis que necesitas
+            </p>
+          </div>
+
+          {/* Grid de Reportes - Compacto */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {/* Reporte de Movimientos */}
+            <button
+              onClick={() => {
+                setVistaActiva("movimientos");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "movimientos"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">📋</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "movimientos"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Movimientos
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "movimientos"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Lista de ingresos y egresos con filtros
+              </p>
+            </button>
+
+            {/* Reporte Comparativo */}
+            <button
+              onClick={() => {
+                setVistaActiva("comparativo");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "comparativo"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">📈</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "comparativo"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Análisis Mensual
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "comparativo"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Comparativa ingresos vs egresos por mes
+              </p>
+            </button>
+
+            {/* Reporte por Sociedades */}
+            <button
+              onClick={() => {
+                setVistaActiva("sociedades");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "sociedades"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">👥</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "sociedades"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Por Sociedad
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "sociedades"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Recaudación por Hombres, Mujeres, etc.
+              </p>
+            </button>
+
+            {/* Reporte por Tipo de Ingreso */}
+            <button
+              onClick={() => {
+                setVistaActiva("tipoIngreso");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "tipoIngreso"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">💰</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "tipoIngreso"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Tipo Ingreso
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "tipoIngreso"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Diezmos, Ofrendas, Primicias, etc.
+              </p>
+            </button>
+
+            {/* Reporte por Tipo de Gasto */}
+            <button
+              onClick={() => {
+                setVistaActiva("tipoGasto");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "tipoGasto"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">💸</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "tipoGasto"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Tipo Gasto
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "tipoGasto"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Servicios, Mantenimiento, etc.
+              </p>
+            </button>
+
+            {/* Reporte de Cajas */}
+            <button
+              onClick={() => {
+                setVistaActiva("cajas");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "cajas"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">🏦</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "cajas" ? "text-white" : "text-[#203b46]"
+                  }`}
+                >
+                  Estado Cajas
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "cajas" ? "text-white/85" : "text-[#73a9bf]"
+                }`}
+              >
+                Saldos por caja y moneda
+              </p>
+            </button>
+
+            {/* Reporte de Diezmos por Filial */}
+            <button
+              onClick={() => {
+                setVistaActiva("diezmosFiliales");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "diezmosFiliales"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">⛪</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "diezmosFiliales"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Diezmos Filiales
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "diezmosFiliales"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Aportes de iglesias filiales
+              </p>
+            </button>
+
+            {/* Reporte de Cajas por Filial */}
+            <button
+              onClick={() => {
+                setVistaActiva("cajaFiliales");
+                setMostrarResultados(false);
+              }}
+              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                vistaActiva === "cajaFiliales"
+                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">📦</span>
+                <h3
+                  className={`text-sm font-bold ${
+                    vistaActiva === "cajaFiliales"
+                      ? "text-white"
+                      : "text-[#203b46]"
+                  }`}
+                >
+                  Finanzas Filiales
+                </h3>
+              </div>
+              <p
+                className={`text-xs leading-relaxed ${
+                  vistaActiva === "cajaFiliales"
+                    ? "text-white/85"
+                    : "text-[#73a9bf]"
+                }`}
+              >
+                Balance consolidado por iglesia
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Breadcrumb cuando hay resultados */}
+      {mostrarResultados && (
+        <div className="mb-4 flex items-center gap-2">
           <button
-            key={tab.id}
-            onClick={() => {
-              setVistaActiva(tab.id as TipoVista);
-              setMostrarResultados(false);
-            }}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
-              vistaActiva === tab.id
-                ? "bg-[#2ba193] text-white shadow-md"
-                : "bg-white text-[#40768c] hover:bg-[#f8fbfc] border border-[#dceaef] hover:border-[#2ba193]/40 hover:shadow-sm"
-            }`}
+            onClick={() => setMostrarResultados(false)}
+            className="text-sm text-[#2ba193] hover:underline flex items-center gap-1"
           >
-            {tab.label}
+            ← Volver a Reportes
           </button>
-        ))}
-      </div>
+          <span className="text-[#dceaef]">|</span>
+          <span className="text-sm text-[#73a9bf]">
+            {vistaActiva === "movimientos" && "Movimientos Detallados"}
+            {vistaActiva === "comparativo" && "Análisis Mensual"}
+            {vistaActiva === "sociedades" && "Ingresos por Sociedad"}
+            {vistaActiva === "tipoIngreso" && "Clasificación de Ingresos"}
+            {vistaActiva === "tipoGasto" && "Clasificación de Gastos"}
+            {vistaActiva === "cajas" && "Estado de Cajas"}
+            {vistaActiva === "diezmosFiliales" && "Diezmos de Filiales"}
+            {vistaActiva === "cajaFiliales" && "Caja General de Filiales"}
+          </span>
+        </div>
+      )}
 
       {/* Panel de Filtros - Movimientos */}
-      {vistaActiva === "movimientos" && (
+      {vistaActiva === "movimientos" && !mostrarResultados && (
         <Card className="mb-4 md:mb-5">
           <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
             <svg
@@ -893,7 +1181,8 @@ export function ReportesClient({
       {/* Panel de Filtros - Reportes Analíticos */}
       {vistaActiva !== "movimientos" &&
         vistaActiva !== "diezmosFiliales" &&
-        vistaActiva !== "cajaFiliales" && (
+        vistaActiva !== "cajaFiliales" &&
+        !mostrarResultados && (
           <Card className="mb-4 md:mb-5">
             <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
               <svg
@@ -1746,7 +2035,7 @@ export function ReportesClient({
       )}
 
       {/* Vista: Diezmos Filiales - Panel de Filtros */}
-      {vistaActiva === "diezmosFiliales" && (
+      {vistaActiva === "diezmosFiliales" && !mostrarResultados && (
         <Card className="mb-4 md:mb-5">
           <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
             <svg
@@ -2057,7 +2346,7 @@ export function ReportesClient({
       )}
 
       {/* Vista: Caja General Filiales - Panel de Filtros */}
-      {vistaActiva === "cajaFiliales" && (
+      {vistaActiva === "cajaFiliales" && !mostrarResultados && (
         <Card className="mb-4 md:mb-5">
           <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
             <svg
