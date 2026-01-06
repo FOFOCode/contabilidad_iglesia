@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, Input, Badge, Table } from "@/components/ui";
+import { Card, Button, Input, Badge, Table, Select } from "@/components/ui";
 import {
   getUsuarios,
   createUsuario,
   updateUsuario,
   deleteUsuario,
 } from "@/app/actions/configuraciones";
+import { obtenerRoles, type Rol } from "@/app/actions/roles";
 
 interface Usuario {
   id: string;
@@ -16,10 +17,16 @@ interface Usuario {
   correo: string;
   activo: boolean;
   creadoEn: Date;
+  rolId: string | null;
+  rol?: {
+    id: string;
+    nombre: string;
+  } | null;
 }
 
 export function UsuariosConfig() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [roles, setRoles] = useState<Rol[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<Usuario | null>(null);
@@ -33,12 +40,30 @@ export function UsuariosConfig() {
     correo: "",
     contrasena: "",
     confirmarContrasena: "",
+    rolId: "",
   });
 
-  // Cargar usuarios al montar
+  // Cargar usuarios y roles al montar
   useEffect(() => {
-    loadUsuarios();
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [usuariosData, rolesData] = await Promise.all([
+        getUsuarios(),
+        obtenerRoles(),
+      ]);
+      setUsuarios(usuariosData);
+      setRoles(rolesData.filter((r) => r.activo));
+    } catch (err) {
+      console.error("Error cargando datos:", err);
+      setError("Error al cargar datos");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadUsuarios = async () => {
     try {
@@ -61,6 +86,7 @@ export function UsuariosConfig() {
       correo: "",
       contrasena: "",
       confirmarContrasena: "",
+      rolId: "",
     });
     setError(null);
     setShowModal(true);
@@ -74,6 +100,7 @@ export function UsuariosConfig() {
       correo: usuario.correo,
       contrasena: "",
       confirmarContrasena: "",
+      rolId: usuario.rolId || "",
     });
     setError(null);
     setShowModal(true);
@@ -153,16 +180,18 @@ export function UsuariosConfig() {
           apellido?: string;
           correo?: string;
           contrasena?: string;
+          rolId?: string | null;
         } = {
           nombre: formData.nombre,
           apellido: formData.apellido,
           correo: formData.correo,
+          rolId: formData.rolId || null,
         };
         if (formData.contrasena) {
           updateData.contrasena = formData.contrasena;
         }
         await updateUsuario(editingItem.id, updateData);
-        await loadUsuarios();
+        await loadData();
       } else {
         // Crear nuevo
         await createUsuario({
@@ -170,8 +199,9 @@ export function UsuariosConfig() {
           apellido: formData.apellido,
           correo: formData.correo,
           contrasena: formData.contrasena,
+          rolId: formData.rolId || undefined,
         });
-        await loadUsuarios();
+        await loadData();
       }
       setShowModal(false);
     } catch (err) {
@@ -240,6 +270,18 @@ export function UsuariosConfig() {
                 key: "correo",
                 header: "Correo",
                 render: (u: Usuario) => u.correo,
+              },
+              {
+                key: "rol",
+                header: "Rol",
+                render: (u: Usuario) =>
+                  u.rol ? (
+                    <Badge variant="info" size="sm">
+                      {u.rol.nombre}
+                    </Badge>
+                  ) : (
+                    <span className="text-gray-400 text-sm">Sin rol</span>
+                  ),
               },
               {
                 key: "estado",
@@ -349,6 +391,23 @@ export function UsuariosConfig() {
                 }
                 placeholder="juan@iglesia.com"
                 required
+              />
+
+              <Select
+                label="Rol"
+                value={formData.rolId}
+                onChange={(e) =>
+                  setFormData({ ...formData, rolId: e.target.value })
+                }
+                options={[
+                  { value: "", label: "Sin rol asignado" },
+                  ...roles.map((rol) => ({
+                    value: rol.id,
+                    label: `${rol.nombre}${
+                      rol.esAdmin ? " (Acceso total)" : ""
+                    }`,
+                  })),
+                ]}
               />
 
               <Input

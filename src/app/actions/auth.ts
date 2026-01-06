@@ -6,9 +6,36 @@ import { cookies } from "next/headers";
 // Función para verificar credenciales
 export async function login(correo: string, contrasena: string) {
   try {
-    // Buscar usuario por correo
+    // Buscar usuario por correo, incluyendo rol y permisos
     const usuario = await prisma.usuario.findUnique({
       where: { correo },
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        correo: true,
+        contrasena: true,
+        activo: true,
+        rol: {
+          select: {
+            id: true,
+            nombre: true,
+            permisos: {
+              select: {
+                puedeVer: true,
+                puedeCrear: true,
+                puedeEditar: true,
+                puedeEliminar: true,
+                permiso: {
+                  select: {
+                    modulo: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!usuario) {
@@ -49,6 +76,7 @@ export async function login(correo: string, contrasena: string) {
         nombre: usuario.nombre,
         apellido: usuario.apellido,
         correo: usuario.correo,
+        rol: usuario.rol,
       },
     };
   } catch (error) {
@@ -59,9 +87,24 @@ export async function login(correo: string, contrasena: string) {
 
 // Función para cerrar sesión
 export async function logout() {
-  const cookieStore = await cookies();
-  cookieStore.delete("session");
-  return { success: true };
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete("session");
+    return { success: true };
+  } catch (error) {
+    console.error("[Auth] Error al cerrar sesión:", error);
+    return { success: false };
+  }
+}
+
+// Función para limpiar cookie corrupta
+async function limpiarCookieCorrupta() {
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete("session");
+  } catch (error) {
+    console.error("[Auth] No se pudo limpiar cookie corrupta:", error);
+  }
 }
 
 // Función para obtener el usuario actual
@@ -75,18 +118,44 @@ export async function getUsuarioActual() {
       return null;
     }
 
-    let sessionData;
-    try {
-      sessionData = JSON.parse(
-        Buffer.from(sessionCookie.value, "base64").toString()
-      );
-    } catch (parseError) {
-      console.error("[Auth] Error al parsear cookie de sesión:", parseError);
-      // No podemos borrar la cookie aquí porque podría ser llamado desde un Server Component
+    // Validar que la cookie tenga contenido
+    if (!sessionCookie.value || sessionCookie.value.trim() === "") {
+      console.error("[Auth] Cookie de sesión vacía");
+      await limpiarCookieCorrupta();
       return null;
     }
 
-    // Verificar que el usuario sigue existiendo y activo
+    let sessionData;
+    try {
+      const decodedValue = Buffer.from(
+        sessionCookie.value,
+        "base64"
+      ).toString();
+
+      // Validar que el contenido decodificado no esté vacío
+      if (!decodedValue || decodedValue.trim() === "") {
+        console.error(
+          "[Auth] Contenido de cookie vacío después de decodificar"
+        );
+        await limpiarCookieCorrupta();
+        return null;
+      }
+
+      sessionData = JSON.parse(decodedValue);
+
+      // Validar estructura de sessionData
+      if (!sessionData || typeof sessionData !== "object" || !sessionData.id) {
+        console.error("[Auth] Estructura de sesión inválida");
+        await limpiarCookieCorrupta();
+        return null;
+      }
+    } catch (parseError) {
+      console.error("[Auth] Error al parsear cookie de sesión:", parseError);
+      await limpiarCookieCorrupta();
+      return null;
+    }
+
+    // Verificar que el usuario sigue existiendo y activo, incluir rol en misma consulta
     const usuario = await prisma.usuario.findUnique({
       where: { id: sessionData.id },
       select: {
@@ -95,17 +164,37 @@ export async function getUsuarioActual() {
         apellido: true,
         correo: true,
         activo: true,
+        rol: {
+          select: {
+            id: true,
+            nombre: true,
+            permisos: {
+              select: {
+                puedeVer: true,
+                puedeCrear: true,
+                puedeEditar: true,
+                puedeEliminar: true,
+                permiso: {
+                  select: {
+                    modulo: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
     if (!usuario) {
       console.log("[Auth] Usuario no encontrado en BD, id:", sessionData.id);
-      // No podemos borrar la cookie aquí porque podría ser llamado desde un Server Component
+      await limpiarCookieCorrupta();
       return null;
     }
 
     if (!usuario.activo) {
       console.log("[Auth] Usuario desactivado, id:", sessionData.id);
+      await limpiarCookieCorrupta();
       return null;
     }
 

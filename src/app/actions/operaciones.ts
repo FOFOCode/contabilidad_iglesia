@@ -2,6 +2,18 @@
 
 import { prisma, withRetry } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
+import { getUsuarioActual } from "./auth";
+import { validarPermiso } from "@/lib/permisos";
+
+// Helper para validar permisos del usuario actual
+async function validarPermisoActual(
+  modulo: string,
+  accion: "crear" | "editar" | "eliminar"
+) {
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+  await validarPermiso(usuario.id, modulo, accion);
+}
 
 // =====================
 // INGRESOS
@@ -25,6 +37,7 @@ interface CrearIngresoData {
 }
 
 export async function crearIngreso(data: CrearIngresoData) {
+  await validarPermisoActual("ingresos", "crear");
   return withRetry(() =>
     prisma.ingreso.create({
       data: {
@@ -127,9 +140,67 @@ export async function obtenerIngresoPorId(id: string) {
 }
 
 export async function eliminarIngreso(id: string) {
+  await validarPermisoActual("ingresos", "eliminar");
   return prisma.ingreso.delete({
     where: { id },
   });
+}
+
+interface ActualizarIngresoData {
+  fechaRecaudacion?: Date;
+  sociedadId?: string;
+  servicioId?: string;
+  tipoIngresoId?: string;
+  cajaId?: string;
+  cajaSecundariaId?: string | null;
+  comentario?: string | null;
+  montos?: MontoIngreso[];
+}
+
+export async function actualizarIngreso(
+  id: string,
+  data: ActualizarIngresoData
+) {
+  await validarPermisoActual("ingresos", "editar");
+
+  // Si se actualizan los montos, primero eliminar los existentes
+  if (data.montos) {
+    await prisma.ingresoMonto.deleteMany({
+      where: { ingresoId: id },
+    });
+  }
+
+  return withRetry(() =>
+    prisma.ingreso.update({
+      where: { id },
+      data: {
+        fechaRecaudacion: data.fechaRecaudacion,
+        sociedadId: data.sociedadId,
+        servicioId: data.servicioId,
+        tipoIngresoId: data.tipoIngresoId,
+        cajaId: data.cajaId,
+        cajaSecundariaId: data.cajaSecundariaId,
+        comentario: data.comentario,
+        ...(data.montos && {
+          montos: {
+            create: data.montos.map((m) => ({
+              monedaId: m.monedaId,
+              monto: m.monto,
+            })),
+          },
+        }),
+      },
+      include: {
+        montos: { include: { moneda: true } },
+        sociedad: true,
+        servicio: true,
+        tipoIngreso: true,
+        caja: true,
+        cajaSecundaria: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+    })
+  );
 }
 
 // =====================
@@ -149,6 +220,7 @@ interface CrearEgresoData {
 }
 
 export async function crearEgreso(data: CrearEgresoData) {
+  await validarPermisoActual("egresos", "crear");
   // Validar que hay saldo suficiente en la caja
   const saldos = await obtenerSaldoCaja(data.cajaId, data.monedaId);
   const saldoMoneda = saldos.find((s) => s.monedaId === data.monedaId);
@@ -239,9 +311,83 @@ export async function obtenerEgresoPorId(id: string) {
 }
 
 export async function eliminarEgreso(id: string) {
+  await validarPermisoActual("egresos", "eliminar");
   return prisma.egreso.delete({
     where: { id },
   });
+}
+
+interface ActualizarEgresoData {
+  fechaSalida?: Date;
+  solicitante?: string;
+  monto?: number;
+  descripcionGasto?: string | null;
+  comentario?: string | null;
+  tipoGastoId?: string;
+  monedaId?: string;
+  cajaId?: string;
+}
+
+export async function actualizarEgreso(id: string, data: ActualizarEgresoData) {
+  await validarPermisoActual("egresos", "editar");
+
+  // Si se cambia el monto o la moneda, validar saldo disponible
+  if (data.monto !== undefined || data.monedaId || data.cajaId) {
+    const egresoActual = await prisma.egreso.findUnique({
+      where: { id },
+      select: { monto: true, monedaId: true, cajaId: true },
+    });
+
+    if (!egresoActual) {
+      throw new Error("Egreso no encontrado");
+    }
+
+    const cajaId = data.cajaId || egresoActual.cajaId;
+    const monedaId = data.monedaId || egresoActual.monedaId;
+    const nuevoMonto = data.monto ?? Number(egresoActual.monto);
+
+    // Calcular el saldo considerando que el egreso actual se va a eliminar
+    const saldos = await obtenerSaldoCaja(cajaId, monedaId);
+    const saldoMoneda = saldos.find((s) => s.monedaId === monedaId);
+
+    // El saldo disponible es el actual más el monto del egreso que vamos a actualizar
+    const saldoDisponible =
+      (saldoMoneda?.saldo || 0) + Number(egresoActual.monto);
+
+    if (saldoDisponible < nuevoMonto) {
+      const simbolo = saldoMoneda?.monedaSimbolo || "";
+      throw new Error(
+        `Saldo insuficiente en la caja. Disponible: ${simbolo}${saldoDisponible.toLocaleString(
+          "es-GT",
+          { minimumFractionDigits: 2 }
+        )}. Intenta egresar: ${simbolo}${nuevoMonto.toLocaleString("es-GT", {
+          minimumFractionDigits: 2,
+        })}`
+      );
+    }
+  }
+
+  return withRetry(() =>
+    prisma.egreso.update({
+      where: { id },
+      data: {
+        fechaSalida: data.fechaSalida,
+        solicitante: data.solicitante,
+        monto: data.monto,
+        descripcionGasto: data.descripcionGasto,
+        comentario: data.comentario,
+        tipoGastoId: data.tipoGastoId,
+        monedaId: data.monedaId,
+        cajaId: data.cajaId,
+      },
+      include: {
+        tipoGasto: true,
+        moneda: true,
+        caja: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+    })
+  );
 }
 
 // Obtener saldo de una caja por moneda

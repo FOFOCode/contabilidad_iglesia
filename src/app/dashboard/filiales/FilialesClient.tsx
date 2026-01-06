@@ -94,6 +94,12 @@ interface FilialesClientProps {
   diezmos: Diezmo[];
   egresos: Egreso[];
   usuarioId: string;
+  permisos: {
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+  };
 }
 
 type TabType = "resumen" | "diezmos" | "egresos";
@@ -118,6 +124,7 @@ export function FilialesClient({
   diezmos,
   egresos,
   usuarioId,
+  permisos,
 }: FilialesClientProps) {
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState<TabType>("resumen");
@@ -780,17 +787,19 @@ export function FilialesClient({
                 searchable={false}
                 className="w-24"
               />
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => setShowModal("diezmo-multiple")}
-                >
-                  📋 Registro Múltiple
-                </Button>
-                <Button onClick={() => setShowModal("diezmo")}>
-                  + Nuevo Diezmo
-                </Button>
-              </div>
+              {permisos.puedeCrear && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowModal("diezmo-multiple")}
+                  >
+                    📋 Registro Múltiple
+                  </Button>
+                  <Button onClick={() => setShowModal("diezmo")}>
+                    + Nuevo Diezmo
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -870,14 +879,16 @@ export function FilialesClient({
         <Card>
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">Egresos de Caja General</h3>
-            <Button
-              onClick={() => {
-                setShowModal("egreso");
-                cargarSaldoFiliales();
-              }}
-            >
-              + Nuevo Egreso
-            </Button>
+            {permisos.puedeCrear && (
+              <Button
+                onClick={() => {
+                  setShowModal("egreso");
+                  cargarSaldoFiliales();
+                }}
+              >
+                + Nuevo Egreso
+              </Button>
+            )}
           </div>
 
           {/* Filtros */}

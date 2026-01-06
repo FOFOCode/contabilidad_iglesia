@@ -1,6 +1,18 @@
 "use server";
 
 import { prisma, withRetry } from "@/lib/prisma";
+import { getUsuarioActual } from "./auth";
+import { validarPermiso } from "@/lib/permisos";
+
+// Helper para validar permisos del usuario actual
+async function validarPermisoActual(
+  modulo: string,
+  accion: "crear" | "editar" | "eliminar"
+) {
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+  await validarPermiso(usuario.id, modulo, accion);
+}
 
 // =====================
 // DONACIONES
@@ -18,6 +30,7 @@ interface CrearDonacionData {
 }
 
 export async function crearDonacion(data: CrearDonacionData) {
+  await validarPermisoActual("donaciones", "crear");
   // Buscar la caja general (donde esGeneral = true)
   const cajaGeneral = await prisma.caja.findFirst({
     where: { esGeneral: true, activa: true },
@@ -109,6 +122,7 @@ export async function actualizarDonacion(
   id: string,
   data: ActualizarDonacionData
 ) {
+  await validarPermisoActual("donaciones", "editar");
   return prisma.donacion.update({
     where: { id },
     data: {
@@ -130,6 +144,7 @@ export async function actualizarDonacion(
 }
 
 export async function eliminarDonacion(id: string) {
+  await validarPermisoActual("donaciones", "eliminar");
   return prisma.donacion.delete({
     where: { id },
   });

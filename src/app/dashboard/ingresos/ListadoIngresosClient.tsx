@@ -2,8 +2,17 @@
 
 import { useState, useTransition, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
-import { eliminarIngreso } from "@/app/actions/operaciones";
+import {
+  Card,
+  Button,
+  Combobox,
+  Input,
+  Badge,
+  Table,
+  Modal,
+  TextArea,
+} from "@/components/ui";
+import { eliminarIngreso, actualizarIngreso } from "@/app/actions/operaciones";
 import { useRouter } from "next/navigation";
 
 interface Moneda {
@@ -39,18 +48,32 @@ interface TipoIngreso {
   nombre: string;
 }
 
+interface TipoServicio {
+  id: string;
+  nombre: string;
+}
+
 interface ListadoIngresosClientProps {
   ingresos: IngresoData[];
   sociedades: Sociedad[];
   tiposIngreso: TipoIngreso[];
+  tiposServicio: TipoServicio[];
   monedas: Moneda[];
+  permisos: {
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+  };
 }
 
 export function ListadoIngresosClient({
   ingresos: ingresosIniciales,
   sociedades,
   tiposIngreso,
+  tiposServicio,
   monedas,
+  permisos,
 }: ListadoIngresosClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -59,6 +82,15 @@ export function ListadoIngresosClient({
   const [error, setError] = useState<string | null>(null);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<IngresoData | null>(null);
+  const [editando, setEditando] = useState<IngresoData | null>(null);
+  const [formEdit, setFormEdit] = useState({
+    fechaRecaudacion: "",
+    sociedadId: "",
+    servicioId: "",
+    tipoIngresoId: "",
+    comentario: "",
+    montos: [] as { monedaId: string; monto: string }[],
+  });
 
   // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
@@ -82,6 +114,11 @@ export function ListadoIngresosClient({
   const tipoIngresoOptions = useMemo(
     () => tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposIngreso]
+  );
+
+  const tiposServicioOptions = useMemo(
+    () => tiposServicio.map((s) => ({ value: s.nombre, label: s.nombre })),
+    [tiposServicio]
   );
 
   const monedaOptions = useMemo(
@@ -157,6 +194,119 @@ export function ListadoIngresosClient({
         setDeleteConfirm(null);
       } catch (e) {
         setError("Error al eliminar el ingreso");
+        console.error(e);
+      }
+    });
+  };
+
+  const handleEditar = useCallback((ingreso: IngresoData) => {
+    setEditando(ingreso);
+    setFormEdit({
+      fechaRecaudacion: new Date(ingreso.fechaRecaudacion)
+        .toISOString()
+        .split("T")[0],
+      sociedadId: ingreso.sociedad.nombre,
+      servicioId: ingreso.servicio.nombre,
+      tipoIngresoId: ingreso.tipoIngreso.nombre,
+      comentario: ingreso.comentario || "",
+      montos: ingreso.montos.map((m) => ({
+        monedaId: m.moneda.id,
+        monto: m.monto.toString(),
+      })),
+    });
+  }, []);
+
+  const handleActualizar = async () => {
+    if (!editando) return;
+
+    // Validaciones
+    if (
+      !formEdit.fechaRecaudacion ||
+      !formEdit.sociedadId ||
+      !formEdit.servicioId ||
+      !formEdit.tipoIngresoId
+    ) {
+      setError("Todos los campos obligatorios deben estar completos");
+      return;
+    }
+
+    if (formEdit.montos.length === 0) {
+      setError("Debe agregar al menos un monto");
+      return;
+    }
+
+    // Validar que todos los montos sean válidos
+    for (const monto of formEdit.montos) {
+      if (!monto.monedaId || !monto.monto || parseFloat(monto.monto) <= 0) {
+        setError("Todos los montos deben ser válidos y mayores a 0");
+        return;
+      }
+    }
+
+    setError(null);
+    startTransition(async () => {
+      try {
+        // Encontrar IDs originales
+        const sociedad = sociedades.find(
+          (s) => s.nombre === formEdit.sociedadId
+        );
+        const tipoIngreso = tiposIngreso.find(
+          (t) => t.nombre === formEdit.tipoIngresoId
+        );
+
+        if (!sociedad || !tipoIngreso) {
+          setError("Error: datos no encontrados");
+          return;
+        }
+
+        await actualizarIngreso(editando.id, {
+          fechaRecaudacion: new Date(formEdit.fechaRecaudacion),
+          sociedadId: sociedad.id,
+          tipoIngresoId: tipoIngreso.id,
+          comentario: formEdit.comentario || undefined,
+          montos: formEdit.montos.map((m) => ({
+            monedaId: m.monedaId,
+            monto: parseFloat(m.monto),
+          })),
+        });
+
+        // Actualizar localmente
+        const servicioObj = { nombre: formEdit.servicioId };
+        setIngresos(
+          ingresos.map((ing) =>
+            ing.id === editando.id
+              ? {
+                  ...ing,
+                  fechaRecaudacion: new Date(formEdit.fechaRecaudacion),
+                  sociedadId: sociedad.id,
+                  sociedad: { nombre: sociedad.nombre },
+                  servicio: servicioObj,
+                  tipoIngresoId: tipoIngreso.id,
+                  tipoIngreso: { nombre: tipoIngreso.nombre },
+                  comentario: formEdit.comentario || null,
+                  montos: formEdit.montos.map((m) => {
+                    const moneda = monedas.find((mon) => mon.id === m.monedaId);
+                    return {
+                      monto: parseFloat(m.monto),
+                      moneda: moneda!,
+                    };
+                  }),
+                }
+              : ing
+          )
+        );
+
+        setEditando(null);
+        setFormEdit({
+          fechaRecaudacion: "",
+          sociedadId: "",
+          servicioId: "",
+          tipoIngresoId: "",
+          comentario: "",
+          montos: [],
+        });
+      } catch (e) {
+        setError("Error al actualizar el ingreso");
         console.error(e);
       }
     });
@@ -282,53 +432,11 @@ export function ListadoIngresosClient({
               />
             </svg>
           </button>
-          {deleteConfirm === item.id ? (
-            <>
-              <button
-                onClick={() => handleDelete(item.id)}
-                disabled={isPending}
-                className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] disabled:opacity-50"
-                title="Confirmar"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg"
-                title="Cancelar"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </>
-          ) : (
+          {permisos.puedeEditar && (
             <button
-              onClick={() => setDeleteConfirm(item.id)}
-              className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg"
-              title="Eliminar"
+              onClick={() => handleEditar(item)}
+              className="p-1.5 text-[#40768c] hover:bg-[#eef4f7] rounded-lg"
+              title="Editar"
             >
               <svg
                 className="w-4 h-4"
@@ -340,11 +448,75 @@ export function ListadoIngresosClient({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                 />
               </svg>
             </button>
           )}
+          {permisos.puedeEliminar &&
+            (deleteConfirm === item.id ? (
+              <>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  disabled={isPending}
+                  className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] disabled:opacity-50"
+                  title="Confirmar"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg"
+                  title="Cancelar"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setDeleteConfirm(item.id)}
+                className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg"
+                title="Eliminar"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            ))}
         </div>
       ),
     },
@@ -360,29 +532,31 @@ export function ListadoIngresosClient({
 
       {/* Acciones */}
       <div className="flex flex-col sm:flex-row justify-between gap-3 md:gap-4 mb-4 md:mb-5">
-        <div className="flex gap-2">
-          <Link href="/dashboard/ingresos/nuevo">
-            <Button>
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Nuevo Ingreso
-            </Button>
-          </Link>
-          <Link href="/dashboard/ingresos/multiple">
-            <Button variant="secondary">Ingreso Múltiple</Button>
-          </Link>
-        </div>
+        {permisos.puedeCrear && (
+          <div className="flex gap-2">
+            <Link href="/dashboard/ingresos/nuevo">
+              <Button>
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Nuevo Ingreso
+              </Button>
+            </Link>
+            <Link href="/dashboard/ingresos/multiple">
+              <Button variant="secondary">Ingreso Múltiple</Button>
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Filtros */}
@@ -767,6 +941,208 @@ export function ListadoIngresosClient({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de edición */}
+      {editando && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            setEditando(null);
+            setFormEdit({
+              fechaRecaudacion: "",
+              sociedadId: "",
+              servicioId: "",
+              tipoIngresoId: "",
+              comentario: "",
+              montos: [],
+            });
+            setError(null);
+          }}
+          title="Editar Ingreso"
+          maxWidth="2xl"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleActualizar();
+            }}
+            className="space-y-4"
+          >
+            {error && (
+              <div className="bg-[#fcece9] text-[#e0451f] p-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Fecha de Recaudación"
+                type="date"
+                value={formEdit.fechaRecaudacion}
+                onChange={(e) =>
+                  setFormEdit({ ...formEdit, fechaRecaudacion: e.target.value })
+                }
+                required
+              />
+
+              <Combobox
+                label="Sociedad"
+                placeholder="Seleccionar sociedad"
+                options={sociedadOptions}
+                value={formEdit.sociedadId}
+                onChange={(value) =>
+                  setFormEdit({ ...formEdit, sociedadId: value })
+                }
+                required
+              />
+
+              <Combobox
+                label="Servicio"
+                placeholder="Seleccionar servicio"
+                options={tiposServicioOptions}
+                value={formEdit.servicioId}
+                onChange={(value) =>
+                  setFormEdit({ ...formEdit, servicioId: value })
+                }
+                required
+              />
+
+              <Combobox
+                label="Tipo de Ingreso"
+                placeholder="Seleccionar tipo"
+                options={tipoIngresoOptions}
+                value={formEdit.tipoIngresoId}
+                onChange={(value) =>
+                  setFormEdit({ ...formEdit, tipoIngresoId: value })
+                }
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-[#203b46]">
+                Montos
+              </label>
+              {formEdit.montos.map((monto, index) => (
+                <div key={index} className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <Combobox
+                      label="Moneda"
+                      placeholder="Seleccionar"
+                      options={monedaOptions}
+                      value={monto.monedaId}
+                      onChange={(value) => {
+                        const nuevosMontos = [...formEdit.montos];
+                        nuevosMontos[index].monedaId = value;
+                        setFormEdit({ ...formEdit, montos: nuevosMontos });
+                      }}
+                      required
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      label="Monto"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={monto.monto}
+                      onChange={(e) => {
+                        const nuevosMontos = [...formEdit.montos];
+                        nuevosMontos[index].monto = e.target.value;
+                        setFormEdit({ ...formEdit, montos: nuevosMontos });
+                      }}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nuevosMontos = formEdit.montos.filter(
+                        (_, i) => i !== index
+                      );
+                      setFormEdit({ ...formEdit, montos: nuevosMontos });
+                    }}
+                    className="p-2 text-[#e0451f] hover:bg-[#fcece9] rounded-lg mb-1"
+                    title="Eliminar monto"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setFormEdit({
+                    ...formEdit,
+                    montos: [...formEdit.montos, { monedaId: "", monto: "" }],
+                  });
+                }}
+                className="w-full p-2 border-2 border-dashed border-[#73a9bf] text-[#40768c] rounded-lg hover:bg-[#eef4f7] flex items-center justify-center gap-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Agregar monto
+              </button>
+            </div>
+
+            <TextArea
+              label="Comentario (opcional)"
+              value={formEdit.comentario}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, comentario: e.target.value })
+              }
+              rows={3}
+            />
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setEditando(null);
+                  setFormEdit({
+                    fechaRecaudacion: "",
+                    sociedadId: "",
+                    servicioId: "",
+                    tipoIngresoId: "",
+                    comentario: "",
+                    montos: [],
+                  });
+                  setError(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Actualizando..." : "Actualizar"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

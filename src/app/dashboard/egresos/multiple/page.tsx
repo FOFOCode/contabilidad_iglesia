@@ -2,16 +2,30 @@ import { Header } from "@/components/layout";
 import { MultipleEgresoForm } from "./MultipleEgresoForm";
 import { obtenerDatosFormularioEgreso } from "@/app/actions/operaciones";
 import { getUsuarioActual } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 export default async function MultipleEgresoPage() {
-  const [datos, usuario] = await Promise.all([
+  const [datos, usuario, { permisos }] = await Promise.all([
     obtenerDatosFormularioEgreso(),
     getUsuarioActual(),
+    obtenerMisPermisos(),
   ]);
 
   if (!usuario) {
     redirect("/login");
+  }
+
+  // Validar permiso de crear egresos
+  const permisosEgresos = permisos.egresos || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosEgresos.puedeCrear) {
+    redirect("/dashboard/egresos");
   }
 
   if (

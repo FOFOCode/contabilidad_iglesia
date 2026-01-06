@@ -6,3 +6,4 @@ export { default as Card, CardHeader, CardContent } from "./Card";
 export { default as Table } from "./Table";
 export { default as Badge } from "./Badge";
 export { default as TextArea } from "./TextArea";
+export { default as Modal } from "./Modal";

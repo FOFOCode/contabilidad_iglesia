@@ -4,6 +4,7 @@ import React, { useState, useTransition, useEffect, ReactNode } from "react";
 import { Card, Button, Input, Badge, Table, Combobox } from "@/components/ui";
 import { UsuariosConfig } from "./UsuariosConfig";
 import { FilialesConfig } from "./FilialesConfig";
+import RolesConfig from "./RolesConfig";
 import {
   createMoneda,
   updateMoneda,
@@ -60,6 +61,7 @@ type TabType =
   | "cajas"
   | "monedas"
   | "usuarios"
+  | "roles"
   | "filiales";
 
 interface PaisData {
@@ -89,6 +91,12 @@ interface ConfiguracionClientProps {
   cajasData: CajaData[];
   paisesData?: PaisData[];
   filialesData?: FilialData[];
+  permisos: {
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+  };
 }
 
 const tabs: { key: TabType; label: string; icon: ReactNode }[] = [
@@ -226,6 +234,25 @@ const tabs: { key: TabType; label: string; icon: ReactNode }[] = [
     ),
   },
   {
+    key: "roles",
+    label: "Roles",
+    icon: (
+      <svg
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+        />
+      </svg>
+    ),
+  },
+  {
     key: "filiales",
     label: "Filiales",
     icon: (
@@ -255,6 +282,7 @@ export function ConfiguracionClient({
   cajasData,
   paisesData = [],
   filialesData = [],
+  permisos,
 }: ConfiguracionClientProps) {
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState<TabType>("servicios");
@@ -906,114 +934,12 @@ export function ConfiguracionClient({
       header: "Acciones",
       render: (item: any) => (
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleEdit(item)}
-            disabled={isPending}
-            className="p-1.5 text-[#40768c] hover:bg-[#eef4f7] rounded-lg transition-colors disabled:opacity-50"
-            title="Editar"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-              />
-            </svg>
-          </button>
-          <button
-            onClick={() => handleToggleActive(item.id)}
-            disabled={isPending}
-            className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
-              isActive(item)
-                ? "text-[#b1871b] hover:bg-[#fcf6e9]"
-                : "text-[#2ba193] hover:bg-[#ebfaf8]"
-            }`}
-            title={isActive(item) ? "Desactivar" : "Activar"}
-          >
-            {isActive(item) ? (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            )}
-          </button>
-          {deleteConfirm === item.id ? (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => handleDelete(item.id)}
-                disabled={isPending}
-                className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] transition-colors disabled:opacity-50"
-                title="Confirmar"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg transition-colors"
-                title="Cancelar"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-          ) : (
+          {permisos.puedeEditar && (
             <button
-              onClick={() => setDeleteConfirm(item.id)}
+              onClick={() => handleEdit(item)}
               disabled={isPending}
-              className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg transition-colors disabled:opacity-50"
-              title="Eliminar"
+              className="p-1.5 text-[#40768c] hover:bg-[#eef4f7] rounded-lg transition-colors disabled:opacity-50"
+              title="Editar"
             >
               <svg
                 className="w-4 h-4"
@@ -1025,11 +951,118 @@ export function ConfiguracionClient({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                 />
               </svg>
             </button>
           )}
+          {permisos.puedeEditar && (
+            <button
+              onClick={() => handleToggleActive(item.id)}
+              disabled={isPending}
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                isActive(item)
+                  ? "text-[#b1871b] hover:bg-[#fcf6e9]"
+                  : "text-[#2ba193] hover:bg-[#ebfaf8]"
+              }`}
+              title={isActive(item) ? "Desactivar" : "Activar"}
+            >
+              {isActive(item) ? (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
+          {permisos.puedeEliminar &&
+            (deleteConfirm === item.id ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  disabled={isPending}
+                  className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] transition-colors disabled:opacity-50"
+                  title="Confirmar"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg transition-colors"
+                  title="Cancelar"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setDeleteConfirm(item.id)}
+                disabled={isPending}
+                className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg transition-colors disabled:opacity-50"
+                title="Eliminar"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            ))}
         </div>
       ),
     },
@@ -1083,6 +1116,8 @@ export function ConfiguracionClient({
       {/* Contenido de la pestaña */}
       {activeTab === "usuarios" ? (
         <UsuariosConfig />
+      ) : activeTab === "roles" ? (
+        <RolesConfig />
       ) : activeTab === "filiales" ? (
         <FilialesConfig paisesData={paises} filialesData={filiales} />
       ) : (
@@ -1100,22 +1135,24 @@ export function ConfiguracionClient({
                 )}
               </p>
             </div>
-            <Button onClick={handleAdd} disabled={isPending}>
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Agregar Nuevo
-            </Button>
+            {permisos.puedeCrear && (
+              <Button onClick={handleAdd} disabled={isPending}>
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Agregar Nuevo
+              </Button>
+            )}
           </div>
 
           <div className="overflow-x-auto -mx-6 px-6">

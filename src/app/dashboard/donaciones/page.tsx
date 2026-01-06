@@ -4,12 +4,27 @@ import {
   obtenerDonaciones,
   obtenerDatosFormularioDonacion,
 } from "@/app/actions/donaciones";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
+import { redirect } from "next/navigation";
 
 export default async function DonacionesPage() {
-  const [donaciones, datosForm] = await Promise.all([
+  const [donaciones, datosForm, { permisos }] = await Promise.all([
     obtenerDonaciones(),
     obtenerDatosFormularioDonacion(),
+    obtenerMisPermisos(),
   ]);
+
+  // Validar permiso de ver donaciones
+  const permisosDonaciones = permisos.donaciones || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosDonaciones.puedeVer) {
+    redirect("/dashboard");
+  }
 
   // Transformar datos para el cliente (convertir Decimal a number y eliminar campos innecesarios)
   const donacionesData = donaciones.map((d) => ({
@@ -55,6 +70,7 @@ export default async function DonacionesPage() {
         tiposOfrenda={tiposOfrendaData}
         monedas={monedasData}
         tieneCajaGeneral={!!datosForm.cajaGeneral}
+        permisos={permisosDonaciones}
       />
     </div>
   );

@@ -6,13 +6,29 @@ import {
   obtenerEgresosFiliales,
 } from "@/app/actions/filiales";
 import { getUsuarioActual } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 export default async function FilialesPage() {
-  const usuario = await getUsuarioActual();
+  const [usuario, { permisos }] = await Promise.all([
+    getUsuarioActual(),
+    obtenerMisPermisos(),
+  ]);
 
   if (!usuario) {
     redirect("/login");
+  }
+
+  // Validar permiso de ver filiales
+  const permisosFiliales = permisos.filiales || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosFiliales.puedeVer) {
+    redirect("/dashboard");
   }
 
   const [resumen, diezmos, egresos] = await Promise.all([
@@ -43,6 +59,7 @@ export default async function FilialesPage() {
         diezmos={diezmosSerializados}
         egresos={egresosSerializados}
         usuarioId={usuario.id}
+        permisos={permisosFiliales}
       />
     </div>
   );

@@ -2,17 +2,31 @@ import { Header } from "@/components/layout";
 import { NuevaDonacionForm } from "./NuevaDonacionForm";
 import { obtenerDatosFormularioDonacion } from "@/app/actions/donaciones";
 import { getUsuarioActual } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 export default async function NuevaDonacionPage() {
-  const [datos, usuario] = await Promise.all([
+  const [datos, usuario, { permisos }] = await Promise.all([
     obtenerDatosFormularioDonacion(),
     getUsuarioActual(),
+    obtenerMisPermisos(),
   ]);
 
   // Si no hay sesión, redirigir al login
   if (!usuario) {
     redirect("/login");
+  }
+
+  // Validar permiso de crear donaciones
+  const permisosDonaciones = permisos.donaciones || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosDonaciones.puedeCrear) {
+    redirect("/dashboard/donaciones");
   }
 
   // Si no hay caja general configurada

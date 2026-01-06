@@ -204,6 +204,61 @@ model EgresoFilial {
 // MODELOS PRINCIPALES
 // =====================
 
+/// Roles del sistema con permisos configurables
+model Rol {
+  id            String    @id @default(cuid())
+  nombre        String    @unique // Admin, Contador, Tesorero, Capturista
+  descripcion   String?
+  esAdmin       Boolean   @default(false) // Rol con acceso total
+  activo        Boolean   @default(true)
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  usuarios      Usuario[]
+  permisos      RolPermiso[]
+
+  @@index([activo])
+  @@map("roles")
+}
+
+/// Permisos disponibles en el sistema (módulos)
+model Permiso {
+  id            String    @id @default(cuid())
+  modulo        String    @unique // dashboard, ingresos, egresos, cajas, reportes, configuracion, filiales, donaciones
+  nombre        String    // Nombre descriptivo del módulo
+  descripcion   String?
+  orden         Int       @default(0)
+  activo        Boolean   @default(true)
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  roles         RolPermiso[]
+
+  @@index([activo, orden])
+  @@map("permisos")
+}
+
+/// Relación entre roles y permisos (qué módulos puede acceder cada rol)
+model RolPermiso {
+  id            String    @id @default(cuid())
+  rolId         String
+  permisoId     String
+  puedeVer      Boolean   @default(true)   // Ver/listar
+  puedeCrear    Boolean   @default(false)  // Crear nuevos registros
+  puedeEditar   Boolean   @default(false)  // Editar registros existentes
+  puedeEliminar Boolean   @default(false)  // Eliminar registros
+  creadoEn      DateTime  @default(now())
+  actualizadoEn DateTime  @updatedAt
+
+  rol           Rol       @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  permiso       Permiso   @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+
+  @@unique([rolId, permisoId])
+  @@index([rolId])
+  @@index([permisoId])
+  @@map("roles_permisos")
+}
+
 /// Usuarios del sistema con acceso al dashboard
 model Usuario {
   id            String    @id @default(cuid())
@@ -215,6 +270,9 @@ model Usuario {
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
 
+  rolId         String?
+  rol           Rol?      @relation(fields: [rolId], references: [id], onDelete: Restrict)
+
   ingresos Ingreso[]
   egresos  Egreso[]
   diezmosFiliales  DiezmoFilial[]
@@ -224,6 +282,7 @@ model Usuario {
   // Índice para filtrar usuarios activos y login
   @@index([activo])
   @@index([correo, activo])
+  @@index([rolId])
   @@map("usuarios")
 }
 

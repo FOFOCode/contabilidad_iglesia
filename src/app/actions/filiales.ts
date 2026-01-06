@@ -1,6 +1,18 @@
 "use server";
 
 import { prisma, withRetry } from "@/lib/prisma";
+import { getUsuarioActual } from "./auth";
+import { validarPermiso } from "@/lib/permisos";
+
+// Helper para validar permisos del usuario actual
+async function validarPermisoActual(
+  modulo: string,
+  accion: "crear" | "editar" | "eliminar"
+) {
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+  await validarPermiso(usuario.id, modulo, accion);
+}
 
 // =====================
 // UTILIDADES DE SERIALIZACIÓN
@@ -51,6 +63,7 @@ export async function obtenerTodosPaises() {
 }
 
 export async function crearPais(data: { nombre: string; codigo?: string }) {
+  await validarPermisoActual("filiales", "crear");
   const maxOrden = await prisma.pais.aggregate({ _max: { orden: true } });
   return prisma.pais.create({
     data: {
@@ -65,6 +78,7 @@ export async function actualizarPais(
   id: string,
   data: { nombre?: string; codigo?: string; activo?: boolean; orden?: number }
 ) {
+  await validarPermisoActual("filiales", "editar");
   return prisma.pais.update({
     where: { id },
     data,
@@ -72,6 +86,7 @@ export async function actualizarPais(
 }
 
 export async function eliminarPais(id: string) {
+  await validarPermisoActual("filiales", "eliminar");
   // Verificar si tiene filiales
   const filiales = await prisma.filial.count({ where: { paisId: id } });
   if (filiales > 0) {
@@ -110,6 +125,7 @@ export async function crearFilial(data: {
   pastor: string;
   paisId: string;
 }) {
+  await validarPermisoActual("filiales", "crear");
   const maxOrden = await prisma.filial.aggregate({ _max: { orden: true } });
   return prisma.filial.create({
     data: {
@@ -132,6 +148,7 @@ export async function actualizarFilial(
     orden?: number;
   }
 ) {
+  await validarPermisoActual("filiales", "editar");
   return prisma.filial.update({
     where: { id },
     data,
@@ -140,6 +157,7 @@ export async function actualizarFilial(
 }
 
 export async function eliminarFilial(id: string) {
+  await validarPermisoActual("filiales", "eliminar");
   // Verificar si tiene diezmos
   const diezmos = await prisma.diezmoFilial.count({ where: { filialId: id } });
   if (diezmos > 0) {
@@ -163,6 +181,7 @@ interface CrearDiezmoData {
 }
 
 export async function crearDiezmoFilial(data: CrearDiezmoData) {
+  await validarPermisoActual("filiales", "crear");
   const diezmo = await prisma.diezmoFilial.create({
     data: {
       filialId: data.filialId,
@@ -231,6 +250,7 @@ export async function obtenerDiezmosFiliales(filtros?: FiltrosDiezmo) {
 }
 
 export async function eliminarDiezmoFilial(id: string) {
+  await validarPermisoActual("filiales", "eliminar");
   return prisma.diezmoFilial.delete({ where: { id } });
 }
 
@@ -250,6 +270,7 @@ interface CrearEgresoFilialData {
 }
 
 export async function crearEgresoFilial(data: CrearEgresoFilialData) {
+  await validarPermisoActual("filiales", "crear");
   // Validar que hay saldo suficiente
   const saldos = await obtenerSaldoFiliales();
   const saldoMoneda = saldos.find((s) => s.monedaId === data.monedaId);
@@ -327,6 +348,7 @@ export async function obtenerEgresosFiliales(filtros?: FiltrosEgresoFilial) {
 }
 
 export async function eliminarEgresoFilial(id: string) {
+  await validarPermisoActual("filiales", "eliminar");
   return prisma.egresoFilial.delete({ where: { id } });
 }
 

@@ -14,6 +14,7 @@ import {
   obtenerTodasFiliales,
 } from "@/app/actions/filiales";
 import { getUsuarioActual } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 // Función helper para serializar Decimal a number
@@ -41,6 +42,7 @@ export default async function ConfiguracionPage() {
     cajas,
     paises,
     filiales,
+    misPermisos,
   ] = await Promise.all([
     getMonedas(),
     getSociedades(),
@@ -50,7 +52,21 @@ export default async function ConfiguracionPage() {
     getCajas(),
     obtenerTodosPaises(),
     obtenerTodasFiliales(),
+    obtenerMisPermisos(),
   ]);
+
+  // Obtener permisos de configuración
+  const permisosConfig = misPermisos.permisos.configuracion || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  // Si no tiene permiso para ver configuración, redirigir
+  if (!permisosConfig.puedeVer && !misPermisos.esAdmin) {
+    redirect("/dashboard");
+  }
 
   // Serializar monedas para evitar errores con Decimal
   const monedas = serializarMonedas(monedasRaw);
@@ -70,6 +86,7 @@ export default async function ConfiguracionPage() {
         cajasData={cajas}
         paisesData={paises}
         filialesData={filiales}
+        permisos={permisosConfig}
       />
     </div>
   );

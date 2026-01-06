@@ -1,6 +1,20 @@
 "use server";
 
 import { prisma, withRetry } from "@/lib/prisma";
+import { getUsuarioActual } from "./auth";
+import { validarPermiso } from "@/lib/permisos";
+
+// Helper para validar permisos del usuario actual
+async function validarPermisoActual(
+  modulo: string,
+  accion: "crear" | "editar" | "eliminar"
+) {
+  const usuario = await getUsuarioActual();
+  if (!usuario) {
+    throw new Error("No autenticado");
+  }
+  await validarPermiso(usuario.id, modulo, accion);
+}
 
 // =====================
 // MONEDAS
@@ -22,6 +36,7 @@ export async function createMoneda(data: {
   esPrincipal?: boolean;
   orden?: number;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   return withRetry(() =>
     prisma.moneda.create({
       data: {
@@ -44,6 +59,7 @@ export async function updateMoneda(
     orden?: number;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   return withRetry(() =>
     prisma.moneda.update({
       where: { id },
@@ -53,6 +69,7 @@ export async function updateMoneda(
 }
 
 export async function deleteMoneda(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.moneda.delete({
       where: { id },
@@ -77,6 +94,7 @@ export async function createSociedad(data: {
   descripcion?: string;
   orden?: number;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   return withRetry(() => prisma.sociedad.create({ data }));
 }
 
@@ -89,6 +107,7 @@ export async function updateSociedad(
     orden?: number;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   return withRetry(() =>
     prisma.sociedad.update({
       where: { id },
@@ -98,6 +117,7 @@ export async function updateSociedad(
 }
 
 export async function deleteSociedad(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.sociedad.delete({
       where: { id },
@@ -122,6 +142,7 @@ export async function createTipoServicio(data: {
   descripcion?: string;
   orden?: number;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   return withRetry(() => prisma.tipoServicio.create({ data }));
 }
 
@@ -134,6 +155,7 @@ export async function updateTipoServicio(
     orden?: number;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   return withRetry(() =>
     prisma.tipoServicio.update({
       where: { id },
@@ -143,6 +165,7 @@ export async function updateTipoServicio(
 }
 
 export async function deleteTipoServicio(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.tipoServicio.delete({
       where: { id },
@@ -167,6 +190,7 @@ export async function createTipoIngreso(data: {
   descripcion?: string;
   orden?: number;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   return withRetry(() => prisma.tipoIngreso.create({ data }));
 }
 
@@ -179,6 +203,7 @@ export async function updateTipoIngreso(
     orden?: number;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   return withRetry(() =>
     prisma.tipoIngreso.update({
       where: { id },
@@ -188,6 +213,7 @@ export async function updateTipoIngreso(
 }
 
 export async function deleteTipoIngreso(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.tipoIngreso.delete({
       where: { id },
@@ -212,6 +238,7 @@ export async function createTipoGasto(data: {
   descripcion?: string;
   orden?: number;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   return withRetry(() => prisma.tipoGasto.create({ data }));
 }
 
@@ -224,6 +251,7 @@ export async function updateTipoGasto(
     orden?: number;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   return withRetry(() =>
     prisma.tipoGasto.update({
       where: { id },
@@ -233,6 +261,7 @@ export async function updateTipoGasto(
 }
 
 export async function deleteTipoGasto(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.tipoGasto.delete({
       where: { id },
@@ -264,6 +293,7 @@ export async function createCaja(data: {
   sociedadId?: string;
   tipoIngresoId?: string;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   return withRetry(() => prisma.caja.create({ data }));
 }
 
@@ -279,6 +309,7 @@ export async function updateCaja(
     tipoIngresoId?: string | null;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   return withRetry(() =>
     prisma.caja.update({
       where: { id },
@@ -288,6 +319,7 @@ export async function updateCaja(
 }
 
 export async function deleteCaja(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.caja.delete({
       where: { id },
@@ -311,6 +343,13 @@ export async function getUsuarios() {
         activo: true,
         creadoEn: true,
         actualizadoEn: true,
+        rolId: true,
+        rol: {
+          select: {
+            id: true,
+            nombre: true,
+          },
+        },
       },
     })
   );
@@ -321,7 +360,9 @@ export async function createUsuario(data: {
   apellido: string;
   correo: string;
   contrasena: string;
+  rolId?: string;
 }) {
+  await validarPermisoActual("configuracion", "crear");
   // Hash simple para la contraseña (en producción usar bcrypt)
   const contrasenaHash = Buffer.from(data.contrasena).toString("base64");
   return withRetry(() =>
@@ -336,6 +377,7 @@ export async function createUsuario(data: {
         apellido: true,
         correo: true,
         activo: true,
+        rolId: true,
       },
     })
   );
@@ -349,8 +391,10 @@ export async function updateUsuario(
     correo?: string;
     contrasena?: string;
     activo?: boolean;
+    rolId?: string | null;
   }
 ) {
+  await validarPermisoActual("configuracion", "editar");
   const updateData: Record<string, unknown> = { ...data };
   if (data.contrasena) {
     updateData.contrasena = Buffer.from(data.contrasena).toString("base64");
@@ -365,12 +409,14 @@ export async function updateUsuario(
         apellido: true,
         correo: true,
         activo: true,
+        rolId: true,
       },
     })
   );
 }
 
 export async function deleteUsuario(id: string) {
+  await validarPermisoActual("configuracion", "eliminar");
   return withRetry(() =>
     prisma.usuario.delete({
       where: { id },

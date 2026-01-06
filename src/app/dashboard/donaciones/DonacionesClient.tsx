@@ -2,8 +2,17 @@
 
 import { useState, useTransition, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
-import { eliminarDonacion } from "@/app/actions/donaciones";
+import {
+  Card,
+  Button,
+  Combobox,
+  Input,
+  Badge,
+  Table,
+  Modal,
+  TextArea,
+} from "@/components/ui";
+import { eliminarDonacion, actualizarDonacion } from "@/app/actions/donaciones";
 import { useRouter } from "next/navigation";
 
 interface Moneda {
@@ -35,6 +44,12 @@ interface DonacionesClientProps {
   tiposOfrenda: TipoOfrenda[];
   monedas: Moneda[];
   tieneCajaGeneral: boolean;
+  permisos: {
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+  };
 }
 
 export function DonacionesClient({
@@ -42,6 +57,7 @@ export function DonacionesClient({
   tiposOfrenda,
   monedas,
   tieneCajaGeneral,
+  permisos,
 }: DonacionesClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -50,6 +66,16 @@ export function DonacionesClient({
   const [error, setError] = useState<string | null>(null);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<DonacionData | null>(null);
+  const [editando, setEditando] = useState<DonacionData | null>(null);
+  const [formEdit, setFormEdit] = useState({
+    nombre: "",
+    telefono: "",
+    fecha: "",
+    tipoOfrendaId: "",
+    monto: "",
+    monedaId: "",
+    comentario: "",
+  });
 
   // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
@@ -67,6 +93,12 @@ export function DonacionesClient({
   const tipoOfrendaOptions = useMemo(
     () => tiposOfrenda.map((t) => ({ value: t.id, label: t.nombre })),
     [tiposOfrenda]
+  );
+
+  const monedaOptions = useMemo(
+    () =>
+      monedas.map((m) => ({ value: m.id, label: `${m.simbolo} ${m.codigo}` })),
+    [monedas]
   );
 
   // Filtrar donaciones localmente
@@ -146,6 +178,83 @@ export function DonacionesClient({
     [router]
   );
 
+  const handleEditar = useCallback((donacion: DonacionData) => {
+    setEditando(donacion);
+    setFormEdit({
+      nombre: donacion.nombre,
+      telefono: donacion.telefono || "",
+      fecha: new Date(donacion.fecha).toISOString().split("T")[0],
+      tipoOfrendaId: donacion.tipoOfrenda.id,
+      monto: donacion.monto.toString(),
+      monedaId: donacion.moneda.id,
+      comentario: donacion.comentario || "",
+    });
+    setError(null);
+  }, []);
+
+  const handleActualizar = useCallback(() => {
+    if (!editando) return;
+
+    if (
+      !formEdit.nombre ||
+      !formEdit.fecha ||
+      !formEdit.tipoOfrendaId ||
+      !formEdit.monto ||
+      !formEdit.monedaId
+    ) {
+      setError("Todos los campos marcados son obligatorios");
+      return;
+    }
+
+    const monto = parseFloat(formEdit.monto);
+    if (isNaN(monto) || monto <= 0) {
+      setError("El monto debe ser un número mayor a 0");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        await actualizarDonacion(editando.id, {
+          nombre: formEdit.nombre,
+          telefono: formEdit.telefono || undefined,
+          fecha: new Date(formEdit.fecha),
+          tipoOfrendaId: formEdit.tipoOfrendaId,
+          monto,
+          monedaId: formEdit.monedaId,
+          comentario: formEdit.comentario || undefined,
+        });
+
+        // Actualizar la lista localmente
+        setDonaciones((prev) =>
+          prev.map((d) =>
+            d.id === editando.id
+              ? {
+                  ...d,
+                  nombre: formEdit.nombre,
+                  telefono: formEdit.telefono || null,
+                  fecha: new Date(formEdit.fecha),
+                  monto,
+                  comentario: formEdit.comentario || null,
+                  tipoOfrenda:
+                    tiposOfrenda.find((t) => t.id === formEdit.tipoOfrendaId) ||
+                    d.tipoOfrenda,
+                  moneda:
+                    monedas.find((m) => m.id === formEdit.monedaId) || d.moneda,
+                }
+              : d
+          )
+        );
+
+        setEditando(null);
+        router.refresh();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Error al actualizar donación"
+        );
+      }
+    });
+  }, [editando, formEdit, tiposOfrenda, monedas, router]);
+
   const limpiarFiltros = useCallback(() => {
     handleFiltroChange({
       desde: "",
@@ -219,9 +328,11 @@ export function DonacionesClient({
             </div>
           )}
         </div>
-        <Link href="/dashboard/donaciones/nuevo">
-          <Button>➕ Nueva Donación</Button>
-        </Link>
+        {permisos.puedeCrear && (
+          <Link href="/dashboard/donaciones/nuevo">
+            <Button>➞ Nueva Donación</Button>
+          </Link>
+        )}
       </div>
 
       {/* Filtros */}
@@ -362,53 +473,11 @@ export function DonacionesClient({
                           />
                         </svg>
                       </button>
-                      {deleteConfirm === item.id ? (
-                        <>
-                          <button
-                            onClick={() => handleEliminar(item.id)}
-                            disabled={isPending}
-                            className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] disabled:opacity-50"
-                            title="Confirmar"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg"
-                            title="Cancelar"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
-                          </button>
-                        </>
-                      ) : (
+                      {permisos.puedeEditar && (
                         <button
-                          onClick={() => setDeleteConfirm(item.id)}
-                          className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg"
-                          title="Eliminar"
+                          onClick={() => handleEditar(item)}
+                          className="p-1.5 text-[#305969] hover:bg-[#eef4f7] rounded-lg"
+                          title="Editar"
                         >
                           <svg
                             className="w-4 h-4"
@@ -420,11 +489,75 @@ export function DonacionesClient({
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                             />
                           </svg>
                         </button>
                       )}
+                      {permisos.puedeEliminar &&
+                        (deleteConfirm === item.id ? (
+                          <>
+                            <button
+                              onClick={() => handleEliminar(item.id)}
+                              disabled={isPending}
+                              className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] disabled:opacity-50"
+                              title="Confirmar"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(null)}
+                              className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg"
+                              title="Cancelar"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirm(item.id)}
+                            className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg"
+                            title="Eliminar"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        ))}
                     </div>
                   ),
                 },
@@ -539,6 +672,118 @@ export function DonacionesClient({
           </Card>
         </div>
       )}
+
+      {/* Modal de edición */}
+      <Modal
+        isOpen={!!editando}
+        onClose={() => {
+          setEditando(null);
+          setError(null);
+        }}
+        title="Editar Donación"
+        maxWidth="xl"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleActualizar();
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Nombre del Donante *"
+              value={formEdit.nombre}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, nombre: e.target.value })
+              }
+              placeholder="Ej: Juan Pérez"
+              required
+            />
+
+            <Input
+              label="Teléfono"
+              type="tel"
+              value={formEdit.telefono}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, telefono: e.target.value })
+              }
+              placeholder="Ej: 1234-5678"
+            />
+
+            <Input
+              label="Fecha *"
+              type="date"
+              value={formEdit.fecha}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, fecha: e.target.value })
+              }
+              required
+            />
+
+            <Combobox
+              label="Tipo de Ofrenda *"
+              options={tipoOfrendaOptions}
+              value={formEdit.tipoOfrendaId}
+              onChange={(value) =>
+                setFormEdit({ ...formEdit, tipoOfrendaId: value })
+              }
+              placeholder="Seleccionar tipo..."
+              required
+            />
+
+            <Combobox
+              label="Moneda *"
+              options={monedaOptions}
+              value={formEdit.monedaId}
+              onChange={(value) =>
+                setFormEdit({ ...formEdit, monedaId: value })
+              }
+              placeholder="Seleccionar moneda..."
+              required
+            />
+
+            <Input
+              label="Monto *"
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={formEdit.monto}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, monto: e.target.value })
+              }
+              placeholder="0.00"
+              required
+            />
+          </div>
+
+          <TextArea
+            label="Comentario"
+            value={formEdit.comentario}
+            onChange={(e) =>
+              setFormEdit({ ...formEdit, comentario: e.target.value })
+            }
+            placeholder="Comentario adicional (opcional)"
+            rows={3}
+          />
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setEditando(null);
+                setError(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" isLoading={isPending}>
+              {isPending ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

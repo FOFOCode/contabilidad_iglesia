@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
-import { eliminarEgreso } from "@/app/actions/operaciones";
+import {
+  Card,
+  Button,
+  Combobox,
+  Input,
+  Badge,
+  Table,
+  Modal,
+  TextArea,
+} from "@/components/ui";
+import { eliminarEgreso, actualizarEgreso } from "@/app/actions/operaciones";
 
 interface Moneda {
   id: string;
@@ -33,12 +42,19 @@ interface ListadoEgresosClientProps {
   egresos: EgresoData[];
   tiposGasto: TipoGasto[];
   monedas: Moneda[];
+  permisos: {
+    puedeVer: boolean;
+    puedeCrear: boolean;
+    puedeEditar: boolean;
+    puedeEliminar: boolean;
+  };
 }
 
 export function ListadoEgresosClient({
   egresos: egresosIniciales,
   tiposGasto,
   monedas,
+  permisos,
 }: ListadoEgresosClientProps) {
   const [isPending, startTransition] = useTransition();
   const [egresos, setEgresos] = useState(egresosIniciales);
@@ -46,6 +62,16 @@ export function ListadoEgresosClient({
   const [error, setError] = useState<string | null>(null);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<EgresoData | null>(null);
+  const [editando, setEditando] = useState<EgresoData | null>(null);
+  const [formEdit, setFormEdit] = useState({
+    fechaSalida: "",
+    solicitante: "",
+    monto: "",
+    descripcionGasto: "",
+    comentario: "",
+    tipoGastoId: "",
+    monedaId: "",
+  });
 
   // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
@@ -132,6 +158,87 @@ export function ListadoEgresosClient({
       }
     });
   };
+
+  const handleEditar = useCallback(
+    (egreso: EgresoData) => {
+      setEditando(egreso);
+      setFormEdit({
+        fechaSalida: new Date(egreso.fechaSalida).toISOString().split("T")[0],
+        solicitante: egreso.solicitante,
+        monto: egreso.monto.toString(),
+        descripcionGasto: egreso.descripcionGasto || "",
+        comentario: egreso.comentario || "",
+        tipoGastoId:
+          tiposGasto.find((t) => t.nombre === egreso.tipoGasto.nombre)?.id ||
+          "",
+        monedaId: egreso.moneda.id,
+      });
+      setError(null);
+    },
+    [tiposGasto]
+  );
+
+  const handleActualizar = useCallback(() => {
+    if (!editando) return;
+
+    if (
+      !formEdit.fechaSalida ||
+      !formEdit.solicitante ||
+      !formEdit.monto ||
+      !formEdit.tipoGastoId ||
+      !formEdit.monedaId
+    ) {
+      setError("Todos los campos marcados con * son obligatorios");
+      return;
+    }
+
+    const monto = parseFloat(formEdit.monto);
+    if (isNaN(monto) || monto <= 0) {
+      setError("El monto debe ser un número mayor a 0");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        await actualizarEgreso(editando.id, {
+          fechaSalida: new Date(formEdit.fechaSalida),
+          solicitante: formEdit.solicitante,
+          monto,
+          descripcionGasto: formEdit.descripcionGasto || undefined,
+          comentario: formEdit.comentario || undefined,
+          tipoGastoId: formEdit.tipoGastoId,
+          monedaId: formEdit.monedaId,
+        });
+
+        // Actualizar la lista localmente
+        setEgresos((prev) =>
+          prev.map((e) =>
+            e.id === editando.id
+              ? {
+                  ...e,
+                  fechaSalida: new Date(formEdit.fechaSalida),
+                  solicitante: formEdit.solicitante,
+                  monto,
+                  descripcionGasto: formEdit.descripcionGasto || null,
+                  comentario: formEdit.comentario || null,
+                  tipoGasto:
+                    tiposGasto.find((t) => t.id === formEdit.tipoGastoId) ||
+                    e.tipoGasto,
+                  moneda:
+                    monedas.find((m) => m.id === formEdit.monedaId) || e.moneda,
+                }
+              : e
+          )
+        );
+
+        setEditando(null);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Error al actualizar egreso"
+        );
+      }
+    });
+  }, [editando, formEdit, tiposGasto, monedas]);
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString("es-GT", {
@@ -251,53 +358,11 @@ export function ListadoEgresosClient({
               />
             </svg>
           </button>
-          {deleteConfirm === item.id ? (
-            <>
-              <button
-                onClick={() => handleDelete(item.id)}
-                disabled={isPending}
-                className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] disabled:opacity-50"
-                title="Confirmar"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg"
-                title="Cancelar"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </>
-          ) : (
+          {permisos.puedeEditar && (
             <button
-              onClick={() => setDeleteConfirm(item.id)}
-              className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg"
-              title="Eliminar"
+              onClick={() => handleEditar(item)}
+              className="p-1.5 text-[#305969] hover:bg-[#eef4f7] rounded-lg"
+              title="Editar"
             >
               <svg
                 className="w-4 h-4"
@@ -309,11 +374,75 @@ export function ListadoEgresosClient({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                 />
               </svg>
             </button>
           )}
+          {permisos.puedeEliminar &&
+            (deleteConfirm === item.id ? (
+              <>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  disabled={isPending}
+                  className="p-1.5 text-white bg-[#e0451f] rounded-lg hover:bg-[#b43718] disabled:opacity-50"
+                  title="Confirmar"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="p-1.5 text-[#73a9bf] hover:bg-[#eef4f7] rounded-lg"
+                  title="Cancelar"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setDeleteConfirm(item.id)}
+                className="p-1.5 text-[#e0451f] hover:bg-[#fcece9] rounded-lg"
+                title="Eliminar"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </button>
+            ))}
         </div>
       ),
     },
@@ -329,29 +458,31 @@ export function ListadoEgresosClient({
 
       {/* Acciones */}
       <div className="flex flex-col sm:flex-row justify-between gap-3 md:gap-4 mb-4 md:mb-5">
-        <div className="flex gap-2">
-          <Link href="/dashboard/egresos/nuevo">
-            <Button>
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Nuevo Egreso
-            </Button>
-          </Link>
-          <Link href="/dashboard/egresos/multiple">
-            <Button variant="secondary">Egreso Múltiple</Button>
-          </Link>
-        </div>
+        {permisos.puedeCrear && (
+          <div className="flex gap-2">
+            <Link href="/dashboard/egresos/nuevo">
+              <Button>
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Nuevo Egreso
+              </Button>
+            </Link>
+            <Link href="/dashboard/egresos/multiple">
+              <Button variant="secondary">Egreso Múltiple</Button>
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Filtros */}
@@ -726,6 +857,117 @@ export function ListadoEgresosClient({
           </div>
         </div>
       )}
+
+      {/* Modal de edición */}
+      <Modal
+        isOpen={!!editando}
+        onClose={() => {
+          setEditando(null);
+          setError(null);
+        }}
+        title="Editar Egreso"
+        maxWidth="xl"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleActualizar();
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Fecha de Salida *"
+              type="date"
+              value={formEdit.fechaSalida}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, fechaSalida: e.target.value })
+              }
+              required
+            />
+
+            <Input
+              label="Solicitante *"
+              value={formEdit.solicitante}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, solicitante: e.target.value })
+              }
+              placeholder="Nombre del solicitante"
+              required
+            />
+
+            <Combobox
+              label="Tipo de Gasto *"
+              options={tipoGastoOptions}
+              value={formEdit.tipoGastoId}
+              onChange={(value) =>
+                setFormEdit({ ...formEdit, tipoGastoId: value })
+              }
+              placeholder="Seleccionar tipo..."
+              required
+            />
+
+            <Combobox
+              label="Moneda *"
+              options={monedaOptions}
+              value={formEdit.monedaId}
+              onChange={(value) =>
+                setFormEdit({ ...formEdit, monedaId: value })
+              }
+              placeholder="Seleccionar moneda..."
+              required
+            />
+
+            <Input
+              label="Monto *"
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={formEdit.monto}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, monto: e.target.value })
+              }
+              placeholder="0.00"
+              required
+            />
+          </div>
+
+          <Input
+            label="Descripción del Gasto"
+            value={formEdit.descripcionGasto}
+            onChange={(e) =>
+              setFormEdit({ ...formEdit, descripcionGasto: e.target.value })
+            }
+            placeholder="Describe brevemente el gasto..."
+          />
+
+          <TextArea
+            label="Comentario"
+            value={formEdit.comentario}
+            onChange={(e) =>
+              setFormEdit({ ...formEdit, comentario: e.target.value })
+            }
+            placeholder="Comentario adicional (opcional)"
+            rows={3}
+          />
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setEditando(null);
+                setError(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" isLoading={isPending}>
+              {isPending ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

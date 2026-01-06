@@ -2,17 +2,31 @@ import { Header } from "@/components/layout";
 import { NuevoEgresoForm } from "./NuevoEgresoForm";
 import { obtenerDatosFormularioEgreso } from "@/app/actions/operaciones";
 import { getUsuarioActual } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 export default async function NuevoEgresoPage() {
-  const [datos, usuario] = await Promise.all([
+  const [datos, usuario, { permisos }] = await Promise.all([
     obtenerDatosFormularioEgreso(),
     getUsuarioActual(),
+    obtenerMisPermisos(),
   ]);
 
   // Si no hay sesión, redirigir al login
   if (!usuario) {
     redirect("/login");
+  }
+
+  // Validar permiso de crear egresos
+  const permisosEgresos = permisos.egresos || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosEgresos.puedeCrear) {
+    redirect("/dashboard/egresos");
   }
 
   // Si no hay datos configurados, redirigir al asistente

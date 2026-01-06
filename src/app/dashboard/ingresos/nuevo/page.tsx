@@ -2,17 +2,31 @@ import { Header } from "@/components/layout";
 import { NuevoIngresoForm } from "./NuevoIngresoForm";
 import { obtenerDatosFormularioIngreso } from "@/app/actions/operaciones";
 import { getUsuarioActual } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 export default async function NuevoIngresoPage() {
-  const [datos, usuario] = await Promise.all([
+  const [datos, usuario, { permisos }] = await Promise.all([
     obtenerDatosFormularioIngreso(),
     getUsuarioActual(),
+    obtenerMisPermisos(),
   ]);
 
   // Si no hay sesión, redirigir al login
   if (!usuario) {
     redirect("/login");
+  }
+
+  // Validar permiso de crear ingresos
+  const permisosIngresos = permisos.ingresos || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosIngresos.puedeCrear) {
+    redirect("/dashboard/ingresos");
   }
 
   // Si no hay datos configurados, redirigir al asistente

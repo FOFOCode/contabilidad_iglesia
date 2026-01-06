@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useState, useMemo, useCallback } from "react";
+import { ReactNode, useState, useMemo, useCallback, useEffect } from "react";
 import { logout } from "@/app/actions/auth";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
 
 interface NavItemProps {
   href: string;
@@ -46,6 +47,25 @@ export default function Sidebar({ usuario }: SidebarProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [permisos, setPermisos] = useState<
+    Record<string, { puedeVer: boolean }>
+  >({});
+  const [cargandoPermisos, setCargandoPermisos] = useState(true);
+
+  // Cargar permisos del usuario
+  useEffect(() => {
+    async function cargarPermisos() {
+      try {
+        const { permisos: permisosUsuario } = await obtenerMisPermisos();
+        setPermisos(permisosUsuario);
+      } catch (error) {
+        console.error("Error al cargar permisos:", error);
+      } finally {
+        setCargandoPermisos(false);
+      }
+    }
+    cargarPermisos();
+  }, []);
 
   const handleLogout = useCallback(async () => {
     setLoggingOut(true);
@@ -56,11 +76,12 @@ export default function Sidebar({ usuario }: SidebarProps) {
 
   const closeSidebar = useCallback(() => setIsOpen(false), []);
 
-  const navItems = useMemo(
-    () => [
+  const navItems = useMemo(() => {
+    const items = [
       {
         href: "/dashboard",
         label: "Inicio",
+        modulo: "dashboard",
         icon: (
           <svg
             className="w-5 h-5"
@@ -80,6 +101,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/ingresos",
         label: "Ingresos",
+        modulo: "ingresos",
         icon: (
           <svg
             className="w-5 h-5"
@@ -99,6 +121,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/egresos",
         label: "Egresos",
+        modulo: "egresos",
         icon: (
           <svg
             className="w-5 h-5"
@@ -118,6 +141,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/donaciones",
         label: "Donaciones",
+        modulo: "donaciones",
         icon: (
           <svg
             className="w-5 h-5"
@@ -137,6 +161,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/cajas",
         label: "Cajas",
+        modulo: "cajas",
         icon: (
           <svg
             className="w-5 h-5"
@@ -156,6 +181,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/filiales",
         label: "Filiales",
+        modulo: "filiales",
         icon: (
           <svg
             className="w-5 h-5"
@@ -175,6 +201,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/reportes",
         label: "Reportes",
+        modulo: "reportes",
         icon: (
           <svg
             className="w-5 h-5"
@@ -194,6 +221,7 @@ export default function Sidebar({ usuario }: SidebarProps) {
       {
         href: "/dashboard/configuracion",
         label: "Configuración",
+        modulo: "configuracion",
         icon: (
           <svg
             className="w-5 h-5"
@@ -216,9 +244,21 @@ export default function Sidebar({ usuario }: SidebarProps) {
           </svg>
         ),
       },
-    ],
-    []
-  );
+    ];
+
+    // Filtrar items según permisos
+    return items.filter((item) => {
+      // Dashboard siempre visible
+      if (item.modulo === "dashboard") return true;
+
+      // Si aún se están cargando los permisos, ocultar los demás módulos
+      if (cargandoPermisos) return false;
+
+      // Verificar si el usuario tiene permiso para ver este módulo
+      const permisoModulo = permisos[item.modulo];
+      return permisoModulo?.puedeVer === true;
+    });
+  }, [permisos, cargandoPermisos]);
 
   return (
     <>
@@ -315,6 +355,21 @@ export default function Sidebar({ usuario }: SidebarProps) {
               onClick={closeSidebar}
             />
           ))}
+
+          {/* Skeleton loader durante carga de permisos */}
+          {cargandoPermisos && (
+            <>
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg animate-pulse"
+                >
+                  <div className="w-5 h-5 bg-[#dceaef] rounded"></div>
+                  <div className="h-4 bg-[#dceaef] rounded flex-1"></div>
+                </div>
+              ))}
+            </>
+          )}
         </nav>
 
         {/* Usuario y cerrar sesión */}

@@ -1,12 +1,30 @@
 import { Header } from "@/components/layout";
 import { ListadoEgresosClient } from "./ListadoEgresosClient";
-import { obtenerEgresos, obtenerDatosFormularioEgreso } from "@/app/actions/operaciones";
+import {
+  obtenerEgresos,
+  obtenerDatosFormularioEgreso,
+} from "@/app/actions/operaciones";
+import { obtenerMisPermisos } from "@/app/actions/permisos";
+import { redirect } from "next/navigation";
 
 export default async function EgresosPage() {
-  const [egresos, datosForm] = await Promise.all([
+  const [egresos, datosForm, { permisos }] = await Promise.all([
     obtenerEgresos(),
     obtenerDatosFormularioEgreso(),
+    obtenerMisPermisos(),
   ]);
+
+  // Validar permiso de ver egresos
+  const permisosEgresos = permisos.egresos || {
+    puedeVer: false,
+    puedeCrear: false,
+    puedeEditar: false,
+    puedeEliminar: false,
+  };
+
+  if (!permisosEgresos.puedeVer) {
+    redirect("/dashboard");
+  }
 
   // Transformar datos para el cliente
   const egresosData = egresos.map((e) => ({
@@ -36,6 +54,7 @@ export default async function EgresosPage() {
         egresos={egresosData}
         tiposGasto={datosForm.tiposGasto}
         monedas={datosForm.monedas}
+        permisos={permisosEgresos}
       />
     </div>
   );
