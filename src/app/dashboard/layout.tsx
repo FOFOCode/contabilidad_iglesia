@@ -2,6 +2,9 @@ import { Sidebar } from "@/components/layout";
 import { getUsuarioActual } from "@/app/actions/auth";
 import { redirect } from "next/navigation";
 
+// Marcar este layout como dinámico
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {
