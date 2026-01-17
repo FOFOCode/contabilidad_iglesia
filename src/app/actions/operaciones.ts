@@ -482,9 +482,16 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
 // CAJAS - SALDOS
 // =====================
 
-export async function obtenerCajasConSaldos() {
-  // Obtener datos base en paralelo
-  const [cajas, monedas, todosIngresos, todosEgresos, todasDonaciones] =
+export async function obtenerCajasConSaldos(filtros?: {
+  anio?: number;
+  fechaInicio?: string;
+  fechaFin?: string;
+}) {
+  // Por ahora, ignorar filtros de fecha - el reporte muestra saldos totales
+  // Los filtros de fecha se pueden implementar en el frontend si es necesario
+
+  // Obtener datos base en paralelo (minimal - solo lo necesario)
+  const [cajas, monedas, ingresosData, egresosData, donacionesData] =
     await Promise.all([
       prisma.caja.findMany({
         where: { activa: true },
@@ -498,97 +505,88 @@ export async function obtenerCajasConSaldos() {
         where: { activa: true },
         orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
       }),
-      // Una sola consulta para TODOS los ingresos agrupados por caja y moneda
+      // Ingresos principales: agrupar por moneda
       prisma.ingresoMonto.groupBy({
         by: ["monedaId"],
-        where: { ingreso: { caja: { activa: true } } },
+        where: {
+          ingreso: { caja: { activa: true } },
+        },
         _sum: { monto: true },
       }),
-      // Una sola consulta para TODOS los egresos agrupados por caja y moneda
+      // Egresos: agrupar por caja Y moneda
       prisma.egreso.groupBy({
-        by: ["monedaId", "cajaId"],
-        where: { caja: { activa: true } },
+        by: ["cajaId", "monedaId"],
+        where: {
+          caja: { activa: true },
+        },
         _sum: { monto: true },
       }),
-      // Donaciones agrupadas por caja y moneda
+      // Donaciones: agrupar por caja Y moneda
       prisma.donacion.groupBy({
-        by: ["monedaId", "cajaId"],
-        where: { caja: { activa: true } },
+        by: ["cajaId", "monedaId"],
+        where: {
+          caja: { activa: true },
+        },
         _sum: { monto: true },
       }),
     ]);
 
-  // Obtener ingresos agrupados por caja y moneda en una sola consulta
-  const ingresosAgrupados = await prisma.$queryRaw<
-    { cajaId: string; monedaId: string; total: number }[]
-  >`
-    SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
-    FROM ingreso_montos im
-    INNER JOIN ingresos i ON im."ingresoId" = i.id
-    INNER JOIN cajas c ON i."cajaId" = c.id
-    WHERE c.activa = true
-    GROUP BY i."cajaId", im."monedaId"
-  `;
+  // Obtener ingresos secundarios por caja (para tracking de sociedades)
+  const ingresosSecundarios = await prisma.ingresoMonto.groupBy({
+    by: ["monedaId"],
+    where: {
+      ingreso: { cajaSecundaria: { activa: true } },
+    },
+    _sum: { monto: true },
+  });
 
-  // Obtener ingresos secundarios agrupados (para tracking)
-  const ingresosSecundariosAgrupados = await prisma.$queryRaw<
-    { cajaId: string; monedaId: string; total: number }[]
-  >`
-    SELECT i."cajaSecundariaId" as "cajaId", im."monedaId", SUM(im.monto)::float as total
-    FROM ingreso_montos im
-    INNER JOIN ingresos i ON im."ingresoId" = i.id
-    INNER JOIN cajas c ON i."cajaSecundariaId" = c.id
-    WHERE c.activa = true AND i."cajaSecundariaId" IS NOT NULL
-    GROUP BY i."cajaSecundariaId", im."monedaId"
-  `;
-
-  // Mapa para acceso rápido a ingresos principales
+  // Mapas para acceso rápido
   const ingresosPrincipalesMap = new Map<string, number>();
-  ingresosAgrupados.forEach((ing) => {
-    ingresosPrincipalesMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+  ingresosData.forEach((ing) => {
+    // Para ingresos principales: solo por moneda (todos van a una caja)
+    ingresosPrincipalesMap.set(
+      `total-${ing.monedaId}`,
+      Number(ing._sum.monto || 0)
+    );
   });
-
-  // Mapa separado para ingresos secundarios
   const ingresosSecundariosMap = new Map<string, number>();
-  ingresosSecundariosAgrupados.forEach((ing) => {
-    ingresosSecundariosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
+  ingresosSecundarios.forEach((ing) => {
+    ingresosSecundariosMap.set(
+      `total-${ing.monedaId}`,
+      Number(ing._sum.monto || 0)
+    );
   });
 
-  // Mapa para donaciones (también son ingresos)
   const donacionesMap = new Map<string, number>();
-  todasDonaciones.forEach((don) => {
+  donacionesData.forEach((don) => {
     donacionesMap.set(
       `${don.cajaId}-${don.monedaId}`,
       Number(don._sum.monto || 0)
     );
   });
 
-  // Mapa para acceso rápido a egresos
   const egresosMap = new Map<string, number>();
-  todosEgresos.forEach((egr) => {
+  egresosData.forEach((egr) => {
     egresosMap.set(
       `${egr.cajaId}-${egr.monedaId}`,
       Number(egr._sum.monto || 0)
     );
   });
 
-  // Construir cajas con saldos usando los mapas
+  // Construir cajas con saldos
   const cajasConSaldos = cajas.map((caja) => {
     const saldos = monedas.map((moneda) => {
       const key = `${caja.id}-${moneda.id}`;
-
-      // Para cajas de sociedades (no generales): solo mostrar ingresos secundarios (tracking)
-      // Para cajas generales u otras: mostrar ingresos principales (dinero real)
       const esSubcaja =
         !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
-      const ingresosBase = esSubcaja
-        ? ingresosSecundariosMap.get(key) || 0
-        : ingresosPrincipalesMap.get(key) || 0;
 
-      // Las donaciones solo se suman a la caja general (donde esGeneral = true)
+      // Ingresos: si es subcaja usa secundarios, sino usa el total de principales
+      const ingresosBase = esSubcaja
+        ? ingresosSecundariosMap.get(`total-${moneda.id}`) || 0
+        : ingresosPrincipalesMap.get(`total-${moneda.id}`) || 0;
+
       const donaciones = caja.esGeneral ? donacionesMap.get(key) || 0 : 0;
       const ingresos = ingresosBase + donaciones;
-
       const egresos = egresosMap.get(key) || 0;
 
       return {
@@ -607,19 +605,18 @@ export async function obtenerCajasConSaldos() {
     };
   });
 
-  // Crear cajas virtuales para Filiales y Donaciones
-  const cajasVirtuales = [];
+  // Cajas virtuales (sin consultas adicionales si es posible)
+  const cajasVirtuales: any[] = [];
 
-  // 1. Caja Virtual de Donaciones (si hay donaciones)
-  const donacionesPorMoneda = await prisma.donacion.groupBy({
-    by: ["monedaId"],
-    _sum: { monto: true },
-  });
-
-  if (donacionesPorMoneda.length > 0) {
+  // Solo agregar cajas virtuales si hay datos
+  if (donacionesData.length > 0) {
     const saldosDonaciones = monedas.map((moneda) => {
-      const don = donacionesPorMoneda.find((d) => d.monedaId === moneda.id);
-      const total = Number(don?._sum.monto || 0);
+      let total = 0;
+      donacionesData.forEach((don) => {
+        if (don.monedaId === moneda.id) {
+          total += Number(don._sum.monto || 0);
+        }
+      });
       return {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
@@ -648,7 +645,7 @@ export async function obtenerCajasConSaldos() {
     });
   }
 
-  // 2. Caja Virtual de Filiales
+  // Obtener filiales solo si es necesario
   const [diezmosFilialesPorMoneda, egresosFilialesPorMoneda] =
     await Promise.all([
       prisma.diezmoFilial.groupBy({
@@ -702,10 +699,7 @@ export async function obtenerCajasConSaldos() {
     });
   }
 
-  // Combinar cajas reales con cajas virtuales
   const todasLasCajas = [...cajasConSaldos, ...cajasVirtuales];
-
-  // Serializar monedas para evitar Decimal
   const monedasSerializadas = monedas.map(serializarMoneda);
 
   return { cajas: todasLasCajas, monedas: monedasSerializadas };
@@ -1864,4 +1858,62 @@ export async function obtenerDatosReporteAnalitico(
     },
     monedas: monedasRaw.map(serializarMoneda),
   };
+}
+
+// =====================
+// REPORTE DE SALDOS ACTUALES
+// =====================
+
+export async function obtenerReporteSaldosActuales() {
+  return withRetry(async () => {
+    // Reporte de saldos actuales - muestra todos los saldos sin filtros
+    const { cajas, monedas } = await obtenerCajasConSaldos();
+
+    // Filtrar solo cajas reales (no virtuales)
+    const cajasReales = cajas.filter(
+      (c) => !("esVirtual" in c) || !(c as any).esVirtual
+    );
+    const cajasVirtuales = cajas.filter(
+      (c) => "esVirtual" in c && (c as any).esVirtual
+    );
+
+    // Organizar datos por tipo
+    const cajasGenerales = cajasReales.filter((c) => c.esGeneral);
+    const cajasSociedades = cajasReales.filter(
+      (c) => !c.esGeneral && c.sociedadId
+    );
+    const cajasOtras = cajasReales.filter((c) => !c.esGeneral && !c.sociedadId);
+
+    // Calcular totales por moneda
+    const totalesPorMoneda: Record<
+      string,
+      { ingresos: number; egresos: number; saldo: number }
+    > = {};
+
+    cajasReales.forEach((caja: any) => {
+      (caja.saldos || []).forEach((saldo: any) => {
+        if (!totalesPorMoneda[saldo.monedaId]) {
+          totalesPorMoneda[saldo.monedaId] = {
+            ingresos: 0,
+            egresos: 0,
+            saldo: 0,
+          };
+        }
+        totalesPorMoneda[saldo.monedaId].ingresos += saldo.ingresos;
+        totalesPorMoneda[saldo.monedaId].egresos += saldo.egresos;
+        totalesPorMoneda[saldo.monedaId].saldo += saldo.saldo;
+      });
+    });
+
+    return {
+      fecha: new Date(),
+      cajasGenerales,
+      cajasSociedades,
+      cajasOtras,
+      cajasVirtuales,
+      totalesPorMoneda,
+      monedas,
+      totalCajas: cajasReales.length,
+    };
+  });
 }

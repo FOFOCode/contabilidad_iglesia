@@ -11,6 +11,7 @@ import { Card, Button, Combobox, Input, Badge, Table } from "@/components/ui";
 import {
   obtenerDatosReporte,
   obtenerDatosReporteAnalitico,
+  obtenerReporteSaldosActuales,
 } from "@/app/actions/operaciones";
 import {
   obtenerReporteDiezmosFiliales,
@@ -96,6 +97,7 @@ type TipoVista =
   | "tipoIngreso"
   | "tipoGasto"
   | "cajas"
+  | "saldosActuales"
   | "diezmosFiliales"
   | "cajaFiliales";
 
@@ -234,6 +236,7 @@ export function ReportesClient({
     fechaInicio: "", // Nuevo: fecha inicio para rango
     fechaFin: "", // Nuevo: fecha fin para rango
   });
+  const [filtrosSaldos, setFiltrosSaldos] = useState({});
   const [filtrosDiezmosFiliales, setFiltrosDiezmosFiliales] = useState({
     anio: obtenerFechaElSalvador().getFullYear(),
     monedaId: "",
@@ -246,6 +249,7 @@ export function ReportesClient({
   const [resultados, setResultados] = useState<MovimientoReporte[]>([]);
   const [datosAnaliticos, setDatosAnaliticos] =
     useState<DatosAnaliticos | null>(null);
+  const [datosSaldosActuales, setDatosSaldosActuales] = useState<any>(null);
   const [datosDiezmosFiliales, setDatosDiezmosFiliales] = useState<any>(null);
   const [datosCajaFiliales, setDatosCajaFiliales] = useState<any>(null);
   const [mostrarResultados, setMostrarResultados] = useState(false);
@@ -401,6 +405,14 @@ export function ReportesClient({
         monedaId: filtrosCajaFiliales.monedaId || undefined,
       });
       setDatosCajaFiliales(datos);
+      setMostrarResultados(true);
+    });
+  };
+
+  const handleGenerarReporteSaldosActuales = () => {
+    startTransition(async () => {
+      const datos = await obtenerReporteSaldosActuales();
+      setDatosSaldosActuales(datos);
       setMostrarResultados(true);
     });
   };
@@ -641,6 +653,326 @@ export function ReportesClient({
     }
   };
 
+  // Funciones de exportación para Saldos Actuales
+  const exportarSaldosActualesExcel = () => {
+    if (!datosSaldosActuales) return;
+
+    const headers = [
+      "Tipo de Caja",
+      "Nombre",
+      "Moneda",
+      "Ingresos",
+      "Egresos",
+      "Saldo",
+    ];
+    const rows: string[][] = [];
+
+    // Cajas Generales
+    if (datosSaldosActuales.cajasGenerales) {
+      rows.push(["CAJAS GENERALES", "", "", "", "", ""]);
+      datosSaldosActuales.cajasGenerales.forEach((caja: any) => {
+        caja.saldos?.forEach((saldo: any) => {
+          rows.push([
+            "",
+            caja.nombre,
+            saldo.monedaCodigo,
+            saldo.ingresos.toFixed(2),
+            saldo.egresos.toFixed(2),
+            saldo.saldo.toFixed(2),
+          ]);
+        });
+      });
+      rows.push(["", "", "", "", "", ""]);
+    }
+
+    // Cajas de Sociedades
+    if (datosSaldosActuales.cajasSociedades) {
+      rows.push(["CAJAS DE SOCIEDADES", "", "", "", "", ""]);
+      datosSaldosActuales.cajasSociedades.forEach((caja: any) => {
+        caja.saldos?.forEach((saldo: any) => {
+          rows.push([
+            "",
+            `${caja.sociedad?.nombre || "-"} - ${caja.nombre}`,
+            saldo.monedaCodigo,
+            saldo.ingresos.toFixed(2),
+            saldo.egresos.toFixed(2),
+            saldo.saldo.toFixed(2),
+          ]);
+        });
+      });
+      rows.push(["", "", "", "", "", ""]);
+    }
+
+    // Cajas Virtuales
+    if (datosSaldosActuales.cajasVirtuales) {
+      rows.push(["CAJAS VIRTUALES", "", "", "", "", ""]);
+      datosSaldosActuales.cajasVirtuales.forEach((caja: any) => {
+        caja.saldos?.forEach((saldo: any) => {
+          rows.push([
+            "",
+            caja.nombre,
+            saldo.monedaCodigo,
+            saldo.ingresos.toFixed(2),
+            saldo.egresos.toFixed(2),
+            saldo.saldo.toFixed(2),
+          ]);
+        });
+      });
+    }
+
+    // Agregar resumen por moneda
+    rows.push(["", "", "", "", "", ""]);
+    rows.push(["RESUMEN POR MONEDA", "", "", "", "", ""]);
+    Object.entries(datosSaldosActuales.totalesPorMoneda || {}).forEach(
+      ([monedaId, datos]: [string, any]) => {
+        const moneda = datosSaldosActuales.monedas?.find(
+          (m: any) => m.id === monedaId
+        );
+        rows.push([
+          "",
+          moneda?.codigo || monedaId,
+          moneda?.simbolo || "$",
+          datos.ingresos.toFixed(2),
+          datos.egresos.toFixed(2),
+          datos.saldo.toFixed(2),
+        ]);
+      }
+    );
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${cell}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob(["\ufeff" + csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `reporte_saldos_${
+      obtenerFechaElSalvador().toISOString().split("T")[0]
+    }.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportarSaldosActualesPDF = () => {
+    if (!datosSaldosActuales) return;
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Reporte de Saldos Actuales</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { color: #203b46; font-size: 24px; margin-bottom: 10px; }
+          .fecha { color: #73a9bf; font-size: 12px; margin-bottom: 20px; }
+          h2 { color: #40768c; font-size: 16px; margin-top: 20px; margin-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th { background: #40768c; color: white; padding: 10px; text-align: left; font-weight: bold; }
+          td { padding: 8px; border-bottom: 1px solid #dceaef; }
+          tr:nth-child(even) { background: #f9fafb; }
+          .seccion { background: #eef4f7; padding: 10px; font-weight: bold; margin-top: 15px; }
+          .total { background: #d4edea; font-weight: bold; }
+          .positivo { color: #2ba193; }
+          .negativo { color: #e0451f; }
+          .resumen { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+          .resumen-card { background: #eef4f7; padding: 15px; border-radius: 8px; flex: 1; min-width: 200px; }
+          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        </style>
+      </head>
+      <body>
+        <h1>Reporte de Saldos Actuales de Cajas</h1>
+        <p class="fecha">Generado: ${obtenerFechaElSalvador().toLocaleString(
+          "es-GT"
+        )}</p>
+        
+        <h2>Resumen por Moneda</h2>
+        <div class="resumen">
+          ${Object.entries(datosSaldosActuales.totalesPorMoneda || {})
+            .map(([monedaId, datos]: [string, any]) => {
+              const moneda = datosSaldosActuales.monedas?.find(
+                (m: any) => m.id === monedaId
+              );
+              return `
+                <div class="resumen-card">
+                  <strong>${moneda?.codigo || monedaId}</strong><br>
+                  <span class="positivo">Ingresos: ${moneda?.simbolo || "$"}${(
+                datos.ingresos || 0
+              ).toLocaleString("es-GT", {
+                minimumFractionDigits: 2,
+              })}</span><br>
+                  <span class="negativo">Egresos: ${moneda?.simbolo || "$"}${(
+                datos.egresos || 0
+              ).toLocaleString("es-GT", {
+                minimumFractionDigits: 2,
+              })}</span><br>
+                  <strong>Saldo: ${moneda?.simbolo || "$"}${(
+                datos.saldo || 0
+              ).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Tipo de Caja</th>
+              <th>Nombre</th>
+              <th>Moneda</th>
+              <th style="text-align: right;">Ingresos</th>
+              <th style="text-align: right;">Egresos</th>
+              <th style="text-align: right;">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              datosSaldosActuales.cajasGenerales
+                ? `
+                  <tr class="seccion">
+                    <td colspan="6">CAJAS GENERALES</td>
+                  </tr>
+                  ${datosSaldosActuales.cajasGenerales
+                    .map(
+                      (caja: any) => `
+                    ${caja.saldos
+                      ?.map(
+                        (saldo: any) => `
+                      <tr>
+                        <td></td>
+                        <td>${caja.nombre}</td>
+                        <td>${saldo.monedaCodigo}</td>
+                        <td style="text-align: right;" class="positivo">${
+                          saldo.monedaSimbolo
+                        }${saldo.ingresos.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}</td>
+                        <td style="text-align: right;" class="negativo">${
+                          saldo.monedaSimbolo
+                        }${saldo.egresos.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}</td>
+                        <td style="text-align: right;" class="${
+                          saldo.saldo >= 0 ? "positivo" : "negativo"
+                        }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
+                          "es-GT",
+                          { minimumFractionDigits: 2 }
+                        )}</td>
+                      </tr>
+                    `
+                      )
+                      .join("")}
+                  `
+                    )
+                    .join("")}
+                `
+                : ""
+            }
+            ${
+              datosSaldosActuales.cajasSociedades
+                ? `
+                  <tr class="seccion">
+                    <td colspan="6">CAJAS DE SOCIEDADES</td>
+                  </tr>
+                  ${datosSaldosActuales.cajasSociedades
+                    .map(
+                      (caja: any) => `
+                    ${caja.saldos
+                      ?.map(
+                        (saldo: any) => `
+                      <tr>
+                        <td></td>
+                        <td>${caja.sociedad?.nombre || "-"} - ${
+                          caja.nombre
+                        }</td>
+                        <td>${saldo.monedaCodigo}</td>
+                        <td style="text-align: right;" class="positivo">${
+                          saldo.monedaSimbolo
+                        }${saldo.ingresos.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}</td>
+                        <td style="text-align: right;" class="negativo">${
+                          saldo.monedaSimbolo
+                        }${saldo.egresos.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}</td>
+                        <td style="text-align: right;" class="${
+                          saldo.saldo >= 0 ? "positivo" : "negativo"
+                        }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
+                          "es-GT",
+                          { minimumFractionDigits: 2 }
+                        )}</td>
+                      </tr>
+                    `
+                      )
+                      .join("")}
+                  `
+                    )
+                    .join("")}
+                `
+                : ""
+            }
+            ${
+              datosSaldosActuales.cajasVirtuales
+                ? `
+                  <tr class="seccion">
+                    <td colspan="6">CAJAS VIRTUALES</td>
+                  </tr>
+                  ${datosSaldosActuales.cajasVirtuales
+                    .map(
+                      (caja: any) => `
+                    ${caja.saldos
+                      ?.map(
+                        (saldo: any) => `
+                      <tr>
+                        <td></td>
+                        <td>${caja.nombre}</td>
+                        <td>${saldo.monedaCodigo}</td>
+                        <td style="text-align: right;" class="positivo">${
+                          saldo.monedaSimbolo
+                        }${saldo.ingresos.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}</td>
+                        <td style="text-align: right;" class="negativo">${
+                          saldo.monedaSimbolo
+                        }${saldo.egresos.toLocaleString("es-GT", {
+                          minimumFractionDigits: 2,
+                        })}</td>
+                        <td style="text-align: right;" class="${
+                          saldo.saldo >= 0 ? "positivo" : "negativo"
+                        }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
+                          "es-GT",
+                          { minimumFractionDigits: 2 }
+                        )}</td>
+                      </tr>
+                    `
+                      )
+                      .join("")}
+                  `
+                    )
+                    .join("")}
+                `
+                : ""
+            }
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    }
+  };
+
   const columns = [
     {
       key: "fecha",
@@ -745,297 +1077,361 @@ export function ReportesClient({
   }, [datosAnaliticos]);
 
   return (
-    <div className="p-4 md:p-5 lg:p-6">
+    <div className="p-4 md:p-5 lg:p-6 max-w-7xl mx-auto">
       {/* Selector de Reportes - Diseño Compacto */}
       {!mostrarResultados && (
-        <div className="mb-6">
-          {/* Header */}
-          <div className="mb-4">
-            <h1 className="text-xl md:text-2xl font-bold text-[#203b46]">
+        <div className="mb-8">
+          {/* Header Principal */}
+          <div className="mb-6 pb-4 border-b border-[#dceaef]">
+            <h1 className="text-2xl md:text-3xl font-bold text-[#203b46] mb-1">
               📊 Generador de Reportes
             </h1>
-            <p className="text-sm text-[#73a9bf]">
-              Selecciona el tipo de análisis que necesitas
+            <p className="text-sm md:text-base text-[#73a9bf]">
+              Selecciona el tipo de análisis que necesitas para tu gestión
+              financiera
             </p>
           </div>
 
-          {/* Grid de Reportes - Compacto */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {/* Reporte de Movimientos */}
-            <button
-              onClick={() => {
-                setVistaActiva("movimientos");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "movimientos"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">📋</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "movimientos"
-                      ? "text-white"
-                      : "text-[#203b46]"
-                  }`}
-                >
-                  Movimientos
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+          {/* Sección 1: Análisis Detallados */}
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <div className="w-1 h-6 bg-gradient-to-b from-[#2ba193] to-[#238a7e] rounded"></div>
+              <h2 className="text-sm font-semibold text-[#40768c] uppercase tracking-wider">
+                Análisis Detallados
+              </h2>
+            </div>
+            <p className="text-xs text-[#73a9bf] mb-3 px-1">
+              Reportes con filtros avanzados y visualización de datos
+            </p>
+
+            {/* Grid de Reportes - Compacto */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {/* Reporte de Movimientos */}
+              <button
+                onClick={() => {
+                  setVistaActiva("movimientos");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "movimientos"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
                 }`}
               >
-                Lista de ingresos y egresos con filtros
-              </p>
-            </button>
-
-            {/* Reporte Comparativo */}
-            <button
-              onClick={() => {
-                setVistaActiva("comparativo");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "comparativo"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">📈</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "comparativo"
-                      ? "text-white"
-                      : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">📋</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "movimientos"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Movimientos
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "movimientos"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
                   }`}
                 >
-                  Análisis Mensual
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+                  Lista de ingresos y egresos con filtros
+                </p>
+              </button>
+
+              {/* Reporte Comparativo */}
+              <button
+                onClick={() => {
+                  setVistaActiva("comparativo");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "comparativo"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
                 }`}
               >
-                Comparativa ingresos vs egresos por mes
-              </p>
-            </button>
-
-            {/* Reporte por Sociedades */}
-            <button
-              onClick={() => {
-                setVistaActiva("sociedades");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "sociedades"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">👥</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "sociedades"
-                      ? "text-white"
-                      : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">📈</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "comparativo"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Análisis Mensual
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "comparativo"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
                   }`}
                 >
-                  Por Sociedad
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+                  Comparativa ingresos vs egresos por mes
+                </p>
+              </button>
+
+              {/* Reporte por Sociedades */}
+              <button
+                onClick={() => {
+                  setVistaActiva("sociedades");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "sociedades"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
                 }`}
               >
-                Recaudación por Hombres, Mujeres, etc.
-              </p>
-            </button>
-
-            {/* Reporte por Tipo de Ingreso */}
-            <button
-              onClick={() => {
-                setVistaActiva("tipoIngreso");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "tipoIngreso"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">💰</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "tipoIngreso"
-                      ? "text-white"
-                      : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">👥</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "sociedades"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Por Sociedad
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "sociedades"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
                   }`}
                 >
-                  Tipo Ingreso
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+                  Recaudación por Hombres, Mujeres, etc.
+                </p>
+              </button>
+
+              {/* Reporte por Tipo de Ingreso */}
+              <button
+                onClick={() => {
+                  setVistaActiva("tipoIngreso");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "tipoIngreso"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
                 }`}
               >
-                Diezmos, Ofrendas, Primicias, etc.
-              </p>
-            </button>
-
-            {/* Reporte por Tipo de Gasto */}
-            <button
-              onClick={() => {
-                setVistaActiva("tipoGasto");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "tipoGasto"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">💸</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "tipoGasto"
-                      ? "text-white"
-                      : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">💰</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "tipoIngreso"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Tipo Ingreso
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "tipoIngreso"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
                   }`}
                 >
-                  Tipo Gasto
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+                  Diezmos, Ofrendas, Primicias, etc.
+                </p>
+              </button>
+
+              {/* Reporte por Tipo de Gasto */}
+              <button
+                onClick={() => {
+                  setVistaActiva("tipoGasto");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "tipoGasto"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
                 }`}
               >
-                Servicios, Mantenimiento, etc.
-              </p>
-            </button>
-
-            {/* Reporte de Cajas */}
-            <button
-              onClick={() => {
-                setVistaActiva("cajas");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "cajas"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">🏦</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "cajas" ? "text-white" : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">💸</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "tipoGasto"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Tipo Gasto
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "tipoGasto"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
                   }`}
                 >
-                  Estado Cajas
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
-                  vistaActiva === "cajas" ? "text-white/85" : "text-[#73a9bf]"
+                  Servicios, Mantenimiento, etc.
+                </p>
+              </button>
+
+              {/* Reporte de Cajas */}
+              <button
+                onClick={() => {
+                  setVistaActiva("cajas");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                  vistaActiva === "cajas"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
                 }`}
               >
-                Saldos por caja y moneda
-              </p>
-            </button>
-
-            {/* Reporte de Diezmos por Filial */}
-            <button
-              onClick={() => {
-                setVistaActiva("diezmosFiliales");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "diezmosFiliales"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">⛪</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "diezmosFiliales"
-                      ? "text-white"
-                      : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">🏦</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "cajas" ? "text-white" : "text-[#203b46]"
+                    }`}
+                  >
+                    Estado Cajas
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "cajas" ? "text-white/85" : "text-[#73a9bf]"
                   }`}
                 >
-                  Diezmos Filiales
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+                  Saldos por caja y moneda
+                </p>
+              </button>
+
+              {/* Reporte de Saldos Actuales */}
+              <button
+                onClick={() => {
+                  setVistaActiva("saldosActuales");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
+                  vistaActiva === "saldosActuales"
+                    ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">💰</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "saldosActuales"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Saldos Actuales
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "saldosActuales"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
+                  }`}
+                >
+                  Estado actual de todas las cajas
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Sección 2: Reportes de Filiales */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <div className="w-1 h-6 bg-gradient-to-b from-[#e0451f] to-[#c73a15] rounded"></div>
+              <h2 className="text-sm font-semibold text-[#40768c] uppercase tracking-wider">
+                Filiales & Diezmos
+              </h2>
+            </div>
+            <p className="text-xs text-[#73a9bf] mb-3 px-1">
+              Reportes específicos para iglesias filiales y gestión de diezmos
+            </p>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {/* Reporte de Diezmos por Filial */}
+              <button
+                onClick={() => {
+                  setVistaActiva("diezmosFiliales");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "diezmosFiliales"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#e0451f] to-[#c73a15] text-white shadow-lg ring-2 ring-[#e0451f]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#e0451f] hover:shadow-md"
                 }`}
               >
-                Aportes de iglesias filiales
-              </p>
-            </button>
-
-            {/* Reporte de Cajas por Filial */}
-            <button
-              onClick={() => {
-                setVistaActiva("cajaFiliales");
-                setMostrarResultados(false);
-              }}
-              className={`group text-left p-4 rounded-xl transition-all duration-150 ${
-                vistaActiva === "cajaFiliales"
-                  ? "bg-gradient-to-br from-[#2ba193] to-[#238a7e] text-white shadow-lg ring-2 ring-[#2ba193]/30"
-                  : "bg-white border border-[#dceaef] hover:border-[#2ba193] hover:shadow-md"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">📦</span>
-                <h3
-                  className={`text-sm font-bold ${
-                    vistaActiva === "cajaFiliales"
-                      ? "text-white"
-                      : "text-[#203b46]"
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">⛪</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "diezmosFiliales"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Diezmos Filiales
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "diezmosFiliales"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
                   }`}
                 >
-                  Finanzas Filiales
-                </h3>
-              </div>
-              <p
-                className={`text-xs leading-relaxed ${
+                  Aportes de iglesias filiales
+                </p>
+              </button>
+
+              {/* Reporte de Cajas por Filial */}
+              <button
+                onClick={() => {
+                  setVistaActiva("cajaFiliales");
+                  setMostrarResultados(false);
+                }}
+                className={`group text-left p-4 rounded-xl transition-all duration-150 ${
                   vistaActiva === "cajaFiliales"
-                    ? "text-white/85"
-                    : "text-[#73a9bf]"
+                    ? "bg-gradient-to-br from-[#e0451f] to-[#c73a15] text-white shadow-lg ring-2 ring-[#e0451f]/30"
+                    : "bg-white border border-[#dceaef] hover:border-[#e0451f] hover:shadow-md"
                 }`}
               >
-                Balance consolidado por iglesia
-              </p>
-            </button>
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-2xl">📦</span>
+                  <h3
+                    className={`text-sm font-bold ${
+                      vistaActiva === "cajaFiliales"
+                        ? "text-white"
+                        : "text-[#203b46]"
+                    }`}
+                  >
+                    Finanzas Filiales
+                  </h3>
+                </div>
+                <p
+                  className={`text-xs leading-relaxed ${
+                    vistaActiva === "cajaFiliales"
+                      ? "text-white/85"
+                      : "text-[#73a9bf]"
+                  }`}
+                >
+                  Balance consolidado por iglesia
+                </p>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1057,6 +1453,7 @@ export function ReportesClient({
             {vistaActiva === "tipoIngreso" && "Clasificación de Ingresos"}
             {vistaActiva === "tipoGasto" && "Clasificación de Gastos"}
             {vistaActiva === "cajas" && "Estado de Cajas"}
+            {vistaActiva === "saldosActuales" && "Saldos Actuales de Cajas"}
             {vistaActiva === "diezmosFiliales" && "Diezmos de Filiales"}
             {vistaActiva === "cajaFiliales" && "Caja General de Filiales"}
           </span>
@@ -1178,155 +1575,213 @@ export function ReportesClient({
         </Card>
       )}
 
-      {/* Panel de Filtros - Reportes Analíticos */}
+      {/* Panel de Controles Unificado - Filtros y Reportes */}
       {vistaActiva !== "movimientos" &&
         vistaActiva !== "diezmosFiliales" &&
         vistaActiva !== "cajaFiliales" &&
         !mostrarResultados && (
           <Card className="mb-4 md:mb-5">
-            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-              Configurar Análisis
-            </h3>
+            {/* Configurar Análisis - para Comparativo y otros */}
+            {vistaActiva !== "saldosActuales" && (
+              <>
+                <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                  Configurar Análisis
+                </h3>
 
-            {/* Selector de modo: Año o Rango de Fechas */}
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() =>
-                  setFiltrosAnaliticos((prev) => ({
-                    ...prev,
-                    modoFiltro: "anio",
-                  }))
-                }
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filtrosAnaliticos.modoFiltro === "anio"
-                    ? "bg-[#40768c] text-white"
-                    : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
-                }`}
-              >
-                Por Año
-              </button>
-              <button
-                onClick={() =>
-                  setFiltrosAnaliticos((prev) => ({
-                    ...prev,
-                    modoFiltro: "rango",
-                  }))
-                }
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filtrosAnaliticos.modoFiltro === "rango"
-                    ? "bg-[#40768c] text-white"
-                    : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
-                }`}
-              >
-                Rango de Fechas
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
-              {/* Mostrar selector de Año si está en modo "anio" */}
-              {filtrosAnaliticos.modoFiltro === "anio" && (
-                <Combobox
-                  label="Año"
-                  options={anioOptions}
-                  value={filtrosAnaliticos.anio.toString()}
-                  onChange={(value) =>
-                    setFiltrosAnaliticos((prev) => ({
-                      ...prev,
-                      anio:
-                        parseInt(value) ||
-                        obtenerFechaElSalvador().getFullYear(),
-                    }))
-                  }
-                  searchable={false}
-                />
-              )}
-
-              {/* Mostrar selectores de fecha si está en modo "rango" */}
-              {filtrosAnaliticos.modoFiltro === "rango" && (
-                <>
-                  <Input
-                    label="Fecha Inicio"
-                    type="date"
-                    value={filtrosAnaliticos.fechaInicio}
-                    onChange={(e) =>
+                {/* Selector de modo: Año o Rango de Fechas */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() =>
                       setFiltrosAnaliticos((prev) => ({
                         ...prev,
-                        fechaInicio: e.target.value,
+                        modoFiltro: "anio",
                       }))
                     }
-                  />
-                  <Input
-                    label="Fecha Fin"
-                    type="date"
-                    value={filtrosAnaliticos.fechaFin}
-                    onChange={(e) =>
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      filtrosAnaliticos.modoFiltro === "anio"
+                        ? "bg-[#40768c] text-white"
+                        : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
+                    }`}
+                  >
+                    Por Año
+                  </button>
+                  <button
+                    onClick={() =>
                       setFiltrosAnaliticos((prev) => ({
                         ...prev,
-                        fechaFin: e.target.value,
+                        modoFiltro: "rango",
                       }))
                     }
-                  />
-                </>
-              )}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      filtrosAnaliticos.modoFiltro === "rango"
+                        ? "bg-[#40768c] text-white"
+                        : "bg-[#eef4f7] text-[#40768c] hover:bg-[#dceaef]"
+                    }`}
+                  >
+                    Rango de Fechas
+                  </button>
+                </div>
 
-              <Combobox
-                label="Moneda"
-                options={monedaOptions}
-                value={filtrosAnaliticos.monedaId}
-                onChange={(value) =>
-                  setFiltrosAnaliticos((prev) => ({ ...prev, monedaId: value }))
-                }
-                placeholder="Todas las monedas"
-                clearable
-                searchable={false}
-              />
-            </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
+                  {/* Mostrar selector de Año si está en modo "anio" */}
+                  {filtrosAnaliticos.modoFiltro === "anio" && (
+                    <Combobox
+                      label="Año"
+                      options={anioOptions}
+                      value={filtrosAnaliticos.anio.toString()}
+                      onChange={(value) =>
+                        setFiltrosAnaliticos((prev) => ({
+                          ...prev,
+                          anio:
+                            parseInt(value) ||
+                            obtenerFechaElSalvador().getFullYear(),
+                        }))
+                      }
+                      searchable={false}
+                    />
+                  )}
 
-            <div className="flex justify-end">
-              <Button
-                onClick={handleGenerarReporteAnalitico}
-                disabled={
-                  isPending ||
-                  (filtrosAnaliticos.modoFiltro === "rango" &&
-                    (!filtrosAnaliticos.fechaInicio ||
-                      !filtrosAnaliticos.fechaFin))
-                }
-              >
-                {isPending ? (
-                  "Analizando..."
-                ) : (
-                  <>
-                    <svg
-                      className="w-4 h-4 mr-2"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  {/* Mostrar selectores de fecha si está en modo "rango" */}
+                  {filtrosAnaliticos.modoFiltro === "rango" && (
+                    <>
+                      <Input
+                        label="Fecha Inicio"
+                        type="date"
+                        value={filtrosAnaliticos.fechaInicio}
+                        onChange={(e) =>
+                          setFiltrosAnaliticos((prev) => ({
+                            ...prev,
+                            fechaInicio: e.target.value,
+                          }))
+                        }
                       />
-                    </svg>
-                    Generar Análisis
-                  </>
-                )}
-              </Button>
-            </div>
+                      <Input
+                        label="Fecha Fin"
+                        type="date"
+                        value={filtrosAnaliticos.fechaFin}
+                        onChange={(e) =>
+                          setFiltrosAnaliticos((prev) => ({
+                            ...prev,
+                            fechaFin: e.target.value,
+                          }))
+                        }
+                      />
+                    </>
+                  )}
+
+                  <Combobox
+                    label="Moneda"
+                    options={monedaOptions}
+                    value={filtrosAnaliticos.monedaId}
+                    onChange={(value) =>
+                      setFiltrosAnaliticos((prev) => ({
+                        ...prev,
+                        monedaId: value,
+                      }))
+                    }
+                    placeholder="Todas las monedas"
+                    clearable
+                    searchable={false}
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleGenerarReporteAnalitico}
+                    disabled={
+                      isPending ||
+                      (filtrosAnaliticos.modoFiltro === "rango" &&
+                        (!filtrosAnaliticos.fechaInicio ||
+                          !filtrosAnaliticos.fechaFin))
+                    }
+                  >
+                    {isPending ? (
+                      "Analizando..."
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                          />
+                        </svg>
+                        Generar Análisis
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {/* Reporte de Saldos - para Saldos Actuales */}
+            {vistaActiva === "saldosActuales" && (
+              <>
+                <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4 flex items-center gap-2">
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                    />
+                  </svg>
+                  Saldos Actuales
+                </h3>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleGenerarReporteSaldosActuales}
+                    disabled={isPending}
+                  >
+                    {isPending ? (
+                      "Cargando..."
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        Ver Saldos Actuales
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
           </Card>
         )}
 
@@ -2587,6 +3042,332 @@ export function ReportesClient({
               </table>
             </div>
           </Card>
+        </>
+      )}
+
+      {/* Vista: Saldos Actuales - Resultados */}
+      {vistaActiva === "saldosActuales" && datosSaldosActuales && (
+        <>
+          {/* Resumen General por Moneda */}
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+              📊 Resumen de Saldos por Moneda
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+              {Object.entries(datosSaldosActuales.totalesPorMoneda).map(
+                ([monedaId, datos]: [string, any]) => {
+                  const moneda = datosSaldosActuales.monedas.find(
+                    (m: any) => m.id === monedaId
+                  );
+                  return (
+                    <Card key={monedaId}>
+                      <div className="text-center">
+                        <h4 className="text-sm font-medium text-[#73a9bf] mb-2">
+                          {moneda?.codigo}
+                        </h4>
+                        <div className="space-y-2">
+                          <div>
+                            <p className="text-xs text-[#73a9bf]">
+                              Ingresos Totales
+                            </p>
+                            <p className="text-lg font-bold text-[#2ba193]">
+                              {moneda?.simbolo}
+                              {datos.ingresos.toLocaleString("es-GT", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-[#73a9bf]">
+                              Egresos Totales
+                            </p>
+                            <p className="text-lg font-bold text-[#e0451f]">
+                              {moneda?.simbolo}
+                              {datos.egresos.toLocaleString("es-GT", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </p>
+                          </div>
+                          <div className="border-t border-[#dceaef] pt-2">
+                            <p className="text-xs text-[#73a9bf]">
+                              Saldo Final
+                            </p>
+                            <p
+                              className={`text-lg font-bold ${
+                                datos.saldo >= 0
+                                  ? "text-[#2ba193]"
+                                  : "text-[#e0451f]"
+                              }`}
+                            >
+                              {moneda?.simbolo}
+                              {datos.saldo.toLocaleString("es-GT", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                }
+              )}
+            </div>
+          </div>
+
+          {/* Barra de Control - Exportación */}
+          <Card className="mb-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide">
+                📊 Reporte de Saldos Actuales
+              </h3>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={exportarSaldosActualesExcel}
+                >
+                  <svg
+                    className="w-4 h-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  Exportar Excel
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={exportarSaldosActualesPDF}
+                >
+                  <svg
+                    className="w-4 h-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                    />
+                  </svg>
+                  Exportar PDF
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Cajas Generales */}
+          {datosSaldosActuales.cajasGenerales.length > 0 && (
+            <Card className="mb-6">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+                🏛️ Cajas Generales
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#dceaef]">
+                      <th className="text-left p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Caja
+                      </th>
+                      <th className="text-left p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Moneda
+                      </th>
+                      <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Ingresos
+                      </th>
+                      <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Egresos
+                      </th>
+                      <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Saldo
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosSaldosActuales.cajasGenerales.map((caja: any) =>
+                      caja.saldos.map((saldo: any) => (
+                        <tr
+                          key={`${caja.id}-${saldo.monedaId}`}
+                          className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                        >
+                          <td className="p-3 font-medium text-[#305969]">
+                            {caja.nombre}
+                          </td>
+                          <td className="p-3 text-sm text-[#73a9bf]">
+                            {saldo.monedaCodigo}
+                          </td>
+                          <td className="p-3 text-right text-[#2ba193] font-semibold">
+                            {saldo.monedaSimbolo}
+                            {saldo.ingresos.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td className="p-3 text-right text-[#e0451f] font-semibold">
+                            {saldo.monedaSimbolo}
+                            {saldo.egresos.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td
+                            className={`p-3 text-right font-bold ${
+                              saldo.saldo >= 0
+                                ? "text-[#2ba193]"
+                                : "text-[#e0451f]"
+                            }`}
+                          >
+                            {saldo.monedaSimbolo}
+                            {saldo.saldo.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Cajas de Sociedades */}
+          {datosSaldosActuales.cajasSociedades.length > 0 && (
+            <Card className="mb-6">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+                👥 Cajas de Sociedades
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#dceaef]">
+                      <th className="text-left p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Sociedad
+                      </th>
+                      <th className="text-left p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Moneda
+                      </th>
+                      <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Ingresos
+                      </th>
+                      <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Egresos
+                      </th>
+                      <th className="text-right p-3 text-xs font-semibold text-[#40768c] uppercase">
+                        Saldo
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosSaldosActuales.cajasSociedades.map((caja: any) =>
+                      caja.saldos.map((saldo: any) => (
+                        <tr
+                          key={`${caja.id}-${saldo.monedaId}`}
+                          className="border-b border-[#eef4f7] hover:bg-[#f8fbfc]"
+                        >
+                          <td className="p-3 font-medium text-[#305969]">
+                            {caja.sociedad?.nombre || caja.nombre}
+                          </td>
+                          <td className="p-3 text-sm text-[#73a9bf]">
+                            {saldo.monedaCodigo}
+                          </td>
+                          <td className="p-3 text-right text-[#2ba193] font-semibold">
+                            {saldo.monedaSimbolo}
+                            {saldo.ingresos.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td className="p-3 text-right text-[#e0451f] font-semibold">
+                            {saldo.monedaSimbolo}
+                            {saldo.egresos.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td
+                            className={`p-3 text-right font-bold ${
+                              saldo.saldo >= 0
+                                ? "text-[#2ba193]"
+                                : "text-[#e0451f]"
+                            }`}
+                          >
+                            {saldo.monedaSimbolo}
+                            {saldo.saldo.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Cajas Virtuales */}
+          {datosSaldosActuales.cajasVirtuales.length > 0 && (
+            <Card className="mb-6">
+              <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-4">
+                💻 Cajas Virtuales
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {datosSaldosActuales.cajasVirtuales.map((cajaVirtual: any) => (
+                  <div
+                    key={cajaVirtual.id}
+                    className="border border-[#dceaef] rounded-lg p-4"
+                  >
+                    <h4 className="font-semibold text-[#305969] mb-3">
+                      {cajaVirtual.nombre}
+                    </h4>
+                    <p className="text-xs text-[#73a9bf] mb-3">
+                      {cajaVirtual.descripcion}
+                    </p>
+                    <div className="space-y-2">
+                      {cajaVirtual.saldos.map((saldo: any) => (
+                        <div
+                          key={saldo.monedaId}
+                          className="flex justify-between items-center py-2 border-b border-[#eef4f7] last:border-0"
+                        >
+                          <div>
+                            <p className="text-xs text-[#73a9bf]">
+                              {saldo.monedaCodigo}
+                            </p>
+                            <p className="text-sm text-[#305969] font-medium">
+                              {saldo.monedaSimbolo}
+                              {saldo.saldo.toLocaleString("es-GT", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-[#2ba193]">
+                              +
+                              {saldo.ingresos.toLocaleString("es-GT", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </p>
+                            <p className="text-xs text-[#e0451f]">
+                              -
+                              {saldo.egresos.toLocaleString("es-GT", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </>
       )}
     </div>
