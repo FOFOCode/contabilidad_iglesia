@@ -45,7 +45,12 @@ export async function login(correo: string, contrasena: string) {
       return { success: false, error: "Credenciales inválidas" };
     }
 
-    console.log("[Auth] Usuario encontrado:", usuario.correo, "Activo:", usuario.activo);
+    console.log(
+      "[Auth] Usuario encontrado:",
+      usuario.correo,
+      "Activo:",
+      usuario.activo
+    );
     if (!usuario.activo) {
       console.log("[Auth] Usuario desactivado:", correo);
       return { success: false, error: "Usuario desactivado" };

@@ -369,7 +369,7 @@ export async function createUsuario(data: {
     console.log("[Usuarios] Hasheando contraseña con bcrypt");
     const contrasenaHash = await bcrypt.hash(data.contrasena, 10);
     console.log("[Usuarios] Hash creado exitosamente");
-    
+
     const resultado = await withRetry(() =>
       prisma.usuario.create({
         data: {
