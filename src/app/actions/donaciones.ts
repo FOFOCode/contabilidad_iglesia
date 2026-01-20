@@ -31,6 +31,9 @@ interface CrearDonacionData {
 
 export async function crearDonacion(data: CrearDonacionData) {
   await validarPermisoActual("donaciones", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
   // Buscar la caja general (donde esGeneral = true)
   const cajaGeneral = await prisma.caja.findFirst({
     where: { esGeneral: true, activa: true },
@@ -52,6 +55,7 @@ export async function crearDonacion(data: CrearDonacionData) {
       monedaId: data.monedaId,
       cajaId: cajaGeneral.id,
       usuarioId: data.usuarioId,
+      creadoPorId: usuario.id, // Quién creó el registro
       comentario: data.comentario,
     },
     include: {

@@ -24,6 +24,10 @@ model Moneda {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("MonedaCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("MonedaActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   egresos        Egreso[]
   ingresosMontos IngresoMonto[]
@@ -34,6 +38,8 @@ model Moneda {
   // Índice para filtrar monedas activas (consulta muy frecuente)
   @@index([activa, orden])
   @@index([activa, esPrincipal])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("monedas")
 }
 
@@ -46,12 +52,18 @@ model Sociedad {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("SociedadCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("SociedadActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   ingresos Ingreso[]
   cajas    Caja[]
 
   // Índice para filtrar sociedades activas ordenadas
   @@index([activa, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("sociedades")
 }
 
@@ -64,11 +76,17 @@ model TipoServicio {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("TipoServicioCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("TipoServicioActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   ingresos Ingreso[]
 
   // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("tipos_servicio")
 }
 
@@ -81,6 +99,10 @@ model TipoIngreso {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("TipoIngresoCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("TipoIngresoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   ingresos   Ingreso[]
   cajas      Caja[]
@@ -88,6 +110,8 @@ model TipoIngreso {
 
   // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("tipos_ingreso")
 }
 
@@ -100,12 +124,18 @@ model TipoGasto {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("TipoGastoCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("TipoGastoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   egresos Egreso[]
   egresosFiliales EgresoFilial[]
 
   // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("tipos_gasto")
 }
 
@@ -118,10 +148,16 @@ model Pais {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("PaisCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("PaisActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   filiales Filial[]
 
   @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("paises")
 }
 
@@ -134,6 +170,10 @@ model Filial {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("FilialCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("FilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   paisId        String
   pais          Pais      @relation(fields: [paisId], references: [id], onDelete: Restrict)
@@ -142,6 +182,8 @@ model Filial {
 
   @@index([paisId])
   @@index([activa, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("filiales")
 }
 
@@ -163,12 +205,20 @@ model DiezmoFilial {
 
   usuarioId     String
   usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  
+  // Auditoría: quién creó y quién modificó
+  creadoPorId      String
+  creadoPor        Usuario   @relation("DiezmoFilialCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("DiezmoFilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   @@index([filialId])
   @@index([monedaId])
   @@index([usuarioId])
   @@index([anio, mes])
   @@index([filialId, anio, mes])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("diezmos_filiales")
 }
 
@@ -191,12 +241,20 @@ model EgresoFilial {
 
   usuarioId        String
   usuario          Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  
+  // Auditoría: quién creó y quién modificó
+  creadoPorId      String
+  creadoPor        Usuario   @relation("EgresoFilialCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("EgresoFilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   @@index([monedaId])
   @@index([tipoGastoId])
   @@index([usuarioId])
   @@index([fechaSalida])
   @@index([creadoEn])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("egresos_filiales")
 }
 
@@ -213,11 +271,17 @@ model Rol {
   activo        Boolean   @default(true)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("RolCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("RolActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   usuarios      Usuario[]
   permisos      RolPermiso[]
 
   @@index([activo])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("roles")
 }
 
@@ -231,10 +295,16 @@ model Permiso {
   activo        Boolean   @default(true)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("PermisoCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("PermisoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   roles         RolPermiso[]
 
   @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("permisos")
 }
 
@@ -278,6 +348,41 @@ model Usuario {
   diezmosFiliales  DiezmoFilial[]
   egresosFiliales  EgresoFilial[]
   donaciones       Donacion[]
+  auditoriasRealizadas AuditoriaLog[]
+
+  // Auditoría - Relaciones para rastrear quién creó/modificó configuraciones
+  monedasCreadas Moneda[] @relation("MonedaCreadoPor")
+  monedasModificadas Moneda[] @relation("MonedaActualizadoPor")
+  sociedadesCreadas Sociedad[] @relation("SociedadCreadoPor")
+  sociedadesModificadas Sociedad[] @relation("SociedadActualizadoPor")
+  tiposServicioCreados TipoServicio[] @relation("TipoServicioCreadoPor")
+  tiposServicioModificados TipoServicio[] @relation("TipoServicioActualizadoPor")
+  tiposIngresoCreados TipoIngreso[] @relation("TipoIngresoCreadoPor")
+  tiposIngresoModificados TipoIngreso[] @relation("TipoIngresoActualizadoPor")
+  tiposGastoCreados TipoGasto[] @relation("TipoGastoCreadoPor")
+  tiposGastoModificados TipoGasto[] @relation("TipoGastoActualizadoPor")
+  paisesCreados Pais[] @relation("PaisCreadoPor")
+  paisesModificados Pais[] @relation("PaisActualizadoPor")
+  filialesCreadas Filial[] @relation("FilialCreadoPor")
+  filialesModificadas Filial[] @relation("FilialActualizadoPor")
+  cajasCreadas Caja[] @relation("CajaCreadoPor")
+  cajasModificadas Caja[] @relation("CajaActualizadoPor")
+  rolesCreados Rol[] @relation("RolCreadoPor")
+  rolesModificados Rol[] @relation("RolActualizadoPor")
+  permisosCreados Permiso[] @relation("PermisoCreadoPor")
+  permisosModificados Permiso[] @relation("PermisoActualizadoPor")
+
+  // Auditoría - Relaciones para transactional tables (ingresos, egresos, donaciones, diezmos)
+  ingresosCreados Ingreso[] @relation("IngresoCreadoPor")
+  ingresosModificados Ingreso[] @relation("IngresoActualizadoPor")
+  egresosCreados Egreso[] @relation("EgresoCreadoPor")
+  egresosModificados Egreso[] @relation("EgresoActualizadoPor")
+  donacionesCreadas Donacion[] @relation("DonacionCreadoPor")
+  donacionesModificadas Donacion[] @relation("DonacionActualizadoPor")
+  diezmosFilialesCreados DiezmoFilial[] @relation("DiezmoFilialCreadoPor")
+  diezmosFilialesModificados DiezmoFilial[] @relation("DiezmoFilialActualizadoPor")
+  egresosFilialesCreados EgresoFilial[] @relation("EgresoFilialCreadoPor")
+  egresosFilialesModificados EgresoFilial[] @relation("EgresoFilialActualizadoPor")
 
   // Índice para filtrar usuarios activos y login
   @@index([activo])
@@ -296,6 +401,10 @@ model Caja {
   orden         Int       @default(0)
   creadoEn      DateTime  @default(now())
   actualizadoEn DateTime  @updatedAt
+  creadoPorId   String?
+  creadoPor     Usuario?  @relation("CajaCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPorId String?
+  actualizadoPor Usuario? @relation("CajaActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   // Asignación automática (opcional)
   sociedadId    String?
@@ -315,6 +424,8 @@ model Caja {
   // Índices para filtrar cajas activas
   @@index([activa, orden])
   @@index([activa, esGeneral])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("cajas")
 }
 
@@ -342,6 +453,10 @@ model Ingreso {
   comentario       String?   @db.Text
   creadoEn         DateTime  @default(now())
   actualizadoEn    DateTime  @updatedAt
+  creadoPorId      String
+  creadoPor        Usuario   @relation("IngresoCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("IngresoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
   
   // Relaciones con tablas de configuración
   sociedadId    String
@@ -369,6 +484,8 @@ model Ingreso {
   @@index([cajaId])
   @@index([cajaSecundariaId])
   @@index([usuarioId])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@index([sociedadId])
   @@index([servicioId])
   @@index([tipoIngresoId])
@@ -405,12 +522,20 @@ model Egreso {
   
   usuarioId     String
   usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  
+  // Auditoría: quién creó y quién modificó
+  creadoPorId      String
+  creadoPor        Usuario   @relation("EgresoCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("EgresoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   @@index([cajaId])
   @@index([usuarioId])
   @@index([tipoGastoId])
   @@index([monedaId])
   @@index([fechaSalida])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   // Índices compuestos para consultas de reportes y dashboard
   @@index([cajaId, fechaSalida])
   @@index([cajaId, monedaId])
@@ -448,6 +573,12 @@ model Donacion {
   
   usuarioId     String
   usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  
+  // Auditoría: quién creó y quién modificó
+  creadoPorId      String
+  creadoPor        Usuario   @relation("DonacionCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("DonacionActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   @@index([cajaId])
   @@index([usuarioId])
@@ -456,5 +587,35 @@ model Donacion {
   @@index([fecha])
   @@index([nombre])
   @@index([creadoEn])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("donaciones")
+}
+
+// =====================
+// AUDITORÍA Y CONTROL
+// =====================
+
+/// Log de auditoría para cambios en configuración
+model AuditoriaLog {
+  id              String    @id @default(cuid())
+  tabla           String    // Nombre de la tabla: "Moneda", "Sociedad", "Caja", etc.
+  registroId      String    // ID del registro que se modificó
+  operacion       String    // "CREATE", "UPDATE", "DELETE"
+  datoAnterior    Json?     // Datos antes del cambio (null para CREATE)
+  datoNuevo       Json?     // Datos después del cambio (null para DELETE)
+  descripcion     String?   @db.Text // Resumen legible del cambio
+  fechaOperacion  DateTime  @default(now())
+  
+  usuarioId       String
+  usuario         Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  
+  @@index([usuarioId])
+  @@index([tabla])
+  @@index([registroId])
+  @@index([operacion])
+  @@index([fechaOperacion])
+  @@index([tabla, registroId])
+  @@index([usuarioId, fechaOperacion])
+  @@map("auditoria_logs")
 }

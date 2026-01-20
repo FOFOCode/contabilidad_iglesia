@@ -2,10 +2,12 @@
 
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
 
 // Función para verificar credenciales
 export async function login(correo: string, contrasena: string) {
   try {
+    console.log("[Auth] Intento de login para:", correo);
     // Buscar usuario por correo, incluyendo rol y permisos
     const usuario = await prisma.usuario.findUnique({
       where: { correo },
@@ -39,16 +41,25 @@ export async function login(correo: string, contrasena: string) {
     });
 
     if (!usuario) {
+      console.log("[Auth] Usuario no encontrado:", correo);
       return { success: false, error: "Credenciales inválidas" };
     }
 
+    console.log("[Auth] Usuario encontrado:", usuario.correo, "Activo:", usuario.activo);
     if (!usuario.activo) {
+      console.log("[Auth] Usuario desactivado:", correo);
       return { success: false, error: "Usuario desactivado" };
     }
 
-    // Verificar contraseña (base64 simple, en producción usar bcrypt)
-    const contrasenaHash = Buffer.from(contrasena).toString("base64");
-    if (usuario.contrasena !== contrasenaHash) {
+    // Verificar contraseña con bcrypt
+    console.log("[Auth] Verificando contraseña para:", usuario.correo);
+    const contrasenaValida = await bcrypt.compare(
+      contrasena,
+      usuario.contrasena
+    );
+    console.log("[Auth] Contraseña válida:", contrasenaValida);
+    if (!contrasenaValida) {
+      console.log("[Auth] Contraseña inválida para:", usuario.correo);
       return { success: false, error: "Credenciales inválidas" };
     }
 
@@ -69,6 +80,7 @@ export async function login(correo: string, contrasena: string) {
       path: "/",
     });
 
+    console.log("[Auth] Login exitoso para:", usuario.correo);
     return {
       success: true,
       usuario: {
@@ -80,7 +92,7 @@ export async function login(correo: string, contrasena: string) {
       },
     };
   } catch (error) {
-    console.error("Error en login:", error);
+    console.error("[Auth] Error en login:", error);
     return { success: false, error: "Error al iniciar sesión" };
   }
 }

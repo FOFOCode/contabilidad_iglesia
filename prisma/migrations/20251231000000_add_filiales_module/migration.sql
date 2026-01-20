@@ -122,7 +122,7 @@ ALTER TABLE "diezmos_filiales" ADD CONSTRAINT "diezmos_filiales_usuarioId_fkey" 
 ALTER TABLE "egresos_filiales" ADD CONSTRAINT "egresos_filiales_monedaId_fkey" FOREIGN KEY ("monedaId") REFERENCES "monedas"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "egresos_filiales" ADD CONSTRAINT "egresos_filiales_tipoGastoId_fkey" FOREIGN KEY ("tipoGastoId") REFERENCES "tipos_gastos"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "egresos_filiales" ADD CONSTRAINT "egresos_filiales_tipoGastoId_fkey" FOREIGN KEY ("tipoGastoId") REFERENCES "tipos_gasto"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "egresos_filiales" ADD CONSTRAINT "egresos_filiales_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "usuarios"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

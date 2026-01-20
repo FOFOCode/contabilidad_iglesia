@@ -55,7 +55,12 @@ export default async function ReportesPage() {
         subtitle="Genera y analiza reportes detallados del sistema"
       />
 
-      <ReportesClient sociedades={sociedades} cajas={cajas} monedas={monedas} />
+      <ReportesClient
+        sociedades={sociedades}
+        cajas={cajas}
+        monedas={monedas}
+        usuarioActual={usuario}
+      />
     </div>
   );
 }

@@ -182,6 +182,9 @@ interface CrearDiezmoData {
 
 export async function crearDiezmoFilial(data: CrearDiezmoData) {
   await validarPermisoActual("filiales", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
   const diezmo = await prisma.diezmoFilial.create({
     data: {
       filialId: data.filialId,
@@ -191,6 +194,7 @@ export async function crearDiezmoFilial(data: CrearDiezmoData) {
       anio: data.anio,
       comentario: data.comentario,
       usuarioId: data.usuarioId,
+      creadoPorId: usuario.id, // Quién creó el registro
     },
     include: {
       filial: { include: { pais: true } },
@@ -271,6 +275,9 @@ interface CrearEgresoFilialData {
 
 export async function crearEgresoFilial(data: CrearEgresoFilialData) {
   await validarPermisoActual("filiales", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
   // Validar que hay saldo suficiente
   const saldos = await obtenerSaldoFiliales();
   const saldoMoneda = saldos.find((s) => s.monedaId === data.monedaId);
@@ -298,6 +305,7 @@ export async function crearEgresoFilial(data: CrearEgresoFilialData) {
       descripcionGasto: data.descripcionGasto,
       comentario: data.comentario,
       usuarioId: data.usuarioId,
+      creadoPorId: usuario.id, // Quién creó el registro
     },
     include: {
       moneda: true,

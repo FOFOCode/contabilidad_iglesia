@@ -12,6 +12,9 @@ import {
   obtenerDatosReporte,
   obtenerDatosReporteAnalitico,
   obtenerReporteSaldosActuales,
+  obtenerLogAuditoria,
+  obtenerEstadisticasAuditoria,
+  type FiltrosAuditoria,
 } from "@/app/actions/operaciones";
 import {
   obtenerReporteDiezmosFiliales,
@@ -72,6 +75,7 @@ interface ReportesClientProps {
   sociedades: Sociedad[];
   cajas: Caja[];
   monedas: Moneda[];
+  usuarioActual?: any; // Usuario con rol y permisos
 }
 
 const tipoReporteOptions = [
@@ -99,7 +103,8 @@ type TipoVista =
   | "cajas"
   | "saldosActuales"
   | "diezmosFiliales"
-  | "cajaFiliales";
+  | "cajaFiliales"
+  | "auditoria";
 
 interface DatosAnaliticos {
   anio: number;
@@ -216,6 +221,7 @@ export function ReportesClient({
   sociedades,
   cajas,
   monedas,
+  usuarioActual,
 }: ReportesClientProps) {
   const [isPending, startTransition] = useTransition();
   const [vistaActiva, setVistaActiva] = useState<TipoVista>("movimientos");
@@ -556,22 +562,119 @@ export function ReportesClient({
       <head>
         <title>Reporte de Movimientos</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h1 { color: #203b46; font-size: 24px; }
-          h2 { color: #40768c; font-size: 16px; margin-top: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th { background: #40768c; color: white; padding: 10px; text-align: left; }
-          td { padding: 8px; border-bottom: 1px solid #dceaef; }
-          .ingreso { color: #2ba193; }
-          .egreso { color: #e0451f; }
-          .resumen { display: flex; gap: 20px; margin: 20px 0; }
-          .resumen-card { background: #eef4f7; padding: 15px; border-radius: 8px; flex: 1; }
-          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+          body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            margin: 0;
+            line-height: 1.6;
+            color: #333;
+          }
+          .header { 
+            text-align: center; 
+            border-bottom: 2px solid #203b46; 
+            padding-bottom: 10px; 
+            margin-bottom: 20px;
+          }
+          h1 { 
+            color: #203b46; 
+            font-size: 24px; 
+            margin: 5px 0;
+          }
+          .fecha-generacion {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 15px;
+          }
+          h2 { 
+            color: #40768c; 
+            font-size: 16px; 
+            margin-top: 20px; 
+            border-bottom: 1px solid #40768c;
+            padding-bottom: 5px;
+          }
+          table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 10px; 
+          }
+          th { 
+            background: #203b46; 
+            color: white; 
+            padding: 12px; 
+            text-align: left; 
+            font-weight: bold;
+            border: 1px solid #203b46;
+          }
+          td { 
+            padding: 8px; 
+            border-bottom: 1px solid #dceaef; 
+            border-right: 1px solid #dceaef;
+          }
+          tr:nth-child(even) {
+            background-color: #f9f9f9;
+          }
+          .ingreso { 
+            color: #2ba193; 
+            font-weight: bold;
+          }
+          .egreso { 
+            color: #e0451f; 
+            font-weight: bold;
+          }
+          .resumen { 
+            display: flex; 
+            gap: 20px; 
+            margin: 20px 0; 
+            flex-wrap: wrap;
+          }
+          .resumen-card { 
+            background: #eef4f7; 
+            padding: 15px; 
+            border-left: 4px solid #203b46;
+            flex: 1;
+            min-width: 150px;
+          }
+          .firmas {
+            margin-top: 80px;
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
+          }
+          .firma-bloque {
+            flex: 1;
+            text-align: center;
+          }
+          .firma-linea {
+            border-top: 2px solid #000;
+            margin-bottom: 5px;
+            padding-top: 10px;
+            min-height: 50px;
+          }
+          .firma-titulo {
+            font-weight: bold;
+            font-size: 12px;
+          }
+          .firma-subtitulo {
+            font-size: 10px;
+            color: #666;
+            margin-top: 3px;
+          }
+          @media print { 
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { margin: 10mm; }
+          }
         </style>
       </head>
       <body>
-        <h1>Reporte de Movimientos Contables</h1>
-        <p>Generado: ${obtenerFechaElSalvador().toLocaleString("es-GT")}</p>
+        <div class="header">
+          <h1>Reporte de Movimientos Contables</h1>
+        </div>
+        <div class="fecha-generacion">
+          <strong>Fecha de Generación:</strong> ${obtenerFechaElSalvador().toLocaleString(
+            "es-GT"
+          )}
+        </div>
         
         <h2>Resumen por Moneda</h2>
         <div class="resumen">
@@ -639,6 +742,19 @@ export function ReportesClient({
               .join("")}
           </tbody>
         </table>
+
+        <div class="firmas">
+          <div class="firma-bloque">
+            <div class="firma-linea"></div>
+            <div class="firma-titulo">Presidente/Representante</div>
+            <div class="firma-subtitulo">Firma y Sello</div>
+          </div>
+          <div class="firma-bloque">
+            <div class="firma-linea"></div>
+            <div class="firma-titulo">Tesorero</div>
+            <div class="firma-subtitulo">Firma y Sello</div>
+          </div>
+        </div>
       </body>
       </html>
     `;
@@ -2465,16 +2581,17 @@ export function ReportesClient({
                 </div>
               )}
 
-              {detalleSeleccionado.usuario && (
-                <div>
-                  <p className="text-xs text-[#73a9bf] uppercase">
-                    Registrado por
-                  </p>
-                  <p className="font-medium text-[#203b46]">
-                    {detalleSeleccionado.usuario}
-                  </p>
-                </div>
-              )}
+              {detalleSeleccionado.usuario &&
+                usuarioActual?.rol?.nombre === "Admin" && (
+                  <div>
+                    <p className="text-xs text-[#73a9bf] uppercase">
+                      Registrado por
+                    </p>
+                    <p className="font-medium text-[#203b46]">
+                      {detalleSeleccionado.usuario}
+                    </p>
+                  </div>
+                )}
             </div>
             <div className="p-4 border-t border-[#dceaef]">
               <Button

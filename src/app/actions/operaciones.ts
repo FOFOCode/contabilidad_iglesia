@@ -4,6 +4,7 @@ import { prisma, withRetry } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
+import { registrarAuditoria } from "@/lib/auditoria";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -38,6 +39,14 @@ interface CrearIngresoData {
 
 export async function crearIngreso(data: CrearIngresoData) {
   await validarPermisoActual("ingresos", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
+  console.log("=== CREAR INGRESO DEBUG ===");
+  console.log("monto recibido:", data.montos[0].monto);
+  console.log("cajaId:", data.cajaId);
+  console.log("cajaSecundariaId:", data.cajaSecundariaId);
+
   return withRetry(() =>
     prisma.ingreso.create({
       data: {
@@ -48,6 +57,7 @@ export async function crearIngreso(data: CrearIngresoData) {
         cajaId: data.cajaId,
         cajaSecundariaId: data.cajaSecundariaId || null,
         usuarioId: data.usuarioId,
+        creadoPorId: usuario.id, // Quién creó el registro
         comentario: data.comentario,
         montos: {
           create: data.montos.map((m) => ({
@@ -64,6 +74,12 @@ export async function crearIngreso(data: CrearIngresoData) {
         caja: true,
         cajaSecundaria: true,
       },
+    }).then((result) => {
+      console.log("ingreso creado, montos:");
+      result.montos.forEach((m) => {
+        console.log("  - monedaId:", m.monedaId, "monto:", m.monto, "tipo:", typeof m.monto);
+      });
+      return result;
     })
   );
 }
@@ -221,6 +237,9 @@ interface CrearEgresoData {
 
 export async function crearEgreso(data: CrearEgresoData) {
   await validarPermisoActual("egresos", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
   // Validar que hay saldo suficiente en la caja
   const saldos = await obtenerSaldoCaja(data.cajaId, data.monedaId);
   const saldoMoneda = saldos.find((s) => s.monedaId === data.monedaId);
@@ -249,6 +268,7 @@ export async function crearEgreso(data: CrearEgresoData) {
       monedaId: data.monedaId,
       cajaId: data.cajaId,
       usuarioId: data.usuarioId,
+      creadoPorId: usuario.id, // Quién creó el registro
     },
     include: {
       tipoGasto: true,
@@ -505,14 +525,11 @@ export async function obtenerCajasConSaldos(filtros?: {
         where: { activa: true },
         orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
       }),
-      // Ingresos principales: agrupar por moneda
-      prisma.ingresoMonto.groupBy({
-        by: ["monedaId"],
-        where: {
-          ingreso: { caja: { activa: true } },
-        },
-        _sum: { monto: true },
-      }),
+       // Ingresos principales: obtener datos y agrupar en JS
+       prisma.ingresoMonto.findMany({
+         where: { ingreso: { caja: { activa: true } } },
+         include: { ingreso: { select: { cajaId: true } }, moneda: { select: { id: true } } },
+       }),
       // Egresos: agrupar por caja Y moneda
       prisma.egreso.groupBy({
         by: ["cajaId", "monedaId"],
@@ -531,33 +548,25 @@ export async function obtenerCajasConSaldos(filtros?: {
       }),
     ]);
 
-  // Obtener ingresos secundarios por caja (para tracking de sociedades)
-  const ingresosSecundarios = await prisma.ingresoMonto.groupBy({
-    by: ["monedaId"],
-    where: {
-      ingreso: { cajaSecundaria: { activa: true } },
-    },
-    _sum: { monto: true },
-  });
+   // Obtener ingresos secundarios por caja (para tracking de sociedades)
+   const ingresosSecundarios = await prisma.ingresoMonto.findMany({
+     where: { ingreso: { cajaSecundaria: { activa: true }, cajaSecundariaId: { not: null } } },
+     include: { ingreso: { select: { cajaSecundariaId: true } }, moneda: { select: { id: true } } },
+   });
 
-  // Mapas para acceso rápido
-  const ingresosPrincipalesMap = new Map<string, number>();
-  ingresosData.forEach((ing) => {
-    // Para ingresos principales: solo por moneda (todos van a una caja)
-    ingresosPrincipalesMap.set(
-      `total-${ing.monedaId}`,
-      Number(ing._sum.monto || 0)
-    );
-  });
-  const ingresosSecundariosMap = new Map<string, number>();
-  ingresosSecundarios.forEach((ing) => {
-    ingresosSecundariosMap.set(
-      `total-${ing.monedaId}`,
-      Number(ing._sum.monto || 0)
-    );
-  });
+   // Mapas para acceso rápido
+   const ingresosPrincipalesMap = new Map<string, number>();
+   ingresosData.forEach((item) => {
+     const key = `${item.ingreso.cajaId}-${item.monedaId}`;
+     ingresosPrincipalesMap.set(key, (ingresosPrincipalesMap.get(key) || 0) + item.monto.toNumber());
+   });
+   const ingresosSecundariosMap = new Map<string, number>();
+   ingresosSecundarios.forEach((item) => {
+     const key = `${item.ingreso.cajaSecundariaId}-${item.monedaId}`;
+     ingresosSecundariosMap.set(key, (ingresosSecundariosMap.get(key) || 0) + item.monto.toNumber());
+   });
 
-  const donacionesMap = new Map<string, number>();
+   const donacionesMap = new Map<string, number>();
   donacionesData.forEach((don) => {
     donacionesMap.set(
       `${don.cajaId}-${don.monedaId}`,
@@ -580,10 +589,10 @@ export async function obtenerCajasConSaldos(filtros?: {
       const esSubcaja =
         !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
 
-      // Ingresos: si es subcaja usa secundarios, sino usa el total de principales
-      const ingresosBase = esSubcaja
-        ? ingresosSecundariosMap.get(`total-${moneda.id}`) || 0
-        : ingresosPrincipalesMap.get(`total-${moneda.id}`) || 0;
+       // Ingresos: si es subcaja usa secundarios, sino usa principales por caja
+       const ingresosBase = esSubcaja
+         ? ingresosSecundariosMap.get(key) || 0
+         : ingresosPrincipalesMap.get(key) || 0;
 
       const donaciones = caja.esGeneral ? donacionesMap.get(key) || 0 : 0;
       const ingresos = ingresosBase + donaciones;
@@ -897,6 +906,15 @@ export async function obtenerDetalleCaja(cajaId: string) {
 
   if (!caja) return null;
 
+  // Determinar si es una subcaja (para tracking)
+  const esSubcaja = !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
+
+  // Ajustar límites: subcajas necesitan más movimientos de seguimiento
+  const limiteIngresosPrincipales = esSubcaja ? 200 : 500;
+  const limiteIngresosSecundarios = esSubcaja ? 500 : 200;
+  const limiteEgresos = esSubcaja ? 200 : 500;
+  const limiteDonaciones = esSubcaja ? 200 : 500;
+
   // Ingresos donde esta caja es la principal
   const ingresos = await prisma.ingreso.findMany({
     where: { cajaId },
@@ -908,7 +926,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
       cajaSecundaria: true,
     },
     orderBy: { fechaRecaudacion: "desc" },
-    take: 50,
+    take: limiteIngresosPrincipales,
   });
 
   // Ingresos donde esta caja es la secundaria (para tracking)
@@ -922,7 +940,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
       caja: true,
     },
     orderBy: { fechaRecaudacion: "desc" },
-    take: 50,
+    take: limiteIngresosSecundarios,
   });
 
   const egresos = await prisma.egreso.findMany({
@@ -932,7 +950,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
       moneda: true,
     },
     orderBy: { fechaSalida: "desc" },
-    take: 50,
+    take: limiteEgresos,
   });
 
   // Si es caja general, obtener también donaciones
@@ -950,7 +968,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
           },
         },
         orderBy: { fecha: "desc" },
-        take: 50,
+        take: limiteDonaciones,
       })
     : [];
 
@@ -990,11 +1008,40 @@ export async function obtenerDetalleCaja(cajaId: string) {
     orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
   });
 
-  // Calcular totales
-  const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
-    by: ["monedaId"],
-    where: { ingreso: { cajaId } },
-    _sum: { monto: true },
+  // Determinar si es subcaja para calcular saldos correctamente
+  const esSubcajaDetalle =
+    !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
+
+  // Calcular totales: para subcajas usar ingresos secundarios
+  const ingresosPorMonedaData = esSubcajaDetalle
+    ? await prisma.ingresoMonto.findMany({
+        where: { ingreso: { cajaSecundariaId: cajaId } },
+        include: { moneda: { select: { id: true } } },
+      })
+    : await prisma.ingresoMonto.findMany({
+        where: { ingreso: { cajaId } },
+        include: { moneda: { select: { id: true } } },
+      });
+
+  console.log("=== OBTENER DETALLE CAJA DEBUG ===");
+  console.log("cajaId:", cajaId, "esSubcajaDetalle:", esSubcajaDetalle);
+  console.log("ingresosPorMonedaData.length:", ingresosPorMonedaData.length);
+  if (ingresosPorMonedaData.length > 0) {
+    console.log("primero:", ingresosPorMonedaData[0].monto.toString(), "tipo:", typeof ingresosPorMonedaData[0].monto);
+    console.log("en number:", Number(ingresosPorMonedaData[0].monto));
+  }
+
+  const ingresosPorMoneda: { monedaId: string; monto: number }[] = [];
+  const map = new Map<string, number>();
+  ingresosPorMonedaData.forEach((item) => {
+    // Usar toNumber() de Prisma.Decimal para conversión precisa
+    const numMonto = item.monto.toNumber();
+    console.log("  Procesando: monedaId=", item.monedaId, "monto=", numMonto);
+    map.set(item.monedaId, (map.get(item.monedaId) || 0) + numMonto);
+  });
+  map.forEach((monto, monedaId) => {
+    console.log("  Total por moneda:", monedaId, "=", monto);
+    ingresosPorMoneda.push({ monedaId, monto });
   });
 
   const egresosPorMoneda = await prisma.egreso.groupBy({
@@ -1012,10 +1059,15 @@ export async function obtenerDetalleCaja(cajaId: string) {
       })
     : [];
 
+
+
   const saldos = monedas.map((moneda) => {
-    const totalIngresos =
-      ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
-      new Prisma.Decimal(0);
+    // Handle both raw query and groupBy results
+    const ingresoItem = (ingresosPorMoneda as any[]).find((i: any) => i.monedaId === moneda.id);
+    const totalIngresos = ingresoItem
+      ? new Prisma.Decimal(ingresoItem.monto !== undefined ? ingresoItem.monto : ingresoItem._sum?.monto || 0)
+      : new Prisma.Decimal(0);
+
     const totalEgresos =
       egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
       new Prisma.Decimal(0);
@@ -1916,4 +1968,162 @@ export async function obtenerReporteSaldosActuales() {
       totalCajas: cajasReales.length,
     };
   });
+}
+
+// =====================
+// AUDITORÍA
+// =====================
+
+export interface FiltrosAuditoria {
+  usuarioId?: string;
+  tabla?: string;
+  operacion?: "CREATE" | "UPDATE" | "DELETE";
+  fechaInicio?: Date;
+  fechaFin?: Date;
+  limite?: number;
+}
+
+export async function obtenerLogAuditoria(filtros: FiltrosAuditoria) {
+  // Solo admin puede ver auditoría
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
+  const rol = await prisma.usuario.findUniqueOrThrow({
+    where: { id: usuario.id },
+    select: { rol: { select: { esAdmin: true } } },
+  });
+
+  if (!rol.rol?.esAdmin) {
+    throw new Error("No tienes permiso para ver la auditoría");
+  }
+
+  const where: Prisma.AuditoriaLogWhereInput = {};
+
+  if (filtros.usuarioId) {
+    where.usuarioId = filtros.usuarioId;
+  }
+
+  if (filtros.tabla) {
+    where.tabla = {
+      contains: filtros.tabla,
+      mode: "insensitive",
+    };
+  }
+
+  if (filtros.operacion) {
+    where.operacion = filtros.operacion;
+  }
+
+  if (filtros.fechaInicio || filtros.fechaFin) {
+    where.fechaOperacion = {};
+    if (filtros.fechaInicio) {
+      where.fechaOperacion.gte = filtros.fechaInicio;
+    }
+    if (filtros.fechaFin) {
+      where.fechaOperacion.lte = filtros.fechaFin;
+    }
+  }
+
+  return withRetry(() =>
+    prisma.auditoriaLog.findMany({
+      where,
+      include: {
+        usuario: {
+          select: {
+            id: true,
+            nombre: true,
+            apellido: true,
+            correo: true,
+          },
+        },
+      },
+      orderBy: {
+        fechaOperacion: "desc",
+      },
+      take: filtros.limite || 100,
+    })
+  );
+}
+
+export async function obtenerEstadisticasAuditoria() {
+  // Solo admin puede ver estadísticas de auditoría
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
+  const rol = await prisma.usuario.findUniqueOrThrow({
+    where: { id: usuario.id },
+    select: { rol: { select: { esAdmin: true } } },
+  });
+
+  if (!rol.rol?.esAdmin) {
+    throw new Error("No tienes permiso para ver estadísticas de auditoría");
+  }
+
+  const ahora = new Date();
+  const hace7Dias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const hace30Dias = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    totalOperaciones,
+    operacionesPor7Dias,
+    operacionesPor30Dias,
+    porOperacion,
+    porTabla,
+    usuariosActivos,
+  ] = await Promise.all([
+    prisma.auditoriaLog.count(),
+    prisma.auditoriaLog.count({
+      where: {
+        fechaOperacion: {
+          gte: hace7Dias,
+        },
+      },
+    }),
+    prisma.auditoriaLog.count({
+      where: {
+        fechaOperacion: {
+          gte: hace30Dias,
+        },
+      },
+    }),
+    prisma.auditoriaLog.groupBy({
+      by: ["operacion"],
+      _count: {
+        id: true,
+      },
+    }),
+    prisma.auditoriaLog.groupBy({
+      by: ["tabla"],
+      _count: {
+        id: true,
+      },
+      orderBy: {
+        _count: {
+          id: "desc",
+        },
+      },
+      take: 10,
+    }),
+    prisma.auditoriaLog.findMany({
+      select: {
+        usuarioId: true,
+      },
+      distinct: ["usuarioId"],
+    }),
+  ]);
+
+  return {
+    totalOperaciones,
+    operacionesPor7Dias,
+    operacionesPor30Dias,
+    porOperacion: porOperacion.map((item) => ({
+      operacion: item.operacion,
+      cantidad: item._count.id,
+    })),
+    porTabla: porTabla.map((item) => ({
+      tabla: item.tabla,
+      cantidad: item._count.id,
+    })),
+    usuariosActivos: usuariosActivos.length,
+  };
 }

@@ -3,6 +3,7 @@
 import { prisma, withRetry } from "@/lib/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
+import bcrypt from "bcryptjs";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -362,25 +363,35 @@ export async function createUsuario(data: {
   contrasena: string;
   rolId?: string;
 }) {
-  await validarPermisoActual("configuracion", "crear");
-  // Hash simple para la contraseña (en producción usar bcrypt)
-  const contrasenaHash = Buffer.from(data.contrasena).toString("base64");
-  return withRetry(() =>
-    prisma.usuario.create({
-      data: {
-        ...data,
-        contrasena: contrasenaHash,
-      },
-      select: {
-        id: true,
-        nombre: true,
-        apellido: true,
-        correo: true,
-        activo: true,
-        rolId: true,
-      },
-    })
-  );
+  try {
+    console.log("[Usuarios] Intentando crear usuario:", data.correo);
+    await validarPermisoActual("configuracion", "crear");
+    console.log("[Usuarios] Hasheando contraseña con bcrypt");
+    const contrasenaHash = await bcrypt.hash(data.contrasena, 10);
+    console.log("[Usuarios] Hash creado exitosamente");
+    
+    const resultado = await withRetry(() =>
+      prisma.usuario.create({
+        data: {
+          ...data,
+          contrasena: contrasenaHash,
+        },
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          correo: true,
+          activo: true,
+          rolId: true,
+        },
+      })
+    );
+    console.log("[Usuarios] Usuario creado exitosamente:", resultado.correo);
+    return resultado;
+  } catch (error) {
+    console.error("[Usuarios] Error al crear usuario:", error);
+    throw error;
+  }
 }
 
 export async function updateUsuario(
@@ -394,25 +405,35 @@ export async function updateUsuario(
     rolId?: string | null;
   }
 ) {
-  await validarPermisoActual("configuracion", "editar");
-  const updateData: Record<string, unknown> = { ...data };
-  if (data.contrasena) {
-    updateData.contrasena = Buffer.from(data.contrasena).toString("base64");
+  try {
+    console.log("[Usuarios] Intentando actualizar usuario:", id);
+    await validarPermisoActual("configuracion", "editar");
+    const updateData: Record<string, unknown> = { ...data };
+    if (data.contrasena) {
+      console.log("[Usuarios] Actualizando contraseña con bcrypt");
+      updateData.contrasena = await bcrypt.hash(data.contrasena, 10);
+      console.log("[Usuarios] Nueva contraseña hasheada");
+    }
+    const resultado = await withRetry(() =>
+      prisma.usuario.update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          correo: true,
+          activo: true,
+          rolId: true,
+        },
+      })
+    );
+    console.log("[Usuarios] Usuario actualizado:", resultado.correo);
+    return resultado;
+  } catch (error) {
+    console.error("[Usuarios] Error al actualizar usuario:", error);
+    throw error;
   }
-  return withRetry(() =>
-    prisma.usuario.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        nombre: true,
-        apellido: true,
-        correo: true,
-        activo: true,
-        rolId: true,
-      },
-    })
-  );
 }
 
 export async function deleteUsuario(id: string) {
@@ -518,6 +539,7 @@ export async function registrarSaldoInicial(data: {
       cajaId: data.cajaId,
       cajaSecundariaId: null, // Explícitamente null para evitar asignación automática
       usuarioId: data.usuarioId,
+      creadoPorId: data.usuarioId, // Quién creó el saldo inicial
       montos: {
         create: {
           monedaId: data.monedaId,
