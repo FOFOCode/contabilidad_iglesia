@@ -65,6 +65,7 @@ export function NuevoEgresoForm({
     monto: "",
     descripcionGasto: "",
     comentario: "",
+    numeroFactura: "",
   });
 
   // Memoizar opciones de selects para evitar recálculos
@@ -170,9 +171,10 @@ export function NuevoEgresoForm({
           cajaId: formData.cajaId,
           monedaId: formData.monedaId,
           solicitante: formData.solicitante,
-          monto: parseFloat(formData.monto),
+          monto: Math.round(parseFloat(formData.monto) * 100) / 100,
           descripcionGasto: formData.descripcionGasto || undefined,
           comentario: formData.comentario || undefined,
+          numeroFactura: formData.numeroFactura || undefined,
           usuarioId,
         });
 
@@ -396,6 +398,14 @@ export function NuevoEgresoForm({
               name="descripcionGasto"
               placeholder="Detalle del gasto realizado..."
               value={formData.descripcionGasto}
+              onChange={handleChange}
+              className="mb-4"
+            />
+            <Input
+              label="Número de Factura (opcional)"
+              name="numeroFactura"
+              placeholder="Ej: FAC-001234"
+              value={formData.numeroFactura}
               onChange={handleChange}
               className="mb-4"
             />

@@ -41,7 +41,11 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
   const [expandedCaja, setExpandedCaja] = useState<string | null>(null);
 
   // Memoizar el cálculo de totales globales por moneda
-  // Solo contar cajas donde está el dinero real (generales o sin subcajas)
+  // Incluir:
+  // - Siempre la caja general
+  // - Cajas especiales con dinero real propio (como "Filiales")
+  // Excluir:
+  // - Cajas de solo tracking (como "Donaciones" - solo referencia, sin dinero real)
   const totalesGlobales = useMemo(
     () =>
       monedas
@@ -49,12 +53,14 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
           let totalIngresos = 0;
           let totalEgresos = 0;
           cajas.forEach((caja) => {
-            // Solo contar cajas que tienen el dinero real:
-            // - Cajas generales
-            // - Cajas sin sociedad/tipo (no son subcajas de tracking)
-            const esSubcaja =
-              !caja.esGeneral && (caja.sociedad || caja.tipoIngreso);
-            if (!esSubcaja) {
+            // Determinar si esta caja debe incluirse en el total
+            const incluirEnTotal =
+              // Siempre incluir caja general
+              caja.esGeneral ||
+              // Incluir cajas especiales con dinero real propio
+              caja.nombre === "Filiales";
+
+            if (incluirEnTotal) {
               const saldo = caja.saldos.find((s) => s.monedaId === moneda.id);
               if (saldo) {
                 totalIngresos += saldo.ingresos;

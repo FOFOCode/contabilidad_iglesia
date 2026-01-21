@@ -319,7 +319,7 @@ export function FilialesClient({
       try {
         await crearDiezmoFilial({
           filialId: formDiezmo.filialId,
-          monto: parseFloat(formDiezmo.monto),
+          monto: Math.round(parseFloat(formDiezmo.monto) * 100) / 100,
           monedaId: formDiezmo.monedaId,
           mes: parseInt(formDiezmo.mes),
           anio: parseInt(formDiezmo.anio),
@@ -407,13 +407,13 @@ export function FilialesClient({
         const fechaLocal = new Date(year, month - 1, day, 12, 0, 0);
 
         await crearEgresoFilial({
-          fechaSalida: fechaLocal,
-          solicitante: formEgreso.solicitante,
-          monto: parseFloat(formEgreso.monto),
+          monto: Math.round(parseFloat(formEgreso.monto) * 100) / 100,
           monedaId: formEgreso.monedaId,
           tipoGastoId: formEgreso.tipoGastoId,
           descripcionGasto: formEgreso.descripcionGasto || undefined,
+          solicitante: formEgreso.solicitante,
           comentario: formEgreso.comentario || undefined,
+          fechaSalida: fechaLocal,
           usuarioId,
         });
         await refreshData();

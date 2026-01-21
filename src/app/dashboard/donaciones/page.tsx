@@ -30,6 +30,7 @@ export default async function DonacionesPage() {
   const donacionesData = donaciones.map((d) => ({
     id: d.id,
     nombre: d.nombre,
+    numeroDocumento: d.numeroDocumento,
     telefono: d.telefono,
     fecha: d.fecha,
     monto: Number(d.monto),
@@ -69,7 +70,6 @@ export default async function DonacionesPage() {
         donaciones={donacionesData}
         tiposOfrenda={tiposOfrendaData}
         monedas={monedasData}
-        tieneCajaGeneral={!!datosForm.cajaGeneral}
         permisos={permisosDonaciones}
       />
     </div>

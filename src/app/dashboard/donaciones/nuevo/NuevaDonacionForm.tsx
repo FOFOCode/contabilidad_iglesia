@@ -41,6 +41,7 @@ export function NuevaDonacionForm({
 
   const [formData, setFormData] = useState({
     nombre: "",
+    numeroDocumento: "",
     telefono: "",
     tipoOfrendaId: "",
     fecha: obtenerFechaHoyElSalvador(),
@@ -89,6 +90,8 @@ export function NuevaDonacionForm({
 
     if (!formData.nombre.trim())
       newErrors.nombre = "Ingrese el nombre del donante";
+    if (!formData.numeroDocumento.trim())
+      newErrors.numeroDocumento = "Ingrese el número de documento (DUI)";
     if (!formData.tipoOfrendaId)
       newErrors.tipoOfrendaId = "Seleccione el tipo de ofrenda";
     if (!formData.monedaId) newErrors.monedaId = "Seleccione una moneda";
@@ -109,10 +112,11 @@ export function NuevaDonacionForm({
 
         await crearDonacion({
           nombre: formData.nombre.trim(),
+          numeroDocumento: formData.numeroDocumento.trim(),
           telefono: formData.telefono.trim() || undefined,
           tipoOfrendaId: formData.tipoOfrendaId,
           fecha: fechaLocal,
-          monto: parseFloat(formData.monto),
+          monto: Math.round(parseFloat(formData.monto) * 100) / 100,
           monedaId: formData.monedaId,
           usuarioId,
           comentario: formData.comentario.trim() || undefined,
@@ -123,6 +127,7 @@ export function NuevaDonacionForm({
         // Limpiar formulario
         setFormData({
           nombre: "",
+          numeroDocumento: "",
           telefono: "",
           tipoOfrendaId: "",
           fecha: obtenerFechaHoyElSalvador(),
@@ -179,6 +184,14 @@ export function NuevaDonacionForm({
                 onChange={handleChange}
                 placeholder="Nombre completo"
                 error={errors.nombre}
+              />
+              <Input
+                label="Número de Documento (DUI) *"
+                name="numeroDocumento"
+                value={formData.numeroDocumento}
+                onChange={handleChange}
+                placeholder="Ej: 12345678-9"
+                error={errors.numeroDocumento}
               />
               <Input
                 label="Teléfono"
@@ -252,8 +265,8 @@ export function NuevaDonacionForm({
             <div className="flex items-center gap-2 text-blue-700">
               <span className="text-xl">ℹ️</span>
               <span className="text-sm">
-                Las donaciones siempre se registran en la{" "}
-                <strong>Caja General</strong>, independientemente del tipo de
+                Las donaciones se registran en la{" "}
+                <strong>Caja Donaciones</strong>, independientemente del tipo de
                 ofrenda seleccionado.
               </span>
             </div>

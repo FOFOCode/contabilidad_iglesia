@@ -69,6 +69,7 @@ interface MovimientoReporte {
   solicitante?: string;
   comentario?: string;
   usuario?: string;
+  // nota: numeroFactura y numeroDocumento ya están integrados en el concepto
 }
 
 interface ReportesClientProps {
@@ -473,15 +474,7 @@ export function ReportesClient({
 
   // Función para exportar a Excel (CSV)
   const exportarExcel = () => {
-    const headers = [
-      "Fecha",
-      "Tipo",
-      "Concepto",
-      "Caja",
-      "Sociedad",
-      "Moneda",
-      "Monto",
-    ];
+    const headers = ["Fecha", "Tipo", "Concepto", "Caja", "Sociedad", "Moneda", "Monto"];
     const rows = resultados.flatMap((mov) =>
       mov.montos.map((m) => [
         new Date(mov.fecha).toLocaleDateString("es-GT"),
@@ -516,7 +509,6 @@ export function ReportesClient({
           "",
           "",
           "",
-          "",
           data.codigo,
           data.simbolo + data.ingresos.toFixed(2),
           data.simbolo + data.egresos.toFixed(2),
@@ -526,15 +518,7 @@ export function ReportesClient({
 
     // Agregar totales generales
     totalesRows.push(["", "", "", "", "", "", ""]); // Fila vacía
-    totalesRows.push([
-      "",
-      "",
-      "",
-      "",
-      "",
-      "Total Registros:",
-      resultados.length.toString(),
-    ]);
+    totalesRows.push(["", "", "", "", "", "Total Registros:", resultados.length.toString()]);
 
     const csvContent = [headers, ...rows, ...totalesRows]
       .map((row) => row.map((cell) => `"${cell}"`).join(","))
@@ -1097,6 +1081,15 @@ export function ReportesClient({
         new Date(item.fecha).toLocaleDateString("es-GT"),
     },
     {
+      key: "tipo",
+      header: "Tipo",
+      render: (item: MovimientoReporte) => (
+        <Badge variant={item.tipo === "Ingreso" ? "success" : "danger"}>
+          {item.tipo}
+        </Badge>
+      ),
+    },
+    {
       key: "concepto",
       header: "Concepto",
       render: (item: MovimientoReporte) => (
@@ -1108,15 +1101,6 @@ export function ReportesClient({
       header: "Caja",
       render: (item: MovimientoReporte) => (
         <span className="text-[#40768c]">{item.caja}</span>
-      ),
-    },
-    {
-      key: "tipo",
-      header: "Tipo",
-      render: (item: MovimientoReporte) => (
-        <Badge variant={item.tipo === "Ingreso" ? "success" : "danger"}>
-          {item.tipo}
-        </Badge>
       ),
     },
     {

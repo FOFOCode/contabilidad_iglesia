@@ -325,7 +325,7 @@ export function MultipleIngresoForm({
             montos: [
               {
                 monedaId: row.monedaId,
-                monto: parseFloat(row.monto),
+                monto: Math.round(parseFloat(row.monto) * 100) / 100,
               },
             ],
           };

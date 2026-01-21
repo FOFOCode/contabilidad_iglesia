@@ -18,8 +18,25 @@ async function validarPermisoActual(
 // DONACIONES
 // =====================
 
+// Helper para obtener la caja general
+// Las donaciones SIEMPRE van a la Caja General
+async function obtenerCajaGeneral() {
+  const cajaGeneral = await prisma.caja.findFirst({
+    where: { esGeneral: true, activa: true },
+  });
+
+  if (!cajaGeneral) {
+    throw new Error(
+      "No existe una caja general configurada. Por favor configure una caja como 'General' en Configuración > Cajas."
+    );
+  }
+
+  return cajaGeneral;
+}
+
 interface CrearDonacionData {
   nombre: string;
+  numeroDocumento: string;
   telefono?: string;
   fecha: Date;
   monto: number;
@@ -34,23 +51,20 @@ export async function crearDonacion(data: CrearDonacionData) {
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
 
-  // Buscar la caja general (donde esGeneral = true)
-  const cajaGeneral = await prisma.caja.findFirst({
-    where: { esGeneral: true, activa: true },
-  });
+  // Obtener la caja general (donde siempre van las donaciones - dinero real)
+  const cajaGeneral = await obtenerCajaGeneral();
 
-  if (!cajaGeneral) {
-    throw new Error(
-      "No existe una caja general configurada. Por favor configure una caja como 'General' en Configuración > Cajas."
-    );
-  }
+  // Redondear monto a 2 decimales para evitar errores de punto flotante
+  const montoRedondeado = Math.round(data.monto * 100) / 100;
 
-  return prisma.donacion.create({
+  // Crear la donación en la CAJA GENERAL y el tracking simultáneamente
+  const donacion = await prisma.donacion.create({
     data: {
       nombre: data.nombre,
+      numeroDocumento: data.numeroDocumento,
       telefono: data.telefono || null,
       fecha: data.fecha,
-      monto: data.monto,
+      monto: montoRedondeado,
       tipoOfrendaId: data.tipoOfrendaId,
       monedaId: data.monedaId,
       cajaId: cajaGeneral.id,
@@ -65,6 +79,24 @@ export async function crearDonacion(data: CrearDonacionData) {
       usuario: { select: { nombre: true, apellido: true } },
     },
   });
+
+  // Crear el tracking para la caja "Donaciones" (solo referencia)
+  await prisma.donacionTracking.create({
+    data: {
+      nombre: data.nombre,
+      numeroDocumento: data.numeroDocumento,
+      telefono: data.telefono || null,
+      fecha: data.fecha,
+      monto: montoRedondeado,
+      tipoOfrendaId: data.tipoOfrendaId,
+      monedaId: data.monedaId,
+      usuarioId: data.usuarioId,
+      comentario: data.comentario,
+      donacionId: donacion.id,
+    },
+  });
+
+  return donacion;
 }
 
 interface FiltrosDonacion {
@@ -112,8 +144,101 @@ export async function obtenerDonacionPorId(id: string) {
   );
 }
 
+// =====================
+// TRACKING DE DONACIONES (para caja Donaciones)
+// =====================
+
+interface FiltrosDonacionTracking {
+  desde?: Date;
+  hasta?: Date;
+  tipoOfrendaId?: string;
+  nombre?: string;
+}
+
+export async function obtenerDonacionesTracking(
+  filtros?: FiltrosDonacionTracking
+) {
+  return withRetry(() =>
+    prisma.donacionTracking.findMany({
+      where: {
+        fecha: {
+          gte: filtros?.desde,
+          lte: filtros?.hasta,
+        },
+        tipoOfrendaId: filtros?.tipoOfrendaId || undefined,
+        nombre: filtros?.nombre
+          ? { contains: filtros.nombre, mode: "insensitive" }
+          : undefined,
+      },
+      include: {
+        tipoOfrenda: true,
+        moneda: true,
+        usuario: { select: { nombre: true, apellido: true } },
+      },
+      orderBy: { fecha: "desc" },
+    })
+  );
+}
+
+export async function obtenerResumenDonacionesTracking(
+  desde?: Date,
+  hasta?: Date
+) {
+  const donaciones = await prisma.donacionTracking.findMany({
+    where: {
+      fecha: {
+        gte: desde,
+        lte: hasta,
+      },
+    },
+    include: {
+      moneda: true,
+      tipoOfrenda: true,
+    },
+  });
+
+  // Agrupar por moneda
+  const totalesPorMoneda: Record<
+    string,
+    { total: number; simbolo: string; codigo: string }
+  > = {};
+
+  for (const donacion of donaciones) {
+    const key = donacion.monedaId;
+    if (!totalesPorMoneda[key]) {
+      totalesPorMoneda[key] = {
+        total: 0,
+        simbolo: donacion.moneda.simbolo,
+        codigo: donacion.moneda.codigo,
+      };
+    }
+    totalesPorMoneda[key].total += Number(donacion.monto);
+  }
+
+  // Agrupar por tipo de ofrenda
+  const totalesPorTipo: Record<string, { total: number; nombre: string }> = {};
+
+  for (const donacion of donaciones) {
+    const key = donacion.tipoOfrendaId;
+    if (!totalesPorTipo[key]) {
+      totalesPorTipo[key] = {
+        total: 0,
+        nombre: donacion.tipoOfrenda.nombre,
+      };
+    }
+    totalesPorTipo[key].total += Number(donacion.monto);
+  }
+
+  return {
+    totalDonaciones: donaciones.length,
+    totalesPorMoneda: Object.values(totalesPorMoneda),
+    totalesPorTipo: Object.values(totalesPorTipo),
+  };
+}
+
 interface ActualizarDonacionData {
   nombre?: string;
+  numeroDocumento?: string;
   telefono?: string;
   fecha?: Date;
   monto?: number;
@@ -127,13 +252,19 @@ export async function actualizarDonacion(
   data: ActualizarDonacionData
 ) {
   await validarPermisoActual("donaciones", "editar");
+
+  // Redondear monto a 2 decimales si viene definido
+  const montoRedondeado =
+    data.monto !== undefined ? Math.round(data.monto * 100) / 100 : undefined;
+
   return prisma.donacion.update({
     where: { id },
     data: {
       nombre: data.nombre,
+      numeroDocumento: data.numeroDocumento,
       telefono: data.telefono,
       fecha: data.fecha,
-      monto: data.monto,
+      monto: montoRedondeado,
       tipoOfrendaId: data.tipoOfrendaId,
       monedaId: data.monedaId,
       comentario: data.comentario,

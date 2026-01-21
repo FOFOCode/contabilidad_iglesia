@@ -29,6 +29,7 @@ interface TipoOfrenda {
 interface DonacionData {
   id: string;
   nombre: string;
+  numeroDocumento: string;
   telefono: string | null;
   fecha: Date;
   monto: number;
@@ -43,7 +44,6 @@ interface DonacionesClientProps {
   donaciones: DonacionData[];
   tiposOfrenda: TipoOfrenda[];
   monedas: Moneda[];
-  tieneCajaGeneral: boolean;
   permisos: {
     puedeVer: boolean;
     puedeCrear: boolean;
@@ -56,7 +56,6 @@ export function DonacionesClient({
   donaciones: donacionesIniciales,
   tiposOfrenda,
   monedas,
-  tieneCajaGeneral,
   permisos,
 }: DonacionesClientProps) {
   const router = useRouter();
@@ -69,6 +68,7 @@ export function DonacionesClient({
   const [editando, setEditando] = useState<DonacionData | null>(null);
   const [formEdit, setFormEdit] = useState({
     nombre: "",
+    numeroDocumento: "",
     telefono: "",
     fecha: "",
     tipoOfrendaId: "",
@@ -182,6 +182,7 @@ export function DonacionesClient({
     setEditando(donacion);
     setFormEdit({
       nombre: donacion.nombre,
+      numeroDocumento: donacion.numeroDocumento,
       telefono: donacion.telefono || "",
       fecha: new Date(donacion.fecha).toISOString().split("T")[0],
       tipoOfrendaId: donacion.tipoOfrenda.id,
@@ -206,7 +207,7 @@ export function DonacionesClient({
       return;
     }
 
-    const monto = parseFloat(formEdit.monto);
+    const monto = Math.round(parseFloat(formEdit.monto) * 100) / 100;
     if (isNaN(monto) || monto <= 0) {
       setError("El monto debe ser un número mayor a 0");
       return;
@@ -216,6 +217,7 @@ export function DonacionesClient({
       try {
         await actualizarDonacion(editando.id, {
           nombre: formEdit.nombre,
+          numeroDocumento: formEdit.numeroDocumento,
           telefono: formEdit.telefono || undefined,
           fecha: new Date(formEdit.fecha),
           tipoOfrendaId: formEdit.tipoOfrendaId,
@@ -231,6 +233,7 @@ export function DonacionesClient({
               ? {
                   ...d,
                   nombre: formEdit.nombre,
+                  numeroDocumento: formEdit.numeroDocumento,
                   telefono: formEdit.telefono || null,
                   fecha: new Date(formEdit.fecha),
                   monto,
@@ -277,26 +280,6 @@ export function DonacionesClient({
       minimumFractionDigits: 2,
     })}`;
   };
-
-  if (!tieneCajaGeneral) {
-    return (
-      <div className="p-6">
-        <Card className="p-8 text-center">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">
-            Caja General No Configurada
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Para registrar donaciones, primero debe configurar una caja como
-            &quot;General&quot; en la sección de Configuración.
-          </p>
-          <Link href="/dashboard/configuracion">
-            <Button>Ir a Configuración</Button>
-          </Link>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="p-6 space-y-6">
@@ -414,6 +397,15 @@ export function DonacionesClient({
                         </span>
                       )}
                     </div>
+                  ),
+                },
+                {
+                  key: "numeroDocumento",
+                  header: "DUI",
+                  render: (item: DonacionData) => (
+                    <span className="font-mono text-sm text-[#40768c]">
+                      {item.numeroDocumento}
+                    </span>
                   ),
                 },
                 {
@@ -698,6 +690,16 @@ export function DonacionesClient({
                 setFormEdit({ ...formEdit, nombre: e.target.value })
               }
               placeholder="Ej: Juan Pérez"
+              required
+            />
+
+            <Input
+              label="Número de Documento (DUI) *"
+              value={formEdit.numeroDocumento}
+              onChange={(e) =>
+                setFormEdit({ ...formEdit, numeroDocumento: e.target.value })
+              }
+              placeholder="Ej: 12345678-9"
               required
             />
 

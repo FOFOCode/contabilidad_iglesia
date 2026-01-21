@@ -170,6 +170,31 @@ export async function eliminarFilial(id: string) {
 // DIEZMOS FILIALES (Mini Cajas)
 // =====================
 
+// Helper para obtener o crear la caja de Filiales
+// NOTE: La caja se crea SOLO al primer ingreso de datos, no automáticamente al iniciar
+async function obtenerOCrearCajaFiliales() {
+  let caja = await prisma.caja.findFirst({
+    where: { nombre: "Filiales", activa: true },
+  });
+
+  // Solo crear caja si NO existe ninguna (primer dato)
+  if (!caja) {
+    const maxOrden = await prisma.caja.aggregate({ _max: { orden: true } });
+    caja = await prisma.caja.create({
+      data: {
+        nombre: "Filiales",
+        descripcion: "Caja específica para diezmos de iglesias filiales",
+        activa: true,
+        esGeneral: false,
+        orden: (maxOrden._max.orden || 0) + 1,
+      },
+    });
+    console.log("🏠 CAJA 'FILIALES' CREADA (primer ingreso de diezmo filial)");
+  }
+
+  return caja;
+}
+
 interface CrearDiezmoData {
   filialId: string;
   monto: number;
@@ -185,13 +210,20 @@ export async function crearDiezmoFilial(data: CrearDiezmoData) {
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
 
+  // Obtener o crear la caja de Filiales
+  const cajaFiliales = await obtenerOCrearCajaFiliales();
+
+  // Redondear monto a 2 decimales
+  const montoRedondeado = Math.round(data.monto * 100) / 100;
+
   const diezmo = await prisma.diezmoFilial.create({
     data: {
       filialId: data.filialId,
-      monto: data.monto,
+      monto: montoRedondeado,
       monedaId: data.monedaId,
       mes: data.mes,
       anio: data.anio,
+      cajaId: cajaFiliales.id,
       comentario: data.comentario,
       usuarioId: data.usuarioId,
       creadoPorId: usuario.id, // Quién creó el registro
@@ -259,7 +291,7 @@ export async function eliminarDiezmoFilial(id: string) {
 }
 
 // =====================
-// EGRESOS FILIALES (Caja General)
+// EGRESOS FILIALES (Caja de Filiales)
 // =====================
 
 interface CrearEgresoFilialData {
@@ -278,6 +310,9 @@ export async function crearEgresoFilial(data: CrearEgresoFilialData) {
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
 
+  // Obtener o crear la caja de Filiales
+  const cajaFiliales = await obtenerOCrearCajaFiliales();
+
   // Validar que hay saldo suficiente
   const saldos = await obtenerSaldoFiliales();
   const saldoMoneda = saldos.find((s) => s.monedaId === data.monedaId);
@@ -295,15 +330,19 @@ export async function crearEgresoFilial(data: CrearEgresoFilialData) {
     );
   }
 
+  // Redondear monto a 2 decimales
+  const montoRedondeado = Math.round(data.monto * 100) / 100;
+
   const egreso = await prisma.egresoFilial.create({
     data: {
       fechaSalida: data.fechaSalida,
       solicitante: data.solicitante,
-      monto: data.monto,
+      monto: montoRedondeado,
       monedaId: data.monedaId,
       tipoGastoId: data.tipoGastoId,
       descripcionGasto: data.descripcionGasto,
       comentario: data.comentario,
+      cajaId: cajaFiliales.id,
       usuarioId: data.usuarioId,
       creadoPorId: usuario.id, // Quién creó el registro
     },

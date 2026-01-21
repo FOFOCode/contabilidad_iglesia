@@ -34,6 +34,7 @@ model Moneda {
   diezmosFiliales DiezmoFilial[]
   egresosFiliales EgresoFilial[]
   donaciones     Donacion[]
+  donationsTracking DonacionTracking[]
 
   // Índice para filtrar monedas activas (consulta muy frecuente)
   @@index([activa, orden])
@@ -107,6 +108,7 @@ model TipoIngreso {
   ingresos   Ingreso[]
   cajas      Caja[]
   donaciones Donacion[]
+  donationsTracking DonacionTracking[]
 
   // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
@@ -203,6 +205,10 @@ model DiezmoFilial {
   monedaId      String
   moneda        Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
 
+  // Caja específica para diezmos filiales (no va a la caja general)
+  cajaId        String
+  caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
+
   usuarioId     String
   usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   
@@ -214,6 +220,7 @@ model DiezmoFilial {
 
   @@index([filialId])
   @@index([monedaId])
+  @@index([cajaId])
   @@index([usuarioId])
   @@index([anio, mes])
   @@index([filialId, anio, mes])
@@ -239,6 +246,10 @@ model EgresoFilial {
   tipoGastoId      String
   tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id], onDelete: Restrict)
 
+  // Caja específica para egresos de filiales (no va a la caja general)
+  cajaId           String
+  caja             Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
+
   usuarioId        String
   usuario          Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   
@@ -249,6 +260,7 @@ model EgresoFilial {
   actualizadoPor   Usuario?  @relation("EgresoFilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
 
   @@index([monedaId])
+  @@index([cajaId])
   @@index([tipoGastoId])
   @@index([usuarioId])
   @@index([fechaSalida])
@@ -348,6 +360,7 @@ model Usuario {
   diezmosFiliales  DiezmoFilial[]
   egresosFiliales  EgresoFilial[]
   donaciones       Donacion[]
+  donacionesTracking DonacionTracking[]
   auditoriasRealizadas AuditoriaLog[]
 
   // Auditoría - Relaciones para rastrear quién creó/modificó configuraciones
@@ -418,6 +431,8 @@ model Caja {
   ingresosSecundarios Ingreso[] @relation("CajaSecundaria")
   egresos             Egreso[]
   donaciones          Donacion[]
+  diezmosFiliales     DiezmoFilial[]
+  egresosFiliales     EgresoFilial[]
 
   @@index([sociedadId])
   @@index([tipoIngresoId])
@@ -507,6 +522,7 @@ model Egreso {
   monto            Decimal   @db.Decimal(12, 2)
   descripcionGasto String?   @db.Text
   comentario       String?   @db.Text
+  numeroFactura    String?   // Número de factura (opcional)
   creadoEn         DateTime  @default(now())
   actualizadoEn    DateTime  @updatedAt
   
@@ -542,6 +558,7 @@ model Egreso {
   @@index([fechaSalida, cajaId])
   @@index([tipoGastoId, monedaId])
   @@index([creadoEn]) // Para ordenar últimos movimientos
+  @@index([numeroFactura]) // Búsqueda por número de factura
   @@map("egresos")
 }
 
@@ -549,10 +566,11 @@ model Egreso {
 // MÓDULO DE DONACIONES
 // =====================
 
-/// Registro de donaciones (siempre van a la Caja General)
+/// Registro de donaciones (van a la CAJA GENERAL, con tracking en caja Donaciones)
 model Donacion {
   id            String    @id @default(cuid())
   nombre        String    // Nombre del donante
+  numeroDocumento String  // DUI del donante (obligatorio)
   telefono      String?   // Teléfono del donante
   fecha         DateTime  @default(now())
   monto         Decimal   @db.Decimal(12, 2)
@@ -567,18 +585,21 @@ model Donacion {
   monedaId      String
   moneda        Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
   
-  // La donación siempre va a la Caja General (la que tiene esGeneral=true)
+  // La donación va a la CAJA GENERAL (donde está el dinero real)
   cajaId        String
   caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
   
   usuarioId     String
   usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  
+
   // Auditoría: quién creó y quién modificó
   creadoPorId      String
   creadoPor        Usuario   @relation("DonacionCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
   actualizadoPorId String?
   actualizadoPor   Usuario?  @relation("DonacionActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+
+  // Tracking para caja "Donaciones"
+  tracking DonacionTracking?
 
   @@index([cajaId])
   @@index([usuarioId])
@@ -589,7 +610,38 @@ model Donacion {
   @@index([creadoEn])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
+  @@index([numeroDocumento])
   @@map("donaciones")
+}
+
+/// Tracking de donaciones para la caja "Donaciones" (solo referencia, no afecta saldos)
+model DonacionTracking {
+  id              String    @id @default(cuid())
+  nombre          String    // Nombre del donante
+  numeroDocumento String    // DUI del donante
+  telefono        String?   // Teléfono del donante
+  fecha           DateTime  @default(now())
+  monto           Decimal   @db.Decimal(12, 2)
+  comentario      String?   @db.Text
+  creadoEn        DateTime  @default(now())
+
+  donacionId      String    @unique // Referencia a la donación real en caja general
+  donacion        Donacion  @relation(fields: [donacionId], references: [id], onDelete: Cascade)
+
+  tipoOfrendaId   String
+  tipoOfrenda     TipoIngreso @relation(fields: [tipoOfrendaId], references: [id], onDelete: Restrict)
+  
+  monedaId        String
+  moneda          Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
+  
+  usuarioId       String
+  usuario         Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([fecha])
+  @@index([tipoOfrendaId])
+  @@index([monedaId])
+  @@index([nombre])
+  @@map("donaciones_tracking")
 }
 
 // =====================

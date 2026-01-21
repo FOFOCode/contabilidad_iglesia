@@ -48,39 +48,48 @@ export async function crearIngreso(data: CrearIngresoData) {
   console.log("cajaSecundariaId:", data.cajaSecundariaId);
 
   return withRetry(() =>
-    prisma.ingreso.create({
-      data: {
-        fechaRecaudacion: data.fechaRecaudacion,
-        sociedadId: data.sociedadId,
-        servicioId: data.servicioId,
-        tipoIngresoId: data.tipoIngresoId,
-        cajaId: data.cajaId,
-        cajaSecundariaId: data.cajaSecundariaId || null,
-        usuarioId: data.usuarioId,
-        creadoPorId: usuario.id, // Quién creó el registro
-        comentario: data.comentario,
-        montos: {
-          create: data.montos.map((m) => ({
-            monedaId: m.monedaId,
-            monto: m.monto,
-          })),
+    prisma.ingreso
+      .create({
+        data: {
+          fechaRecaudacion: data.fechaRecaudacion,
+          sociedadId: data.sociedadId,
+          servicioId: data.servicioId,
+          tipoIngresoId: data.tipoIngresoId,
+          cajaId: data.cajaId,
+          cajaSecundariaId: data.cajaSecundariaId || null,
+          usuarioId: data.usuarioId,
+          creadoPorId: usuario.id, // Quién creó el registro
+          comentario: data.comentario,
+          montos: {
+            create: data.montos.map((m) => ({
+              monedaId: m.monedaId,
+              monto: m.monto,
+            })),
+          },
         },
-      },
-      include: {
-        montos: { include: { moneda: true } },
-        sociedad: true,
-        servicio: true,
-        tipoIngreso: true,
-        caja: true,
-        cajaSecundaria: true,
-      },
-    }).then((result) => {
-      console.log("ingreso creado, montos:");
-      result.montos.forEach((m) => {
-        console.log("  - monedaId:", m.monedaId, "monto:", m.monto, "tipo:", typeof m.monto);
-      });
-      return result;
-    })
+        include: {
+          montos: { include: { moneda: true } },
+          sociedad: true,
+          servicio: true,
+          tipoIngreso: true,
+          caja: true,
+          cajaSecundaria: true,
+        },
+      })
+      .then((result) => {
+        console.log("ingreso creado, montos:");
+        result.montos.forEach((m) => {
+          console.log(
+            "  - monedaId:",
+            m.monedaId,
+            "monto:",
+            m.monto,
+            "tipo:",
+            typeof m.monto
+          );
+        });
+        return result;
+      })
   );
 }
 
@@ -229,6 +238,7 @@ interface CrearEgresoData {
   monto: number;
   descripcionGasto?: string;
   comentario?: string;
+  numeroFactura?: string; // Número de factura (opcional)
   tipoGastoId: string;
   monedaId: string;
   cajaId: string;
@@ -264,6 +274,7 @@ export async function crearEgreso(data: CrearEgresoData) {
       monto: data.monto,
       descripcionGasto: data.descripcionGasto,
       comentario: data.comentario,
+      numeroFactura: data.numeroFactura || null,
       tipoGastoId: data.tipoGastoId,
       monedaId: data.monedaId,
       cajaId: data.cajaId,
@@ -525,11 +536,14 @@ export async function obtenerCajasConSaldos(filtros?: {
         where: { activa: true },
         orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
       }),
-       // Ingresos principales: obtener datos y agrupar en JS
-       prisma.ingresoMonto.findMany({
-         where: { ingreso: { caja: { activa: true } } },
-         include: { ingreso: { select: { cajaId: true } }, moneda: { select: { id: true } } },
-       }),
+      // Ingresos principales: obtener datos y agrupar en JS
+      prisma.ingresoMonto.findMany({
+        where: { ingreso: { caja: { activa: true } } },
+        include: {
+          ingreso: { select: { cajaId: true } },
+          moneda: { select: { id: true } },
+        },
+      }),
       // Egresos: agrupar por caja Y moneda
       prisma.egreso.groupBy({
         by: ["cajaId", "monedaId"],
@@ -548,25 +562,39 @@ export async function obtenerCajasConSaldos(filtros?: {
       }),
     ]);
 
-   // Obtener ingresos secundarios por caja (para tracking de sociedades)
-   const ingresosSecundarios = await prisma.ingresoMonto.findMany({
-     where: { ingreso: { cajaSecundaria: { activa: true }, cajaSecundariaId: { not: null } } },
-     include: { ingreso: { select: { cajaSecundariaId: true } }, moneda: { select: { id: true } } },
-   });
+  // Obtener ingresos secundarios por caja (para tracking de sociedades)
+  const ingresosSecundarios = await prisma.ingresoMonto.findMany({
+    where: {
+      ingreso: {
+        cajaSecundaria: { activa: true },
+        cajaSecundariaId: { not: null },
+      },
+    },
+    include: {
+      ingreso: { select: { cajaSecundariaId: true } },
+      moneda: { select: { id: true } },
+    },
+  });
 
-   // Mapas para acceso rápido
-   const ingresosPrincipalesMap = new Map<string, number>();
-   ingresosData.forEach((item) => {
-     const key = `${item.ingreso.cajaId}-${item.monedaId}`;
-     ingresosPrincipalesMap.set(key, (ingresosPrincipalesMap.get(key) || 0) + item.monto.toNumber());
-   });
-   const ingresosSecundariosMap = new Map<string, number>();
-   ingresosSecundarios.forEach((item) => {
-     const key = `${item.ingreso.cajaSecundariaId}-${item.monedaId}`;
-     ingresosSecundariosMap.set(key, (ingresosSecundariosMap.get(key) || 0) + item.monto.toNumber());
-   });
+  // Mapas para acceso rápido
+  const ingresosPrincipalesMap = new Map<string, number>();
+  ingresosData.forEach((item) => {
+    const key = `${item.ingreso.cajaId}-${item.monedaId}`;
+    ingresosPrincipalesMap.set(
+      key,
+      (ingresosPrincipalesMap.get(key) || 0) + item.monto.toNumber()
+    );
+  });
+  const ingresosSecundariosMap = new Map<string, number>();
+  ingresosSecundarios.forEach((item) => {
+    const key = `${item.ingreso.cajaSecundariaId}-${item.monedaId}`;
+    ingresosSecundariosMap.set(
+      key,
+      (ingresosSecundariosMap.get(key) || 0) + item.monto.toNumber()
+    );
+  });
 
-   const donacionesMap = new Map<string, number>();
+  const donacionesMap = new Map<string, number>();
   donacionesData.forEach((don) => {
     donacionesMap.set(
       `${don.cajaId}-${don.monedaId}`,
@@ -582,6 +610,29 @@ export async function obtenerCajasConSaldos(filtros?: {
     );
   });
 
+  // Obtener diezmos y egresos filiales AHORA (necesario para caja Filiales)
+  const [diezmosFilialesPorMoneda, egresosFilialesPorMoneda] =
+    await Promise.all([
+      prisma.diezmoFilial.groupBy({
+        by: ["monedaId"],
+        _sum: { monto: true },
+      }),
+      prisma.egresoFilial.groupBy({
+        by: ["monedaId"],
+        _sum: { monto: true },
+      }),
+    ]);
+
+  const diezmosFilialesMap = new Map<string, number>();
+  diezmosFilialesPorMoneda.forEach((item) => {
+    diezmosFilialesMap.set(item.monedaId, Number(item._sum.monto || 0));
+  });
+
+  const egresosFilialesMap = new Map<string, number>();
+  egresosFilialesPorMoneda.forEach((item) => {
+    egresosFilialesMap.set(item.monedaId, Number(item._sum.monto || 0));
+  });
+
   // Construir cajas con saldos
   const cajasConSaldos = cajas.map((caja) => {
     const saldos = monedas.map((moneda) => {
@@ -589,14 +640,25 @@ export async function obtenerCajasConSaldos(filtros?: {
       const esSubcaja =
         !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
 
-       // Ingresos: si es subcaja usa secundarios, sino usa principales por caja
-       const ingresosBase = esSubcaja
-         ? ingresosSecundariosMap.get(key) || 0
-         : ingresosPrincipalesMap.get(key) || 0;
+      // Ingresos: si es subcaja usa secundarios, sino usa principales por caja
+      let ingresosBase = esSubcaja
+        ? ingresosSecundariosMap.get(key) || 0
+        : ingresosPrincipalesMap.get(key) || 0;
+
+      // Si es caja Filiales, agregar diezmos filiales
+      if (caja.nombre === "Filiales" && !caja.esGeneral) {
+        ingresosBase += diezmosFilialesMap.get(moneda.id) || 0;
+      }
 
       const donaciones = caja.esGeneral ? donacionesMap.get(key) || 0 : 0;
-      const ingresos = ingresosBase + donaciones;
-      const egresos = egresosMap.get(key) || 0;
+      let ingresos = ingresosBase + donaciones;
+
+      let egresos = egresosMap.get(key) || 0;
+
+      // Si es caja Filiales, agregar egresos filiales
+      if (caja.nombre === "Filiales" && !caja.esGeneral) {
+        egresos += egresosFilialesMap.get(moneda.id) || 0;
+      }
 
       return {
         monedaId: moneda.id,
@@ -654,22 +716,15 @@ export async function obtenerCajasConSaldos(filtros?: {
     });
   }
 
-  // Obtener filiales solo si es necesario
-  const [diezmosFilialesPorMoneda, egresosFilialesPorMoneda] =
-    await Promise.all([
-      prisma.diezmoFilial.groupBy({
-        by: ["monedaId"],
-        _sum: { monto: true },
-      }),
-      prisma.egresoFilial.groupBy({
-        by: ["monedaId"],
-        _sum: { monto: true },
-      }),
-    ]);
+  // IMPORTANTE: Si existe una caja "Filiales" real, no crear virtual
+  // La caja real contiene los saldos reales de los diezmos y egresos
+  const cajaFilialesReal = cajas.find(
+    (c) => c.nombre === "Filiales" && !c.esGeneral
+  );
 
   if (
-    diezmosFilialesPorMoneda.length > 0 ||
-    egresosFilialesPorMoneda.length > 0
+    !cajaFilialesReal &&
+    (diezmosFilialesPorMoneda.length > 0 || egresosFilialesPorMoneda.length > 0)
   ) {
     const saldosFiliales = monedas.map((moneda) => {
       const diezmo = diezmosFilialesPorMoneda.find(
@@ -858,7 +913,8 @@ async function obtenerDetalleCajaFiliales() {
     moneda: serializarMoneda(dz.moneda),
   }));
 
-  const egresosSerializados = egresos.map((eg) => ({
+  // EgresoFilial no tiene campo numeroFactura
+  const egresosSerializados = egresos.map((eg: any) => ({
     ...eg,
     monto: Number(eg.monto),
     moneda: serializarMoneda(eg.moneda),
@@ -1027,7 +1083,12 @@ export async function obtenerDetalleCaja(cajaId: string) {
   console.log("cajaId:", cajaId, "esSubcajaDetalle:", esSubcajaDetalle);
   console.log("ingresosPorMonedaData.length:", ingresosPorMonedaData.length);
   if (ingresosPorMonedaData.length > 0) {
-    console.log("primero:", ingresosPorMonedaData[0].monto.toString(), "tipo:", typeof ingresosPorMonedaData[0].monto);
+    console.log(
+      "primero:",
+      ingresosPorMonedaData[0].monto.toString(),
+      "tipo:",
+      typeof ingresosPorMonedaData[0].monto
+    );
     console.log("en number:", Number(ingresosPorMonedaData[0].monto));
   }
 
@@ -1059,13 +1120,17 @@ export async function obtenerDetalleCaja(cajaId: string) {
       })
     : [];
 
-
-
   const saldos = monedas.map((moneda) => {
     // Handle both raw query and groupBy results
-    const ingresoItem = (ingresosPorMoneda as any[]).find((i: any) => i.monedaId === moneda.id);
+    const ingresoItem = (ingresosPorMoneda as any[]).find(
+      (i: any) => i.monedaId === moneda.id
+    );
     const totalIngresos = ingresoItem
-      ? new Prisma.Decimal(ingresoItem.monto !== undefined ? ingresoItem.monto : ingresoItem._sum?.monto || 0)
+      ? new Prisma.Decimal(
+          ingresoItem.monto !== undefined
+            ? ingresoItem.monto
+            : ingresoItem._sum?.monto || 0
+        )
       : new Prisma.Decimal(0);
 
     const totalEgresos =
@@ -1117,6 +1182,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
   const egresosSerializados = egresos.map((eg) => ({
     ...eg,
     monto: Number(eg.monto),
+    numeroFactura: eg.numeroFactura,
     moneda: serializarMoneda(eg.moneda),
   }));
 
@@ -1428,27 +1494,32 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     })),
   }));
 
-  const donacionesSerializadas = donaciones.map((don) => ({
-    id: don.id,
-    fecha: don.fecha,
-    tipo: "Ingreso" as const,
-    concepto: `Donación - ${don.nombre}`,
-    sociedad: "Donación" as string,
-    caja: don.caja.nombre,
-    tipoIngreso: don.tipoOfrenda.nombre,
-    comentario: don.comentario || undefined,
-    usuario: don.usuario
-      ? `${don.usuario.nombre} ${don.usuario.apellido}`
-      : undefined,
-    montos: [
-      {
-        monto: Number(don.monto),
-        monedaId: don.monedaId,
-        monedaCodigo: don.moneda.codigo,
-        monedaSimbolo: don.moneda.simbolo,
-      },
-    ],
-  }));
+  const donacionesSerializadas = donaciones.map((don) => {
+    const conceptoBase = `Donación - ${don.nombre}`;
+    const referencia = don.numeroDocumento ? ` (DUI: ${don.numeroDocumento})` : "";
+    return {
+      id: don.id,
+      fecha: don.fecha,
+      tipo: "Ingreso" as const,
+      concepto: conceptoBase + referencia,
+      sociedad: "Donación" as string,
+      caja: don.caja.nombre,
+      tipoIngreso: don.tipoOfrenda.nombre,
+      numeroDocumento: don.numeroDocumento || undefined,
+      comentario: don.comentario || undefined,
+      usuario: don.usuario
+        ? `${don.usuario.nombre} ${don.usuario.apellido}`
+        : undefined,
+      montos: [
+        {
+          monto: Number(don.monto),
+          monedaId: don.monedaId,
+          monedaCodigo: don.moneda.codigo,
+          monedaSimbolo: don.moneda.simbolo,
+        },
+      ],
+    };
+  });
 
   const diezmosSerializados = diezmosFiliales.map((dz) => ({
     id: dz.id,
@@ -1472,28 +1543,33 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     ],
   }));
 
-  const egresosSerializados = egresos.map((eg) => ({
-    id: eg.id,
-    fecha: eg.fechaSalida,
-    tipo: "Egreso" as const,
-    concepto: eg.descripcionGasto || eg.tipoGasto.nombre,
-    sociedad: null,
-    caja: eg.caja.nombre,
-    tipoGasto: eg.tipoGasto.nombre,
-    solicitante: eg.solicitante,
-    comentario: eg.comentario || undefined,
-    usuario: eg.usuario
-      ? `${eg.usuario.nombre} ${eg.usuario.apellido}`
-      : undefined,
-    montos: [
-      {
-        monto: Number(eg.monto),
-        monedaId: eg.monedaId,
-        monedaCodigo: eg.moneda.codigo,
-        monedaSimbolo: eg.moneda.simbolo,
-      },
-    ],
-  }));
+  const egresosSerializados = egresos.map((eg) => {
+    const conceptoBase = eg.descripcionGasto || eg.tipoGasto.nombre;
+    const referencia = eg.numeroFactura ? ` (Factura: ${eg.numeroFactura})` : "";
+    return {
+      id: eg.id,
+      fecha: eg.fechaSalida,
+      tipo: "Egreso" as const,
+      concepto: conceptoBase + referencia,
+      sociedad: null,
+      caja: eg.caja.nombre,
+      tipoGasto: eg.tipoGasto.nombre,
+      solicitante: eg.solicitante,
+      numeroFactura: eg.numeroFactura || undefined,
+      comentario: eg.comentario || undefined,
+      usuario: eg.usuario
+        ? `${eg.usuario.nombre} ${eg.usuario.apellido}`
+        : undefined,
+      montos: [
+        {
+          monto: Number(eg.monto),
+          monedaId: eg.monedaId,
+          monedaCodigo: eg.moneda.codigo,
+          monedaSimbolo: eg.moneda.simbolo,
+        },
+      ],
+    };
+  });
 
   const egresosFilalesSerializados = egresosFiliales.map((eg) => ({
     id: eg.id,

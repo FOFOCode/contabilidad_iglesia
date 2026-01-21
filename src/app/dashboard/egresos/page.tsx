@@ -34,6 +34,7 @@ export default async function EgresosPage() {
     monto: Number(e.monto),
     descripcionGasto: e.descripcionGasto,
     comentario: e.comentario,
+    numeroFactura: e.numeroFactura,
     tipoGasto: { nombre: e.tipoGasto.nombre },
     caja: { nombre: e.caja.nombre },
     moneda: {

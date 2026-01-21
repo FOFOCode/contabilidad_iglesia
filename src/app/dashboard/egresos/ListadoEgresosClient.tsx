@@ -32,6 +32,7 @@ interface EgresoData {
   monto: number;
   descripcionGasto: string | null;
   comentario: string | null;
+  numeroFactura: string | null;
   tipoGasto: { nombre: string };
   caja: { nombre: string };
   moneda: Moneda;
@@ -192,7 +193,7 @@ export function ListadoEgresosClient({
       return;
     }
 
-    const monto = parseFloat(formEdit.monto);
+    const monto = Math.round(parseFloat(formEdit.monto) * 100) / 100;
     if (isNaN(monto) || monto <= 0) {
       setError("El monto debe ser un número mayor a 0");
       return;
@@ -324,6 +325,16 @@ export function ListadoEgresosClient({
       render: (item: EgresoData) => (
         <span className="font-semibold text-[#e0451f] whitespace-nowrap">
           {formatMonto(Number(item.monto), item.moneda.simbolo)}
+        </span>
+      ),
+    },
+    {
+      key: "factura",
+      header: "Factura",
+      hideOnMobile: true,
+      render: (item: EgresoData) => (
+        <span className="text-[#73a9bf] text-sm">
+          {item.numeroFactura || "-"}
         </span>
       ),
     },

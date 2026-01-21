@@ -29,11 +29,6 @@ export default async function NuevaDonacionPage() {
     redirect("/dashboard/donaciones");
   }
 
-  // Si no hay caja general configurada
-  if (!datos.cajaGeneral) {
-    redirect("/dashboard/configuracion");
-  }
-
   // Si no hay datos configurados
   if (datos.tiposOfrenda.length === 0 || datos.monedas.length === 0) {
     redirect("/dashboard/configuracion/inicio");

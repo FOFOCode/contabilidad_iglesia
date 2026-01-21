@@ -26,6 +26,7 @@ interface Movimiento {
   fecha: Date;
   tipo: "ingreso" | "egreso";
   concepto: string;
+  numeroFactura?: string | null;
   esSecundario?: boolean;
   cajaPrincipal?: { id: string; nombre: string } | null;
   origen: "ingreso" | "egreso" | "donacion" | "diezmoFilial" | "egresoFilial";
@@ -177,6 +178,11 @@ export function CajaDetalleClient({
       render: (item: Movimiento) => (
         <div>
           <span className="font-medium text-[#203b46]">{item.concepto}</span>
+          {item.numeroFactura && (
+            <p className="text-xs text-[#40768c] mt-1">
+              Fact: {item.numeroFactura}
+            </p>
+          )}
           {item.esSecundario && item.cajaPrincipal && (
             <p className="text-xs text-[#73a9bf] mt-1">
               Dinero en: {item.cajaPrincipal.nombre}

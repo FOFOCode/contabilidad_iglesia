@@ -40,6 +40,7 @@ interface EgresoRow {
   monedaId: string;
   cajaId: string;
   descripcion: string;
+  numeroFactura: string;
 }
 
 export function MultipleEgresoForm({
@@ -65,6 +66,7 @@ export function MultipleEgresoForm({
     monedaId: monedaPrincipal?.id || "",
     cajaId: cajas[0]?.id || "",
     descripcion: "",
+    numeroFactura: "",
   });
 
   const [rows, setRows] = useState<EgresoRow[]>([
@@ -167,12 +169,13 @@ export function MultipleEgresoForm({
           return {
             fechaSalida: fechaLocal,
             solicitante: row.solicitante,
-            monto: parseFloat(row.monto),
+            monto: Math.round(parseFloat(row.monto) * 100) / 100,
             tipoGastoId: row.tipoGastoId,
             monedaId: row.monedaId,
             cajaId: row.cajaId,
             usuarioId,
             descripcionGasto: row.descripcion || undefined,
+            numeroFactura: row.numeroFactura || undefined,
           };
         });
 
@@ -389,6 +392,14 @@ export function MultipleEgresoForm({
                 value={row.descripcion}
                 onChange={(e) =>
                   updateRow(row.id, "descripcion", e.target.value)
+                }
+              />
+              <Input
+                label="Número de Factura (opcional)"
+                placeholder="Ej: FAC-001234"
+                value={row.numeroFactura}
+                onChange={(e) =>
+                  updateRow(row.id, "numeroFactura", e.target.value)
                 }
               />
             </div>
