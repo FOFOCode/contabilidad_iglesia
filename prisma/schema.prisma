@@ -7,36 +7,29 @@ datasource db {
   provider = "postgresql"
 }
 
-// =====================
-// CONFIGURACIONES DEL SISTEMA
-// (Todas son tablas para CRUD dinámico)
-// =====================
-
 /// Monedas configurables del sistema
 model Moneda {
-  id            String    @id @default(cuid())
-  codigo        String    @unique // USD, GTQ, EUR, etc.
-  nombre        String    // Dólar estadounidense, Quetzal, Euro
-  simbolo       String    // $, Q, €
-  activa        Boolean   @default(true)
-  esPrincipal   Boolean   @default(false)
-  tasaCambio    Decimal   @default(1) @db.Decimal(12, 4)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("MonedaCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
-  actualizadoPorId String?
-  actualizadoPor Usuario? @relation("MonedaActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  egresos        Egreso[]
-  ingresosMontos IngresoMonto[]
-  diezmosFiliales DiezmoFilial[]
-  egresosFiliales EgresoFilial[]
-  donaciones     Donacion[]
+  id                String             @id @default(cuid())
+  codigo            String             @unique
+  nombre            String
+  simbolo           String
+  activa            Boolean            @default(true)
+  esPrincipal       Boolean            @default(false)
+  tasaCambio        Decimal            @default(1) @db.Decimal(12, 4)
+  orden             Int                @default(0)
+  creadoEn          DateTime           @default(now())
+  actualizadoEn     DateTime           @updatedAt
+  creadoPorId       String?
+  actualizadoPorId  String?
+  diezmosFiliales   DiezmoFilial[]
+  donaciones        Donacion[]
   donationsTracking DonacionTracking[]
+  egresos           Egreso[]
+  egresosFiliales   EgresoFilial[]
+  ingresosMontos    IngresoMonto[]
+  actualizadoPor    Usuario?           @relation("MonedaActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor         Usuario?           @relation("MonedaCreadoPor", fields: [creadoPorId], references: [id])
 
-  // Índice para filtrar monedas activas (consulta muy frecuente)
   @@index([activa, orden])
   @@index([activa, esPrincipal])
   @@index([creadoPorId])
@@ -46,22 +39,20 @@ model Moneda {
 
 /// Sociedades / Orígenes de recaudación
 model Sociedad {
-  id            String    @id @default(cuid())
-  nombre        String    @unique
-  descripcion   String?
-  activa        Boolean   @default(true)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("SociedadCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String    @id @default(cuid())
+  nombre           String    @unique
+  descripcion      String?
+  activa           Boolean   @default(true)
+  orden            Int       @default(0)
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("SociedadActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  cajas            Caja[]
+  ingresos         Ingreso[]
+  actualizadoPor   Usuario?  @relation("SociedadActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?  @relation("SociedadCreadoPor", fields: [creadoPorId], references: [id])
 
-  ingresos Ingreso[]
-  cajas    Caja[]
-
-  // Índice para filtrar sociedades activas ordenadas
   @@index([activa, orden])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
@@ -70,21 +61,19 @@ model Sociedad {
 
 /// Tipos de servicio religioso
 model TipoServicio {
-  id            String    @id @default(cuid())
-  nombre        String    @unique
-  descripcion   String?
-  activo        Boolean   @default(true)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("TipoServicioCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String    @id @default(cuid())
+  nombre           String    @unique
+  descripcion      String?
+  activo           Boolean   @default(true)
+  orden            Int       @default(0)
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("TipoServicioActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  ingresos         Ingreso[]
+  actualizadoPor   Usuario?  @relation("TipoServicioActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?  @relation("TipoServicioCreadoPor", fields: [creadoPorId], references: [id])
 
-  ingresos Ingreso[]
-
-  // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
@@ -93,24 +82,22 @@ model TipoServicio {
 
 /// Tipos de ingreso / procedencia del dinero
 model TipoIngreso {
-  id            String    @id @default(cuid())
-  nombre        String    @unique
-  descripcion   String?
-  activo        Boolean   @default(true)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("TipoIngresoCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
-  actualizadoPorId String?
-  actualizadoPor Usuario? @relation("TipoIngresoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  ingresos   Ingreso[]
-  cajas      Caja[]
-  donaciones Donacion[]
+  id                String             @id @default(cuid())
+  nombre            String             @unique
+  descripcion       String?
+  activo            Boolean            @default(true)
+  orden             Int                @default(0)
+  creadoEn          DateTime           @default(now())
+  actualizadoEn     DateTime           @updatedAt
+  creadoPorId       String?
+  actualizadoPorId  String?
+  cajas             Caja[]
+  donaciones        Donacion[]
   donationsTracking DonacionTracking[]
+  ingresos          Ingreso[]
+  actualizadoPor    Usuario?           @relation("TipoIngresoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor         Usuario?           @relation("TipoIngresoCreadoPor", fields: [creadoPorId], references: [id])
 
-  // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
@@ -119,22 +106,20 @@ model TipoIngreso {
 
 /// Tipos de gasto para egresos
 model TipoGasto {
-  id            String    @id @default(cuid())
-  nombre        String    @unique
-  descripcion   String?
-  activo        Boolean   @default(true)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("TipoGastoCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String         @id @default(cuid())
+  nombre           String         @unique
+  descripcion      String?
+  activo           Boolean        @default(true)
+  orden            Int            @default(0)
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("TipoGastoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  egresos          Egreso[]
+  egresosFiliales  EgresoFilial[]
+  actualizadoPor   Usuario?       @relation("TipoGastoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?       @relation("TipoGastoCreadoPor", fields: [creadoPorId], references: [id])
 
-  egresos Egreso[]
-  egresosFiliales EgresoFilial[]
-
-  // Índice para filtrar tipos activos ordenados
   @@index([activo, orden])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
@@ -143,19 +128,18 @@ model TipoGasto {
 
 /// Países para clasificar iglesias filiales
 model Pais {
-  id            String    @id @default(cuid())
-  nombre        String    @unique
-  codigo        String?   @unique // GT, US, MX, etc.
-  activo        Boolean   @default(true)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("PaisCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String   @id @default(cuid())
+  nombre           String   @unique
+  codigo           String?  @unique
+  activo           Boolean  @default(true)
+  orden            Int      @default(0)
+  creadoEn         DateTime @default(now())
+  actualizadoEn    DateTime @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("PaisActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  filiales Filial[]
+  filiales         Filial[]
+  actualizadoPor   Usuario? @relation("PaisActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario? @relation("PaisCreadoPor", fields: [creadoPorId], references: [id])
 
   @@index([activo, orden])
   @@index([creadoPorId])
@@ -165,22 +149,20 @@ model Pais {
 
 /// Iglesias filiales que envían diezmos
 model Filial {
-  id            String    @id @default(cuid())
-  nombre        String    @unique // Nombre de la iglesia
-  pastor        String    // Nombre del pastor
-  activa        Boolean   @default(true)
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("FilialCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String         @id @default(cuid())
+  nombre           String         @unique
+  pastor           String
+  activa           Boolean        @default(true)
+  orden            Int            @default(0)
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("FilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  paisId        String
-  pais          Pais      @relation(fields: [paisId], references: [id], onDelete: Restrict)
-
-  diezmos       DiezmoFilial[]
+  paisId           String
+  diezmos          DiezmoFilial[]
+  actualizadoPor   Usuario?       @relation("FilialActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?       @relation("FilialCreadoPor", fields: [creadoPorId], references: [id])
+  pais             Pais           @relation(fields: [paisId], references: [id])
 
   @@index([paisId])
   @@index([activa, orden])
@@ -191,32 +173,25 @@ model Filial {
 
 /// Registro de diezmos de iglesias filiales (funciona como "mini caja" por filial)
 model DiezmoFilial {
-  id            String    @id @default(cuid())
-  monto         Decimal   @db.Decimal(12, 2)
-  mes           Int       // 1-12
-  anio          Int       // Año de recaudación
-  comentario    String?   @db.Text
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-
-  filialId      String
-  filial        Filial    @relation(fields: [filialId], references: [id], onDelete: Restrict)
-
-  monedaId      String
-  moneda        Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
-
-  // Caja específica para diezmos filiales (no va a la caja general)
-  cajaId        String
-  caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
-
-  usuarioId     String
-  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  
-  // Auditoría: quién creó y quién modificó
+  id               String   @id @default(cuid())
+  monto            Decimal  @db.Decimal(12, 2)
+  mes              Int
+  anio             Int
+  comentario       String?
+  creadoEn         DateTime @default(now())
+  actualizadoEn    DateTime @updatedAt
+  filialId         String
+  monedaId         String
+  cajaId           String
+  usuarioId        String
   creadoPorId      String
-  creadoPor        Usuario   @relation("DiezmoFilialCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
   actualizadoPorId String?
-  actualizadoPor   Usuario?  @relation("DiezmoFilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPor   Usuario? @relation("DiezmoFilialActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja     @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario  @relation("DiezmoFilialCreadoPor", fields: [creadoPorId], references: [id])
+  filial           Filial   @relation(fields: [filialId], references: [id])
+  moneda           Moneda   @relation(fields: [monedaId], references: [id])
+  usuario          Usuario  @relation(fields: [usuarioId], references: [id])
 
   @@index([filialId])
   @@index([monedaId])
@@ -235,29 +210,22 @@ model EgresoFilial {
   fechaSalida      DateTime  @default(now())
   solicitante      String
   monto            Decimal   @db.Decimal(12, 2)
-  descripcionGasto String?   @db.Text
-  comentario       String?   @db.Text
+  descripcionGasto String?
+  comentario       String?
   creadoEn         DateTime  @default(now())
   actualizadoEn    DateTime  @updatedAt
-
   monedaId         String
-  moneda           Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
-
   tipoGastoId      String
-  tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id], onDelete: Restrict)
-
-  // Caja específica para egresos de filiales (no va a la caja general)
   cajaId           String
-  caja             Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
-
   usuarioId        String
-  usuario          Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  
-  // Auditoría: quién creó y quién modificó
   creadoPorId      String
-  creadoPor        Usuario   @relation("EgresoFilialCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
   actualizadoPorId String?
-  actualizadoPor   Usuario?  @relation("EgresoFilialActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPor   Usuario?  @relation("EgresoFilialActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja      @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario   @relation("EgresoFilialCreadoPor", fields: [creadoPorId], references: [id])
+  moneda           Moneda    @relation(fields: [monedaId], references: [id])
+  tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id])
+  usuario          Usuario   @relation(fields: [usuarioId], references: [id])
 
   @@index([monedaId])
   @@index([cajaId])
@@ -270,26 +238,21 @@ model EgresoFilial {
   @@map("egresos_filiales")
 }
 
-// =====================
-// MODELOS PRINCIPALES
-// =====================
-
 /// Roles del sistema con permisos configurables
 model Rol {
-  id            String    @id @default(cuid())
-  nombre        String    @unique // Admin, Contador, Tesorero, Capturista
-  descripcion   String?
-  esAdmin       Boolean   @default(false) // Rol con acceso total
-  activo        Boolean   @default(true)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("RolCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String       @id @default(cuid())
+  nombre           String       @unique
+  descripcion      String?
+  esAdmin          Boolean      @default(false)
+  activo           Boolean      @default(true)
+  creadoEn         DateTime     @default(now())
+  actualizadoEn    DateTime     @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("RolActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  usuarios      Usuario[]
-  permisos      RolPermiso[]
+  actualizadoPor   Usuario?     @relation("RolActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?     @relation("RolCreadoPor", fields: [creadoPorId], references: [id])
+  permisos         RolPermiso[]
+  usuarios         Usuario[]
 
   @@index([activo])
   @@index([creadoPorId])
@@ -299,20 +262,19 @@ model Rol {
 
 /// Permisos disponibles en el sistema (módulos)
 model Permiso {
-  id            String    @id @default(cuid())
-  modulo        String    @unique // dashboard, ingresos, egresos, cajas, reportes, configuracion, filiales, donaciones
-  nombre        String    // Nombre descriptivo del módulo
-  descripcion   String?
-  orden         Int       @default(0)
-  activo        Boolean   @default(true)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("PermisoCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  id               String       @id @default(cuid())
+  modulo           String       @unique
+  nombre           String
+  descripcion      String?
+  orden            Int          @default(0)
+  activo           Boolean      @default(true)
+  creadoEn         DateTime     @default(now())
+  actualizadoEn    DateTime     @updatedAt
+  creadoPorId      String?
   actualizadoPorId String?
-  actualizadoPor Usuario? @relation("PermisoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  roles         RolPermiso[]
+  actualizadoPor   Usuario?     @relation("PermisoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?     @relation("PermisoCreadoPor", fields: [creadoPorId], references: [id])
+  roles            RolPermiso[]
 
   @@index([activo, orden])
   @@index([creadoPorId])
@@ -322,18 +284,17 @@ model Permiso {
 
 /// Relación entre roles y permisos (qué módulos puede acceder cada rol)
 model RolPermiso {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   rolId         String
   permisoId     String
-  puedeVer      Boolean   @default(true)   // Ver/listar
-  puedeCrear    Boolean   @default(false)  // Crear nuevos registros
-  puedeEditar   Boolean   @default(false)  // Editar registros existentes
-  puedeEliminar Boolean   @default(false)  // Eliminar registros
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-
-  rol           Rol       @relation(fields: [rolId], references: [id], onDelete: Cascade)
-  permiso       Permiso   @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  puedeVer      Boolean  @default(true)
+  puedeCrear    Boolean  @default(false)
+  puedeEditar   Boolean  @default(false)
+  puedeEliminar Boolean  @default(false)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+  permiso       Permiso  @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  rol           Rol      @relation(fields: [rolId], references: [id], onDelete: Cascade)
 
   @@unique([rolId, permisoId])
   @@index([rolId])
@@ -343,61 +304,54 @@ model RolPermiso {
 
 /// Usuarios del sistema con acceso al dashboard
 model Usuario {
-  id            String    @id @default(cuid())
-  nombre        String
-  apellido      String
-  correo        String    @unique
-  contrasena    String
-  activo        Boolean   @default(true)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
+  id                         String             @id @default(cuid())
+  nombre                     String
+  apellido                   String
+  correo                     String             @unique
+  contrasena                 String
+  activo                     Boolean            @default(true)
+  creadoEn                   DateTime           @default(now())
+  actualizadoEn              DateTime           @updatedAt
+  rolId                      String?
+  auditoriasRealizadas       AuditoriaLog[]
+  cajasModificadas           Caja[]             @relation("CajaActualizadoPor")
+  cajasCreadas               Caja[]             @relation("CajaCreadoPor")
+  diezmosFilialesModificados DiezmoFilial[]     @relation("DiezmoFilialActualizadoPor")
+  diezmosFilialesCreados     DiezmoFilial[]     @relation("DiezmoFilialCreadoPor")
+  diezmosFiliales            DiezmoFilial[]
+  donacionesModificadas      Donacion[]         @relation("DonacionActualizadoPor")
+  donacionesCreadas          Donacion[]         @relation("DonacionCreadoPor")
+  donaciones                 Donacion[]
+  donacionesTracking         DonacionTracking[]
+  egresosModificados         Egreso[]           @relation("EgresoActualizadoPor")
+  egresosCreados             Egreso[]           @relation("EgresoCreadoPor")
+  egresos                    Egreso[]
+  egresosFilialesModificados EgresoFilial[]     @relation("EgresoFilialActualizadoPor")
+  egresosFilialesCreados     EgresoFilial[]     @relation("EgresoFilialCreadoPor")
+  egresosFiliales            EgresoFilial[]
+  filialesModificadas        Filial[]           @relation("FilialActualizadoPor")
+  filialesCreadas            Filial[]           @relation("FilialCreadoPor")
+  ingresosModificados        Ingreso[]          @relation("IngresoActualizadoPor")
+  ingresosCreados            Ingreso[]          @relation("IngresoCreadoPor")
+  ingresos                   Ingreso[]
+  monedasModificadas         Moneda[]           @relation("MonedaActualizadoPor")
+  monedasCreadas             Moneda[]           @relation("MonedaCreadoPor")
+  paisesModificados          Pais[]             @relation("PaisActualizadoPor")
+  paisesCreados              Pais[]             @relation("PaisCreadoPor")
+  permisosModificados        Permiso[]          @relation("PermisoActualizadoPor")
+  permisosCreados            Permiso[]          @relation("PermisoCreadoPor")
+  rolesModificados           Rol[]              @relation("RolActualizadoPor")
+  rolesCreados               Rol[]              @relation("RolCreadoPor")
+  sociedadesModificadas      Sociedad[]         @relation("SociedadActualizadoPor")
+  sociedadesCreadas          Sociedad[]         @relation("SociedadCreadoPor")
+  tiposGastoModificados      TipoGasto[]        @relation("TipoGastoActualizadoPor")
+  tiposGastoCreados          TipoGasto[]        @relation("TipoGastoCreadoPor")
+  tiposIngresoModificados    TipoIngreso[]      @relation("TipoIngresoActualizadoPor")
+  tiposIngresoCreados        TipoIngreso[]      @relation("TipoIngresoCreadoPor")
+  tiposServicioModificados   TipoServicio[]     @relation("TipoServicioActualizadoPor")
+  tiposServicioCreados       TipoServicio[]     @relation("TipoServicioCreadoPor")
+  rol                        Rol?               @relation(fields: [rolId], references: [id], onDelete: Restrict)
 
-  rolId         String?
-  rol           Rol?      @relation(fields: [rolId], references: [id], onDelete: Restrict)
-
-  ingresos Ingreso[]
-  egresos  Egreso[]
-  diezmosFiliales  DiezmoFilial[]
-  egresosFiliales  EgresoFilial[]
-  donaciones       Donacion[]
-  donacionesTracking DonacionTracking[]
-  auditoriasRealizadas AuditoriaLog[]
-
-  // Auditoría - Relaciones para rastrear quién creó/modificó configuraciones
-  monedasCreadas Moneda[] @relation("MonedaCreadoPor")
-  monedasModificadas Moneda[] @relation("MonedaActualizadoPor")
-  sociedadesCreadas Sociedad[] @relation("SociedadCreadoPor")
-  sociedadesModificadas Sociedad[] @relation("SociedadActualizadoPor")
-  tiposServicioCreados TipoServicio[] @relation("TipoServicioCreadoPor")
-  tiposServicioModificados TipoServicio[] @relation("TipoServicioActualizadoPor")
-  tiposIngresoCreados TipoIngreso[] @relation("TipoIngresoCreadoPor")
-  tiposIngresoModificados TipoIngreso[] @relation("TipoIngresoActualizadoPor")
-  tiposGastoCreados TipoGasto[] @relation("TipoGastoCreadoPor")
-  tiposGastoModificados TipoGasto[] @relation("TipoGastoActualizadoPor")
-  paisesCreados Pais[] @relation("PaisCreadoPor")
-  paisesModificados Pais[] @relation("PaisActualizadoPor")
-  filialesCreadas Filial[] @relation("FilialCreadoPor")
-  filialesModificadas Filial[] @relation("FilialActualizadoPor")
-  cajasCreadas Caja[] @relation("CajaCreadoPor")
-  cajasModificadas Caja[] @relation("CajaActualizadoPor")
-  rolesCreados Rol[] @relation("RolCreadoPor")
-  rolesModificados Rol[] @relation("RolActualizadoPor")
-  permisosCreados Permiso[] @relation("PermisoCreadoPor")
-  permisosModificados Permiso[] @relation("PermisoActualizadoPor")
-
-  // Auditoría - Relaciones para transactional tables (ingresos, egresos, donaciones, diezmos)
-  ingresosCreados Ingreso[] @relation("IngresoCreadoPor")
-  ingresosModificados Ingreso[] @relation("IngresoActualizadoPor")
-  egresosCreados Egreso[] @relation("EgresoCreadoPor")
-  egresosModificados Egreso[] @relation("EgresoActualizadoPor")
-  donacionesCreadas Donacion[] @relation("DonacionCreadoPor")
-  donacionesModificadas Donacion[] @relation("DonacionActualizadoPor")
-  diezmosFilialesCreados DiezmoFilial[] @relation("DiezmoFilialCreadoPor")
-  diezmosFilialesModificados DiezmoFilial[] @relation("DiezmoFilialActualizadoPor")
-  egresosFilialesCreados EgresoFilial[] @relation("EgresoFilialCreadoPor")
-  egresosFilialesModificados EgresoFilial[] @relation("EgresoFilialActualizadoPor")
-
-  // Índice para filtrar usuarios activos y login
   @@index([activo])
   @@index([correo, activo])
   @@index([rolId])
@@ -406,37 +360,32 @@ model Usuario {
 
 /// Cajas contables - cada caja maneja su propio dinero
 model Caja {
-  id            String    @id @default(cuid())
-  nombre        String    @unique
-  descripcion   String?
-  activa        Boolean   @default(true)
-  esGeneral     Boolean   @default(false) // Caja que recibe ofrendas generales sin importar sociedad
-  orden         Int       @default(0)
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  creadoPorId   String?
-  creadoPor     Usuario?  @relation("CajaCreadoPor", fields: [creadoPorId], references: [id], onDelete: SetNull)
-  actualizadoPorId String?
-  actualizadoPor Usuario? @relation("CajaActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  // Asignación automática (opcional)
-  sociedadId    String?
-  sociedad      Sociedad?    @relation(fields: [sociedadId], references: [id], onDelete: SetNull)
-  
-  tipoIngresoId String?
-  tipoIngreso   TipoIngreso? @relation(fields: [tipoIngresoId], references: [id], onDelete: SetNull)
-
-  // Relaciones con ingresos (principal y secundaria para tracking)
-  ingresos            Ingreso[] @relation("CajaPrincipal")
-  ingresosSecundarios Ingreso[] @relation("CajaSecundaria")
-  egresos             Egreso[]
-  donaciones          Donacion[]
+  id                  String             @id @default(cuid())
+  nombre              String             @unique
+  descripcion         String?
+  activa              Boolean            @default(true)
+  esGeneral           Boolean            @default(false)
+  orden               Int                @default(0)
+  creadoEn            DateTime           @default(now())
+  actualizadoEn       DateTime           @updatedAt
+  creadoPorId         String?
+  actualizadoPorId    String?
+  sociedadId          String?
+  tipoIngresoId       String?
+  actualizadoPor      Usuario?           @relation("CajaActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor           Usuario?           @relation("CajaCreadoPor", fields: [creadoPorId], references: [id])
+  sociedad            Sociedad?          @relation(fields: [sociedadId], references: [id])
+  tipoIngreso         TipoIngreso?       @relation(fields: [tipoIngresoId], references: [id])
   diezmosFiliales     DiezmoFilial[]
+  donaciones          Donacion[]
+  donacionesTracking  DonacionTracking[] @relation("DonacionTrackingCaja")
+  egresos             Egreso[]
   egresosFiliales     EgresoFilial[]
+  ingresos            Ingreso[]          @relation("CajaPrincipal")
+  ingresosSecundarios Ingreso[]          @relation("CajaSecundaria")
 
   @@index([sociedadId])
   @@index([tipoIngresoId])
-  // Índices para filtrar cajas activas
   @@index([activa, orden])
   @@index([activa, esGeneral])
   @@index([creadoPorId])
@@ -446,14 +395,12 @@ model Caja {
 
 /// Montos de ingresos por moneda
 model IngresoMonto {
-  id        String   @id @default(cuid())
-  monto     Decimal  @db.Decimal(12, 2)
-  
+  id        String  @id @default(cuid())
+  monto     Decimal @db.Decimal(12, 2)
   ingresoId String
-  ingreso   Ingreso  @relation(fields: [ingresoId], references: [id], onDelete: Cascade)
-  
   monedaId  String
-  moneda    Moneda   @relation(fields: [monedaId], references: [id], onDelete: Restrict)
+  ingreso   Ingreso @relation(fields: [ingresoId], references: [id], onDelete: Cascade)
+  moneda    Moneda  @relation(fields: [monedaId], references: [id])
 
   @@unique([ingresoId, monedaId])
   @@index([ingresoId])
@@ -463,38 +410,28 @@ model IngresoMonto {
 
 /// Registro de ingresos (recaudación de dinero)
 model Ingreso {
-  id               String    @id @default(cuid())
-  fechaRecaudacion DateTime  @default(now())
-  comentario       String?   @db.Text
-  creadoEn         DateTime  @default(now())
-  actualizadoEn    DateTime  @updatedAt
+  id               String         @id @default(cuid())
+  fechaRecaudacion DateTime       @default(now())
+  comentario       String?
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
   creadoPorId      String
-  creadoPor        Usuario   @relation("IngresoCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
   actualizadoPorId String?
-  actualizadoPor   Usuario?  @relation("IngresoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-  
-  // Relaciones con tablas de configuración
-  sociedadId    String
-  sociedad      Sociedad     @relation(fields: [sociedadId], references: [id], onDelete: Restrict)
-  
-  servicioId    String
-  servicio      TipoServicio @relation(fields: [servicioId], references: [id], onDelete: Restrict)
-  
-  tipoIngresoId String
-  tipoIngreso   TipoIngreso  @relation(fields: [tipoIngresoId], references: [id], onDelete: Restrict)
-  
-  // Caja principal donde está el dinero físicamente
-  cajaId        String
-  caja          Caja         @relation("CajaPrincipal", fields: [cajaId], references: [id], onDelete: Restrict)
-  
-  // Caja secundaria para tracking por sociedad (opcional, no afecta saldo real)
+  sociedadId       String
+  servicioId       String
+  tipoIngresoId    String
+  cajaId           String
   cajaSecundariaId String?
-  cajaSecundaria   Caja?    @relation("CajaSecundaria", fields: [cajaSecundariaId], references: [id], onDelete: SetNull)
-  
-  usuarioId     String
-  usuario       Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-
-  montos        IngresoMonto[]
+  usuarioId        String
+  montos           IngresoMonto[]
+  actualizadoPor   Usuario?       @relation("IngresoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja           @relation("CajaPrincipal", fields: [cajaId], references: [id])
+  cajaSecundaria   Caja?          @relation("CajaSecundaria", fields: [cajaSecundariaId], references: [id])
+  creadoPor        Usuario        @relation("IngresoCreadoPor", fields: [creadoPorId], references: [id])
+  servicio         TipoServicio   @relation(fields: [servicioId], references: [id])
+  sociedad         Sociedad       @relation(fields: [sociedadId], references: [id])
+  tipoIngreso      TipoIngreso    @relation(fields: [tipoIngresoId], references: [id])
+  usuario          Usuario        @relation(fields: [usuarioId], references: [id])
 
   @@index([cajaId])
   @@index([cajaSecundariaId])
@@ -505,12 +442,11 @@ model Ingreso {
   @@index([servicioId])
   @@index([tipoIngresoId])
   @@index([fechaRecaudacion])
-  // Índices compuestos para consultas de reportes y dashboard
   @@index([cajaId, fechaRecaudacion])
   @@index([cajaSecundariaId, fechaRecaudacion])
   @@index([sociedadId, fechaRecaudacion])
   @@index([fechaRecaudacion, cajaId, sociedadId])
-  @@index([creadoEn]) // Para ordenar últimos movimientos
+  @@index([creadoEn])
   @@map("ingresos")
 }
 
@@ -520,30 +456,23 @@ model Egreso {
   fechaSalida      DateTime  @default(now())
   solicitante      String
   monto            Decimal   @db.Decimal(12, 2)
-  descripcionGasto String?   @db.Text
-  comentario       String?   @db.Text
-  numeroFactura    String?   // Número de factura (opcional)
+  descripcionGasto String?
+  comentario       String?
+  numeroFactura    String?
   creadoEn         DateTime  @default(now())
   actualizadoEn    DateTime  @updatedAt
-  
-  // Relaciones con tablas de configuración
-  tipoGastoId   String
-  tipoGasto     TipoGasto @relation(fields: [tipoGastoId], references: [id], onDelete: Restrict)
-  
-  monedaId      String
-  moneda        Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
-  
-  cajaId        String
-  caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
-  
-  usuarioId     String
-  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  
-  // Auditoría: quién creó y quién modificó
+  tipoGastoId      String
+  monedaId         String
+  cajaId           String
+  usuarioId        String
   creadoPorId      String
-  creadoPor        Usuario   @relation("EgresoCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
   actualizadoPorId String?
-  actualizadoPor   Usuario?  @relation("EgresoActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
+  actualizadoPor   Usuario?  @relation("EgresoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja      @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario   @relation("EgresoCreadoPor", fields: [creadoPorId], references: [id])
+  moneda           Moneda    @relation(fields: [monedaId], references: [id])
+  tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id])
+  usuario          Usuario   @relation(fields: [usuarioId], references: [id])
 
   @@index([cajaId])
   @@index([usuarioId])
@@ -552,54 +481,39 @@ model Egreso {
   @@index([fechaSalida])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
-  // Índices compuestos para consultas de reportes y dashboard
   @@index([cajaId, fechaSalida])
   @@index([cajaId, monedaId])
   @@index([fechaSalida, cajaId])
   @@index([tipoGastoId, monedaId])
-  @@index([creadoEn]) // Para ordenar últimos movimientos
-  @@index([numeroFactura]) // Búsqueda por número de factura
+  @@index([creadoEn])
+  @@index([numeroFactura])
   @@map("egresos")
 }
 
-// =====================
-// MÓDULO DE DONACIONES
-// =====================
-
 /// Registro de donaciones (van a la CAJA GENERAL, con tracking en caja Donaciones)
 model Donacion {
-  id            String    @id @default(cuid())
-  nombre        String    // Nombre del donante
-  numeroDocumento String  // DUI del donante (obligatorio)
-  telefono      String?   // Teléfono del donante
-  fecha         DateTime  @default(now())
-  monto         Decimal   @db.Decimal(12, 2)
-  comentario    String?   @db.Text
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  
-  // Relaciones
-  tipoOfrendaId String
-  tipoOfrenda   TipoIngreso @relation(fields: [tipoOfrendaId], references: [id], onDelete: Restrict)
-  
-  monedaId      String
-  moneda        Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
-  
-  // La donación va a la CAJA GENERAL (donde está el dinero real)
-  cajaId        String
-  caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
-  
-  usuarioId     String
-  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-
-  // Auditoría: quién creó y quién modificó
+  id               String            @id @default(cuid())
+  nombre           String
+  numeroDocumento  String
+  telefono         String?
+  fecha            DateTime          @default(now())
+  monto            Decimal           @db.Decimal(12, 2)
+  comentario       String?
+  creadoEn         DateTime          @default(now())
+  actualizadoEn    DateTime          @updatedAt
+  tipoOfrendaId    String
+  monedaId         String
+  cajaId           String
+  usuarioId        String
   creadoPorId      String
-  creadoPor        Usuario   @relation("DonacionCreadoPor", fields: [creadoPorId], references: [id], onDelete: Restrict)
   actualizadoPorId String?
-  actualizadoPor   Usuario?  @relation("DonacionActualizadoPor", fields: [actualizadoPorId], references: [id], onDelete: SetNull)
-
-  // Tracking para caja "Donaciones"
-  tracking DonacionTracking?
+  actualizadoPor   Usuario?          @relation("DonacionActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja              @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario           @relation("DonacionCreadoPor", fields: [creadoPorId], references: [id])
+  moneda           Moneda            @relation(fields: [monedaId], references: [id])
+  tipoOfrenda      TipoIngreso       @relation(fields: [tipoOfrendaId], references: [id])
+  usuario          Usuario           @relation(fields: [usuarioId], references: [id])
+  tracking         DonacionTracking?
 
   @@index([cajaId])
   @@index([usuarioId])
@@ -616,26 +530,24 @@ model Donacion {
 
 /// Tracking de donaciones para la caja "Donaciones" (solo referencia, no afecta saldos)
 model DonacionTracking {
-  id              String    @id @default(cuid())
-  nombre          String    // Nombre del donante
-  numeroDocumento String    // DUI del donante
-  telefono        String?   // Teléfono del donante
-  fecha           DateTime  @default(now())
-  monto           Decimal   @db.Decimal(12, 2)
-  comentario      String?   @db.Text
-  creadoEn        DateTime  @default(now())
-
-  donacionId      String    @unique // Referencia a la donación real en caja general
-  donacion        Donacion  @relation(fields: [donacionId], references: [id], onDelete: Cascade)
-
+  id              String      @id @default(cuid())
+  nombre          String
+  numeroDocumento String
+  telefono        String?
+  fecha           DateTime    @default(now())
+  monto           Decimal     @db.Decimal(12, 2)
+  comentario      String?
+  creadoEn        DateTime    @default(now())
+  donacionId      String      @unique
   tipoOfrendaId   String
-  tipoOfrenda     TipoIngreso @relation(fields: [tipoOfrendaId], references: [id], onDelete: Restrict)
-  
   monedaId        String
-  moneda          Moneda    @relation(fields: [monedaId], references: [id], onDelete: Restrict)
-  
+  cajaId          String?
   usuarioId       String
-  usuario         Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  caja            Caja?       @relation("DonacionTrackingCaja", fields: [cajaId], references: [id])
+  donacion        Donacion    @relation(fields: [donacionId], references: [id], onDelete: Cascade)
+  moneda          Moneda      @relation(fields: [monedaId], references: [id])
+  tipoOfrenda     TipoIngreso @relation(fields: [tipoOfrendaId], references: [id])
+  usuario         Usuario     @relation(fields: [usuarioId], references: [id])
 
   @@index([fecha])
   @@index([tipoOfrendaId])
@@ -644,24 +556,19 @@ model DonacionTracking {
   @@map("donaciones_tracking")
 }
 
-// =====================
-// AUDITORÍA Y CONTROL
-// =====================
-
 /// Log de auditoría para cambios en configuración
 model AuditoriaLog {
-  id              String    @id @default(cuid())
-  tabla           String    // Nombre de la tabla: "Moneda", "Sociedad", "Caja", etc.
-  registroId      String    // ID del registro que se modificó
-  operacion       String    // "CREATE", "UPDATE", "DELETE"
-  datoAnterior    Json?     // Datos antes del cambio (null para CREATE)
-  datoNuevo       Json?     // Datos después del cambio (null para DELETE)
-  descripcion     String?   @db.Text // Resumen legible del cambio
-  fechaOperacion  DateTime  @default(now())
-  
-  usuarioId       String
-  usuario         Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  
+  id             String   @id @default(cuid())
+  tabla          String
+  registroId     String
+  operacion      String
+  datoAnterior   Json?
+  datoNuevo      Json?
+  descripcion    String?
+  fechaOperacion DateTime @default(now())
+  usuarioId      String
+  usuario        Usuario  @relation(fields: [usuarioId], references: [id])
+
   @@index([usuarioId])
   @@index([tabla])
   @@index([registroId])

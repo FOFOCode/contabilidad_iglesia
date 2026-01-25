@@ -14,6 +14,29 @@ import {
 } from "@/components/ui";
 import { eliminarIngreso, actualizarIngreso } from "@/app/actions/operaciones";
 import { useRouter } from "next/navigation";
+import { parsearFechaLocal } from "@/lib/fechas";
+
+// Función robusta para manejar fechas consistentemente
+function asegurarFecha(fecha: Date | string): Date {
+  if (fecha instanceof Date) {
+    return fecha;
+  }
+  // Si es string ISO, crear Date sin problemas de zona horaria
+  const date = new Date(fecha);
+  // Ajustar para asegurar que estamos en la fecha correcta local
+  const offset = date.getTimezoneOffset();
+  const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+  return adjustedDate;
+}
+
+// Función para convertir Date a string para input type="date" sin problemas
+function fechaParaInput(date: Date | string): string {
+  const fecha = asegurarFecha(date);
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 interface Moneda {
   id: string;
@@ -28,14 +51,14 @@ interface IngresoMonto {
 
 interface IngresoData {
   id: string;
-  fechaRecaudacion: Date;
+  fechaRecaudacion: Date | string; // Puede venir como Date o string ISO
   comentario: string | null;
   sociedad: { nombre: string };
   servicio: { nombre: string };
   tipoIngreso: { nombre: string };
   caja: { nombre: string };
   montos: IngresoMonto[];
-  usuario: { nombre: string; apellido: string } | null;
+  usuario?: { nombre: string; apellido: string };
 }
 
 interface Sociedad {
@@ -136,12 +159,14 @@ export function ListadoIngresosClient({
       ingresos.filter((ingreso) => {
         if (filtros.desde) {
           const desde = new Date(filtros.desde);
-          if (new Date(ingreso.fechaRecaudacion) < desde) return false;
+          const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
+          if (fechaIngreso < desde) return false;
         }
         if (filtros.hasta) {
           const hasta = new Date(filtros.hasta);
           hasta.setHours(23, 59, 59);
-          if (new Date(ingreso.fechaRecaudacion) > hasta) return false;
+          const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
+          if (fechaIngreso > hasta) return false;
         }
         if (
           filtros.sociedadId &&
@@ -199,12 +224,14 @@ export function ListadoIngresosClient({
     });
   };
 
-  const handleEditar = useCallback((ingreso: IngresoData) => {
+const handleEditar = useCallback((ingreso: IngresoData) => {
     setEditando(ingreso);
+    
+    // Usar función robusta para convertir fecha
+    const fechaStringInput = fechaParaInput(ingreso.fechaRecaudacion);
+    
     setFormEdit({
-      fechaRecaudacion: new Date(ingreso.fechaRecaudacion)
-        .toISOString()
-        .split("T")[0],
+      fechaRecaudacion: fechaStringInput,
       sociedadId: ingreso.sociedad.nombre,
       servicioId: ingreso.servicio.nombre,
       tipoIngresoId: ingreso.tipoIngreso.nombre,
@@ -259,25 +286,32 @@ export function ListadoIngresosClient({
           return;
         }
 
+        console.log("=== DEBUG handleActualizar ===");
+        console.log("formEdit.fechaRecaudacion:", formEdit.fechaRecaudacion);
+        
+        // Crear fecha robusta para servidor
+        const fechaLocal = parsearFechaLocal(formEdit.fechaRecaudacion);
+
         await actualizarIngreso(editando.id, {
-          fechaRecaudacion: new Date(formEdit.fechaRecaudacion),
+          fechaRecaudacion: fechaLocal,
           sociedadId: sociedad.id,
           tipoIngresoId: tipoIngreso.id,
           comentario: formEdit.comentario || undefined,
           montos: formEdit.montos.map((m) => ({
             monedaId: m.monedaId,
-            monto: parseFloat(m.monto),
+            monto: parseFloat(parseFloat(m.monto).toFixed(2)),
           })),
         });
 
-        // Actualizar localmente
+        // Actualizar localmente usando la misma fecha
         const servicioObj = { nombre: formEdit.servicioId };
+        console.log("Actualizando localmente con fechaLocal:", fechaLocal);
         setIngresos(
           ingresos.map((ing) =>
             ing.id === editando.id
               ? {
                   ...ing,
-                  fechaRecaudacion: new Date(formEdit.fechaRecaudacion),
+                  fechaRecaudacion: fechaLocal,
                   sociedadId: sociedad.id,
                   sociedad: { nombre: sociedad.nombre },
                   servicio: servicioObj,
@@ -287,7 +321,7 @@ export function ListadoIngresosClient({
                   montos: formEdit.montos.map((m) => {
                     const moneda = monedas.find((mon) => mon.id === m.monedaId);
                     return {
-                      monto: parseFloat(m.monto),
+                      monto: parseFloat(parseFloat(m.monto).toFixed(2)),
                       moneda: moneda!,
                     };
                   }),
@@ -295,6 +329,7 @@ export function ListadoIngresosClient({
               : ing
           )
         );
+        console.log("=== FIN DEBUG handleActualizar ===\n");
 
         setEditando(null);
         setFormEdit({
@@ -312,8 +347,10 @@ export function ListadoIngresosClient({
     });
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString("es-GT", {
+  const formatDate = (date: Date | string) => {
+    // Usar función robusta para manejar fechas
+    const fecha = asegurarFecha(date);
+    return fecha.toLocaleDateString("es-GT", {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -850,14 +887,15 @@ export function ListadoIngresosClient({
                 <div>
                   <p className="text-xs text-[#73a9bf] uppercase">Fecha</p>
                   <p className="font-medium text-[#203b46]">
-                    {new Date(
-                      detalleSeleccionado.fechaRecaudacion
-                    ).toLocaleDateString("es-GT", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                    {(() => {
+                      const fecha = asegurarFecha(detalleSeleccionado.fechaRecaudacion);
+                      return fecha.toLocaleDateString("es-GT", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      });
+                    })()}
                   </p>
                 </div>
                 <div>

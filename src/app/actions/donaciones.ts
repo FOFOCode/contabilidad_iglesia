@@ -4,6 +4,7 @@ import { prisma, withRetry } from "@/lib/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
 
+
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
   modulo: string,
@@ -54,8 +55,32 @@ export async function crearDonacion(data: CrearDonacionData) {
   // Obtener la caja general (donde siempre van las donaciones - dinero real)
   const cajaGeneral = await obtenerCajaGeneral();
 
-  // Redondear monto a 2 decimales para evitar errores de punto flotante
-  const montoRedondeado = Math.round(data.monto * 100) / 100;
+  // Buscar o crear la caja virtual de "Donaciones" para el tracking
+  let cajaDonaciones = await prisma.caja.findFirst({
+    where: { nombre: "Donaciones", activa: true },
+  });
+
+  if (!cajaDonaciones) {
+    // Crear la caja virtual de Donaciones si no existe
+    cajaDonaciones = await prisma.caja.create({
+      data: {
+        nombre: "Donaciones",
+        descripcion: "Caja virtual para tracking de donaciones (el dinero real va a la caja General)",
+        activa: true,
+        esGeneral: false,
+        orden: 9998,
+        creadoPorId: usuario.id,
+      },
+    });
+  }
+
+  // Redondear monto a 2 decimales de forma precisa y convertir a string para Prisma
+  const montoString = (
+    Math.round(data.monto * 100) / 100
+  ).toFixed(2);
+  
+  console.log("[DEBUG] Monto original:", data.monto);
+  console.log("[DEBUG] Monto redondeado:", montoString);
 
   // Crear la donación en la CAJA GENERAL y el tracking simultáneamente
   const donacion = await prisma.donacion.create({
@@ -64,7 +89,7 @@ export async function crearDonacion(data: CrearDonacionData) {
       numeroDocumento: data.numeroDocumento,
       telefono: data.telefono || null,
       fecha: data.fecha,
-      monto: montoRedondeado,
+      monto: montoString,
       tipoOfrendaId: data.tipoOfrendaId,
       monedaId: data.monedaId,
       cajaId: cajaGeneral.id,
@@ -87,12 +112,13 @@ export async function crearDonacion(data: CrearDonacionData) {
       numeroDocumento: data.numeroDocumento,
       telefono: data.telefono || null,
       fecha: data.fecha,
-      monto: montoRedondeado,
+      monto: montoString,
       tipoOfrendaId: data.tipoOfrendaId,
       monedaId: data.monedaId,
       usuarioId: data.usuarioId,
       comentario: data.comentario,
       donacionId: donacion.id,
+      cajaId: cajaDonaciones.id, // Asociar a la caja virtual de Donaciones
     },
   });
 

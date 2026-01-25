@@ -28,8 +28,8 @@ export default async function CajaDetallePage({
     monedas,
   } = datos;
 
-  // Combinar y formatear movimientos
-  const movimientos: Array<{
+  // Arrays base para los movimientos
+  let movimientosBase: Array<{
     id: string;
     fecha: Date;
     tipo: "ingreso" | "egreso";
@@ -108,12 +108,59 @@ export default async function CajaDetallePage({
         },
       ],
     })),
-  ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+  ];
+
+  // Si es la caja "Filiales" real, agregar los movimientos de filiales al array principal
+  if (caja.nombre === "Filiales" && !caja.esGeneral) {
+    const movimientosFiliales = [
+      ...diezmosFiliales.map((dz) => ({
+        id: `dz-${dz.id}`,
+        fecha: new Date(dz.anio, dz.mes - 1, 1),
+        tipo: "ingreso" as const,
+        concepto: `Diezmo: ${dz.filial.nombre} (${dz.mes}/${dz.anio})`,
+        esSecundario: false,
+        cajaPrincipal: null as { id: string; nombre: string } | null,
+        origen: "diezmoFilial" as const,
+        montos: [
+          {
+            monto: dz.monto,
+            monedaId: dz.monedaId,
+            monedaCodigo: dz.moneda.codigo,
+            monedaSimbolo: dz.moneda.simbolo,
+          },
+        ],
+      })),
+      ...egresosFiliales.map((eg) => ({
+        id: `ef-${eg.id}`,
+        fecha: eg.fechaSalida,
+        tipo: "egreso" as const,
+        concepto: `Egreso Filial: ${eg.tipoGasto.nombre}${
+          eg.descripcionGasto ? ` - ${eg.descripcionGasto}` : ""
+        }`,
+        esSecundario: false,
+        cajaPrincipal: null as { id: string; nombre: string } | null,
+        origen: "egresoFilial" as const,
+        montos: [
+          {
+            monto: eg.monto,
+            monedaId: eg.monedaId,
+            monedaCodigo: eg.moneda.codigo,
+            monedaSimbolo: eg.moneda.simbolo,
+          },
+        ],
+      })),
+    ];
+    
+    movimientosBase.push(...movimientosFiliales);
+  }
+
+  const movimientos = movimientosBase.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
   // Movimientos de filiales (separados para mostrar en otra sección)
-  // Solo mostrar como referencia si NO estamos en la caja virtual de filiales
+  // Solo mostrar como referencia si NO estamos en la caja virtual de filiales 
+  // NI en la caja real de "Filiales" (porque allí ya se muestran en el array principal)
   const movimientosFiliales =
-    caja.id !== "virtual-filiales"
+    caja.id !== "virtual-filiales" && !(caja.nombre === "Filiales" && !caja.esGeneral)
       ? [
           ...diezmosFiliales.map((dz) => ({
             id: dz.id,

@@ -267,7 +267,7 @@ export function NuevoIngresoForm({
           montos: [
             {
               monedaId: formData.monedaId,
-              monto: Math.round(parseFloat(formData.monto) * 100) / 100,
+              monto: parseFloat(parseFloat(formData.monto).toFixed(2)),
             },
           ],
         });

@@ -116,7 +116,7 @@ export function NuevaDonacionForm({
           telefono: formData.telefono.trim() || undefined,
           tipoOfrendaId: formData.tipoOfrendaId,
           fecha: fechaLocal,
-          monto: Math.round(parseFloat(formData.monto) * 100) / 100,
+          monto: parseFloat(formData.monto),
           monedaId: formData.monedaId,
           usuarioId,
           comentario: formData.comentario.trim() || undefined,

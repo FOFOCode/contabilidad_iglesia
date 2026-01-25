@@ -41,11 +41,12 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
   const [expandedCaja, setExpandedCaja] = useState<string | null>(null);
 
   // Memoizar el cálculo de totales globales por moneda
-  // Incluir:
-  // - Siempre la caja general
-  // - Cajas especiales con dinero real propio (como "Filiales")
+  // Incluir SOLO cajas con dinero real propio:
+  // - Caja General (dinero real de la iglesia local)
+  // - Cajas especiales con dinero real propio (como "Filiales" si existe como real)
   // Excluir:
-  // - Cajas de solo tracking (como "Donaciones" - solo referencia, sin dinero real)
+  // - Cajas de solo tracking (sociedades que solo trackean pero no tienen dinero real)
+  // - Cajas virtuales (como "Donaciones")
   const totalesGlobales = useMemo(
     () =>
       monedas
@@ -53,12 +54,12 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
           let totalIngresos = 0;
           let totalEgresos = 0;
           cajas.forEach((caja) => {
-            // Determinar si esta caja debe incluirse en el total
+            // Determinar si esta caja debe incluirse en el total de dinero REAL
             const incluirEnTotal =
-              // Siempre incluir caja general
+              // Solo incluir caja general (dinero real de la iglesia)
               caja.esGeneral ||
-              // Incluir cajas especiales con dinero real propio
-              caja.nombre === "Filiales";
+              // Incluir cajas especiales NO virtuales con dinero real propio
+              (!caja.esVirtual && caja.nombre === "Filiales");
 
             if (incluirEnTotal) {
               const saldo = caja.saldos.find((s) => s.monedaId === moneda.id);

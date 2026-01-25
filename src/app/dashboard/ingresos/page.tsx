@@ -26,10 +26,11 @@ export default async function IngresosPage() {
     redirect("/dashboard");
   }
 
-  // Transformar datos para el cliente
+  // Transformar datos para el cliente - manejo explícito de fechas
   const ingresosData = ingresos.map((i) => ({
     id: i.id,
-    fechaRecaudacion: i.fechaRecaudacion,
+    // Convertir fecha a string ISO con la zona local incluida para evitar conversión UTC
+    fechaRecaudacion: i.fechaRecaudacion.toISOString(),
     comentario: i.comentario,
     sociedad: { nombre: i.sociedad.nombre },
     servicio: { nombre: i.servicio.nombre },
