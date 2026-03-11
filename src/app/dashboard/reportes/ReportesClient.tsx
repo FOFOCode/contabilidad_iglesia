@@ -554,48 +554,94 @@ export function ReportesClient({
       ]),
     );
 
-    // Agregar filas vacías y totales
-    const totalesRows: string[][] = [];
-    totalesRows.push(["", "", "", "", "", "", ""]); // Fila vacía
-    totalesRows.push(["", "", "", "", "", "RESUMEN POR MONEDA", ""]); // Título
-    totalesRows.push([
-      "",
-      "",
-      "",
-      "",
-      "Moneda",
-      "Ingresos",
-      "Egresos",
-      "Balance",
-    ]); // Headers de totales
+    const resumenRows: string[][] = [];
 
+    // Separador
+    resumenRows.push(["", "", "", "", "", "", ""]);
+    resumenRows.push(["", "", "", "", "", "", ""]);
+
+    // Resumen por moneda
+    resumenRows.push(["RESUMEN POR MONEDA", "", "", "", "", "", ""]);
+    resumenRows.push(["Moneda", "Ingresos", "Egresos", "Balance", "", "", ""]);
     Object.entries(totales)
       .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
       .forEach(([, data]) => {
-        totalesRows.push([
-          "",
-          "",
-          "",
+        resumenRows.push([
           data.codigo,
           data.simbolo + data.ingresos.toFixed(2),
           data.simbolo + data.egresos.toFixed(2),
           data.simbolo + (data.ingresos - data.egresos).toFixed(2),
+          "",
+          "",
+          "",
         ]);
       });
 
-    // Agregar totales generales
-    totalesRows.push(["", "", "", "", "", "", ""]); // Fila vacía
-    totalesRows.push([
-      "",
-      "",
-      "",
-      "",
-      "",
+    // Separador
+    resumenRows.push(["", "", "", "", "", "", ""]);
+
+    // Resumen contable (libro mayor)
+    resumenRows.push(["RESUMEN CONTABLE", "", "", "", "", "", ""]);
+    Object.entries(totales)
+      .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
+      .forEach(([monedaId, data]) => {
+        resumenRows.push([`${data.codigo} — Resumen`, "", "", "", "", "", ""]);
+        const tiposMoneda = ingresosPorTipo[monedaId];
+        if (tiposMoneda) {
+          Object.entries(tiposMoneda.tipos).forEach(([tipo, monto]) => {
+            resumenRows.push([
+              `  ${tipo}`,
+              data.simbolo + (monto as number).toFixed(2),
+              "",
+              "",
+              "",
+              "",
+              "",
+            ]);
+          });
+        } else {
+          resumenRows.push([
+            "  Ingresos",
+            data.simbolo + data.ingresos.toFixed(2),
+            "",
+            "",
+            "",
+            "",
+            "",
+          ]);
+        }
+        resumenRows.push([
+          "  (-) Egresos",
+          "-" + data.simbolo + data.egresos.toFixed(2),
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
+        resumenRows.push([
+          "  BALANCE",
+          data.simbolo + (data.ingresos - data.egresos).toFixed(2),
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
+        resumenRows.push(["", "", "", "", "", "", ""]);
+      });
+
+    resumenRows.push([
       "Total Registros:",
       resultados.length.toString(),
+      "",
+      "",
+      "",
+      "",
+      "",
     ]);
 
-    const csvContent = [headers, ...rows, ...totalesRows]
+    const csvContent = [headers, ...rows, ...resumenRows]
       .map((row) => row.map((cell) => `"${cell}"`).join(","))
       .join("\n");
 
@@ -614,114 +660,156 @@ export function ReportesClient({
 
   // Función para exportar a PDF
   const exportarPDF = () => {
-    // Crear contenido HTML para impresión
+    const n = resultados.length;
+    // Tamaño de fuente y padding adaptativos según cantidad de registros
+    const bodyFontSize = n > 60 ? 9 : n > 40 ? 10 : n > 20 ? 11 : 12;
+    const tdPad = n > 60 ? "3px 6px" : n > 40 ? "4px 7px" : n > 20 ? "5px 8px" : "6px 10px";
+    const thPad = n > 60 ? "5px 6px" : n > 40 ? "6px 7px" : n > 20 ? "7px 8px" : "8px 10px";
+
+    // Construir filas de la tabla de ingresos por tipo para cada moneda en el ledger
+    const ledgerHTML = Object.entries(totales)
+      .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
+      .map(([monedaId, data]) => {
+        const tiposMoneda = ingresosPorTipo[monedaId];
+        const totalOfrendas = tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
+        const balance = totalOfrendas - data.egresos;
+        return `
+          <table style="width:100%;border-collapse:collapse;border:1px solid #dceaef;border-left:4px solid #40768c;margin-bottom:10px;font-size:${bodyFontSize}px;">
+            <tr>
+              <td colspan="2" style="padding:5px 10px;font-size:9px;font-weight:bold;color:#73a9bf;text-transform:uppercase;letter-spacing:0.06em;background:#f7fbfc;border-bottom:1px solid #dceaef;">
+                ${data.codigo} — Resumen
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:${tdPad};color:#305969;">Ofrendas</td>
+              <td style="padding:${tdPad};text-align:right;color:#2ba193;font-weight:bold;">${data.simbolo}${totalOfrendas.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr style="border-top:1px solid #dceaef;">
+              <td style="padding:${tdPad};color:#305969;">(-) Egresos</td>
+              <td style="padding:${tdPad};text-align:right;color:#e0451f;font-weight:bold;">${data.simbolo}${data.egresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr style="border-top:2px solid #203b46;background:#eef4f7;">
+              <td style="padding:${tdPad};font-size:9px;font-weight:bold;color:#203b46;text-transform:uppercase;letter-spacing:0.06em;">Balance</td>
+              <td style="padding:${tdPad};text-align:right;font-weight:bold;font-size:${bodyFontSize + 2}px;color:${balance >= 0 ? "#2ba193" : "#e0451f"};">${data.simbolo}${balance.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </table>
+        `;
+      })
+      .join("");
+
+    // Resumen por moneda usando tabla HTML en lugar de flex (mejor compatibilidad impresión)
+    const monedaActivas = Object.entries(totales).filter(
+      ([, d]) => d.ingresos > 0 || d.egresos > 0,
+    );
+    const resumenCols = monedaActivas.length > 0
+      ? monedaActivas
+          .map(
+            ([, data]) => `
+            <td style="padding:0 8px 0 0;vertical-align:top;width:${Math.floor(100 / monedaActivas.length)}%;">
+              <div style="background:#eef4f7;padding:10px 14px;border-left:4px solid #203b46;">
+                <strong style="font-size:${bodyFontSize + 1}px;">${data.codigo}</strong><br>
+                <span style="color:#2ba193;font-weight:bold;">Ingresos: ${data.simbolo}${data.ingresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span><br>
+                <span style="color:#e0451f;font-weight:bold;">Egresos: ${data.simbolo}${data.egresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span><br>
+                <strong>Balance: ${data.simbolo}${(data.ingresos - data.egresos).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
+              </div>
+            </td>
+          `,
+          )
+          .join("")
+      : `<td><em>Sin datos</em></td>`;
+
     const printContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Reporte de Movimientos</title>
+        <meta charset="utf-8">
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px; 
+          * { box-sizing: border-box; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 0;
             margin: 0;
-            line-height: 1.6;
+            line-height: 1.4;
             color: #333;
+            font-size: ${bodyFontSize}px;
           }
-          .header { 
-            text-align: center; 
-            border-bottom: 2px solid #203b46; 
-            padding-bottom: 10px; 
-            margin-bottom: 20px;
+          .header {
+            text-align: center;
+            border-bottom: 2px solid #203b46;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
           }
-          h1 { 
-            color: #203b46; 
-            font-size: 24px; 
+          h1 {
+            color: #203b46;
+            font-size: ${bodyFontSize + 9}px;
             margin: 5px 0;
           }
           .fecha-generacion {
             text-align: right;
-            font-size: 12px;
+            font-size: ${bodyFontSize - 1}px;
             color: #666;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
           }
-          h2 { 
-            color: #40768c; 
-            font-size: 16px; 
-            margin-top: 20px; 
+          h2 {
+            color: #40768c;
+            font-size: ${bodyFontSize + 2}px;
+            margin-top: 14px;
+            margin-bottom: 6px;
             border-bottom: 1px solid #40768c;
-            padding-bottom: 5px;
+            padding-bottom: 3px;
           }
-          table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-top: 10px; 
+          /* Tabla de movimientos con layout fijo */
+          table.movimientos {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            table-layout: fixed;
+            font-size: ${bodyFontSize}px;
           }
-          th { 
-            background: #203b46; 
-            color: white; 
-            padding: 12px; 
-            text-align: left; 
+          table.movimientos thead { display: table-header-group; }
+          table.movimientos th {
+            background: #203b46;
+            color: white;
+            padding: ${thPad};
+            text-align: left;
             font-weight: bold;
-            border: 1px solid #203b46;
+            overflow: hidden;
+            word-break: break-word;
           }
-          td { 
-            padding: 8px; 
-            border-bottom: 1px solid #dceaef; 
-            border-right: 1px solid #dceaef;
+          table.movimientos td {
+            padding: ${tdPad};
+            border-bottom: 1px solid #dceaef;
+            word-break: break-word;
+            overflow-wrap: break-word;
           }
-          tr:nth-child(even) {
-            background-color: #f9f9f9;
+          table.movimientos tr:nth-child(even) { background-color: #f7fbfc; }
+          .ingreso { color: #2ba193; font-weight: bold; }
+          .egreso { color: #e0451f; font-weight: bold; }
+          /* Firmas usando tabla */
+          table.firmas {
+            width: 100%;
+            margin-top: 45px;
+            border-collapse: collapse;
+            page-break-inside: avoid;
           }
-          .ingreso { 
-            color: #2ba193; 
-            font-weight: bold;
-          }
-          .egreso { 
-            color: #e0451f; 
-            font-weight: bold;
-          }
-          .resumen { 
-            display: flex; 
-            gap: 20px; 
-            margin: 20px 0; 
-            flex-wrap: wrap;
-          }
-          .resumen-card { 
-            background: #eef4f7; 
-            padding: 15px; 
-            border-left: 4px solid #203b46;
-            flex: 1;
-            min-width: 150px;
-          }
-          .firmas {
-            margin-top: 80px;
-            display: flex;
-            justify-content: space-between;
-            gap: 40px;
-          }
-          .firma-bloque {
-            flex: 1;
+          table.firmas td {
             text-align: center;
+            padding: 0 30px;
+            width: 50%;
+            vertical-align: top;
           }
           .firma-linea {
             border-top: 2px solid #000;
-            margin-bottom: 5px;
-            padding-top: 10px;
-            min-height: 50px;
+            padding-top: 8px;
+            min-height: 40px;
           }
-          .firma-titulo {
-            font-weight: bold;
-            font-size: 12px;
-          }
-          .firma-subtitulo {
-            font-size: 10px;
-            color: #666;
-            margin-top: 3px;
-          }
-          @media print { 
+          .firma-titulo { font-weight: bold; font-size: ${bodyFontSize}px; }
+          .firma-subtitulo { font-size: ${bodyFontSize - 1}px; color: #666; margin-top: 2px; }
+          @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            @page { margin: 10mm; }
+            @page { size: A4; margin: 10mm 12mm; }
+            h2 { page-break-after: avoid; }
           }
         </style>
       </head>
@@ -730,92 +818,77 @@ export function ReportesClient({
           <h1>Reporte de Movimientos Contables</h1>
         </div>
         <div class="fecha-generacion">
-          <strong>Fecha de Generación:</strong> ${obtenerFechaElSalvador().toLocaleString(
-            "es-GT",
-          )}
-        </div>
-        
-        <h2>Resumen por Moneda</h2>
-        <div class="resumen">
-          ${Object.entries(totales)
-            .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
-            .map(
-              ([, data]) => `
-                <div class="resumen-card">
-                  <strong>${data.codigo}</strong><br>
-                  <span class="ingreso">Ingresos: ${
-                    data.simbolo
-                  }${data.ingresos.toLocaleString("es-GT", {
-                    minimumFractionDigits: 2,
-                  })}</span><br>
-                  <span class="egreso">Egresos: ${
-                    data.simbolo
-                  }${data.egresos.toLocaleString("es-GT", {
-                    minimumFractionDigits: 2,
-                  })}</span><br>
-                  <strong>Balance: ${data.simbolo}${(
-                    data.ingresos - data.egresos
-                  ).toLocaleString("es-GT", {
-                    minimumFractionDigits: 2,
-                  })}</strong>
-                </div>
-              `,
-            )
-            .join("")}
+          <strong>Fecha de Generación:</strong> ${obtenerFechaElSalvador().toLocaleString("es-GT")}
         </div>
 
+        <h2>Resumen por Moneda</h2>
+        <table style="width:100%;border-collapse:collapse;margin:8px 0 14px 0;">
+          <tr>${resumenCols}</tr>
+        </table>
+
+        <h2>Resumen Contable</h2>
+        ${ledgerHTML}
+
         <h2>Detalle de Movimientos (${resultados.length})</h2>
-        <table>
+        <table class="movimientos">
+          <colgroup>
+            <col style="width:10%;">
+            <col style="width:8%;">
+            <col style="width:40%;">
+            <col style="width:27%;">
+            <col style="width:15%;">
+          </colgroup>
           <thead>
             <tr>
               <th>Fecha</th>
               <th>Tipo</th>
               <th>Concepto</th>
               <th>Caja</th>
-              <th style="text-align: right;">Monto</th>
+              <th style="text-align:right;">Monto</th>
             </tr>
           </thead>
           <tbody>
             ${resultados
               .map(
                 (mov) => `
-                  <tr>
-                    <td>${new Date(mov.fecha).toLocaleDateString("es-GT")}</td>
-                    <td class="${mov.tipo.toLowerCase()}">${mov.tipo}</td>
-                    <td>${mov.concepto}</td>
-                    <td>${mov.caja}</td>
-                    <td style="text-align: right;">
-                      ${mov.montos
-                        .map(
-                          (m) =>
-                            `<span class="${mov.tipo.toLowerCase()}">${
-                              mov.tipo === "Ingreso" ? "+" : "-"
-                            }${m.monedaSimbolo}${m.monto.toLocaleString(
-                              "es-GT",
-                              { minimumFractionDigits: 2 },
-                            )}</span>`,
-                        )
-                        .join("<br>")}
-                    </td>
-                  </tr>
-                `,
+                <tr>
+                  <td>${new Date(mov.fecha).toLocaleDateString("es-GT")}</td>
+                  <td class="${mov.tipo.toLowerCase()}">${mov.tipo}</td>
+                  <td>${mov.concepto}</td>
+                  <td>${mov.caja}</td>
+                  <td style="text-align:right;white-space:nowrap;">
+                    ${mov.montos
+                      .map(
+                        (m) =>
+                          `<span class="${mov.tipo.toLowerCase()}">${
+                            mov.tipo === "Ingreso" ? "+" : "-"
+                          }${m.monedaSimbolo}${m.monto.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}</span>`,
+                      )
+                      .join("<br>")}
+                  </td>
+                </tr>
+              `,
               )
               .join("")}
           </tbody>
         </table>
 
-        <div class="firmas">
-          <div class="firma-bloque">
-            <div class="firma-linea"></div>
-            <div class="firma-titulo">Presidente/Representante</div>
-            <div class="firma-subtitulo">Firma y Sello</div>
-          </div>
-          <div class="firma-bloque">
-            <div class="firma-linea"></div>
-            <div class="firma-titulo">Tesorero</div>
-            <div class="firma-subtitulo">Firma y Sello</div>
-          </div>
-        </div>
+        <table class="firmas">
+          <tr>
+            <td>
+              <div class="firma-linea"></div>
+              <div class="firma-titulo">Presidente/Representante</div>
+              <div class="firma-subtitulo">Firma y Sello</div>
+            </td>
+            <td>
+              <div class="firma-linea"></div>
+              <div class="firma-titulo">Tesorero</div>
+              <div class="firma-subtitulo">Firma y Sello</div>
+            </td>
+          </tr>
+        </table>
       </body>
       </html>
     `;
