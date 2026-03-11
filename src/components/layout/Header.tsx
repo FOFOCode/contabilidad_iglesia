@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { obtenerFechaElSalvador } from "@/lib/fechas";
 
 interface HeaderProps {
   title: string;
@@ -47,7 +48,7 @@ export default function Header({ title, subtitle, backUrl }: HeaderProps) {
         <div className="hidden sm:flex items-center gap-4">
           {/* Fecha actual */}
           <div className="text-xs md:text-sm text-gray-500">
-            {new Date().toLocaleDateString("es-GT", {
+            {obtenerFechaElSalvador().toLocaleDateString("es-GT", {
               weekday: "long",
               year: "numeric",
               month: "long",

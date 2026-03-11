@@ -7,6 +7,9 @@ interface Column<T> {
   header: string;
   render?: (item: T) => ReactNode;
   className?: string;
+  /** Clase para ocultar en ciertos breakpoints, ej: "hidden md:table-cell" */
+  hideOnMobile?: boolean;
+  hideOnTablet?: boolean;
 }
 
 interface TableProps<T> {
@@ -20,6 +23,20 @@ export default function Table<T extends { id: string | number }>({
   data,
   emptyMessage = "No hay datos disponibles",
 }: TableProps<T>) {
+  // Generar clase de visibilidad basada en props
+  const getVisibilityClass = (column: Column<T>) => {
+    if (column.hideOnMobile && column.hideOnTablet) {
+      return "hidden lg:table-cell";
+    }
+    if (column.hideOnMobile) {
+      return "hidden md:table-cell";
+    }
+    if (column.hideOnTablet) {
+      return "hidden lg:table-cell";
+    }
+    return "";
+  };
+
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200">
       <table className="min-w-full divide-y divide-gray-200">
@@ -28,9 +45,9 @@ export default function Table<T extends { id: string | number }>({
             {columns.map((column) => (
               <th
                 key={String(column.key)}
-                className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
+                className={`px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider ${
                   column.className || ""
-                }`}
+                } ${getVisibilityClass(column)}`}
               >
                 {column.header}
               </th>
@@ -42,7 +59,7 @@ export default function Table<T extends { id: string | number }>({
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-4 py-8 text-center text-gray-500"
+                className="px-3 py-8 text-center text-gray-500"
               >
                 <div className="flex flex-col items-center gap-2">
                   <svg
@@ -71,9 +88,9 @@ export default function Table<T extends { id: string | number }>({
                 {columns.map((column) => (
                   <td
                     key={String(column.key)}
-                    className={`px-4 py-3 text-sm text-gray-700 ${
+                    className={`px-3 py-2.5 text-sm text-gray-700 ${
                       column.className || ""
-                    }`}
+                    } ${getVisibilityClass(column)}`}
                   >
                     {column.render
                       ? column.render(item)

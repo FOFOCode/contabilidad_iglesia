@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -8,160 +7,574 @@ datasource db {
   provider = "postgresql"
 }
 
-// =====================
-// ENUMS
-// =====================
+/// Monedas configurables del sistema
+model Moneda {
+  id                String             @id @default(cuid())
+  codigo            String             @unique
+  nombre            String
+  simbolo           String
+  activa            Boolean            @default(true)
+  esPrincipal       Boolean            @default(false)
+  tasaCambio        Decimal            @default(1) @db.Decimal(12, 4)
+  orden             Int                @default(0)
+  creadoEn          DateTime           @default(now())
+  actualizadoEn     DateTime           @updatedAt
+  creadoPorId       String?
+  actualizadoPorId  String?
+  diezmosFiliales   DiezmoFilial[]
+  donaciones        Donacion[]
+  donationsTracking DonacionTracking[]
+  egresos           Egreso[]
+  egresosFiliales   EgresoFilial[]
+  ingresosMontos    IngresoMonto[]
+  actualizadoPor    Usuario?           @relation("MonedaActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor         Usuario?           @relation("MonedaCreadoPor", fields: [creadoPorId], references: [id])
 
-/// Sociedad u origen de la recaudación
-enum Sociedad {
-  HOMBRES
-  MUJERES
-  CULTO_GENERAL
+  @@index([activa, orden])
+  @@index([activa, esPrincipal])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("monedas")
 }
 
-/// Tipo de servicio religioso
-enum TipoServicio {
-  CULTO
-  ORACION
-  VIGILIA
-  MATUTINO
-  ENSENANZA
+/// Sociedades / Orígenes de recaudación
+model Sociedad {
+  id               String    @id @default(cuid())
+  nombre           String    @unique
+  descripcion      String?
+  activa           Boolean   @default(true)
+  orden            Int       @default(0)
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  cajas            Caja[]
+  ingresos         Ingreso[]
+  actualizadoPor   Usuario?  @relation("SociedadActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?  @relation("SociedadCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([activa, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("sociedades")
 }
 
-/// Tipo de ingreso / procedencia del dinero
-enum TipoIngreso {
-  OFRENDA
-  TALENTOS
-  PROMESAS
-  DIEZMO
-  DONACION
-  HNO_AYUDA
+/// Tipos de servicio religioso
+model TipoServicio {
+  id               String    @id @default(cuid())
+  nombre           String    @unique
+  descripcion      String?
+  activo           Boolean   @default(true)
+  orden            Int       @default(0)
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  ingresos         Ingreso[]
+  actualizadoPor   Usuario?  @relation("TipoServicioActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?  @relation("TipoServicioCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("tipos_servicio")
 }
 
-/// Tipo de gasto para egresos
-enum TipoGasto {
-  COMBUSTIBLE
-  AGUA_PIPA
-  FUNERARIA
-  LUZ_ELECTRICA
-  OTROS
+/// Tipos de ingreso / procedencia del dinero
+model TipoIngreso {
+  id                String             @id @default(cuid())
+  nombre            String             @unique
+  descripcion       String?
+  activo            Boolean            @default(true)
+  orden             Int                @default(0)
+  creadoEn          DateTime           @default(now())
+  actualizadoEn     DateTime           @updatedAt
+  creadoPorId       String?
+  actualizadoPorId  String?
+  cajas             Caja[]
+  donaciones        Donacion[]
+  donationsTracking DonacionTracking[]
+  ingresos          Ingreso[]
+  actualizadoPor    Usuario?           @relation("TipoIngresoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor         Usuario?           @relation("TipoIngresoCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("tipos_ingreso")
 }
 
-/// Moneda manejada en el sistema
-enum Moneda {
-  USD
-  GTQ
+/// Tipos de gasto para egresos
+model TipoGasto {
+  id               String         @id @default(cuid())
+  nombre           String         @unique
+  descripcion      String?
+  activo           Boolean        @default(true)
+  orden            Int            @default(0)
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  egresos          Egreso[]
+  egresosFiliales  EgresoFilial[]
+  actualizadoPor   Usuario?       @relation("TipoGastoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?       @relation("TipoGastoCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("tipos_gasto")
 }
 
-// =====================
-// MODELOS
-// =====================
+/// Países para clasificar iglesias filiales
+model Pais {
+  id               String   @id @default(cuid())
+  nombre           String   @unique
+  codigo           String?  @unique
+  activo           Boolean  @default(true)
+  orden            Int      @default(0)
+  creadoEn         DateTime @default(now())
+  actualizadoEn    DateTime @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  filiales         Filial[]
+  actualizadoPor   Usuario? @relation("PaisActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario? @relation("PaisCreadoPor", fields: [creadoPorId], references: [id])
+
+  @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("paises")
+}
+
+/// Iglesias filiales que envían diezmos
+model Filial {
+  id               String         @id @default(cuid())
+  nombre           String         @unique
+  pastor           String
+  activa           Boolean        @default(true)
+  orden            Int            @default(0)
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  paisId           String
+  diezmos          DiezmoFilial[]
+  actualizadoPor   Usuario?       @relation("FilialActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?       @relation("FilialCreadoPor", fields: [creadoPorId], references: [id])
+  pais             Pais           @relation(fields: [paisId], references: [id])
+
+  @@index([paisId])
+  @@index([activa, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("filiales")
+}
+
+/// Registro de diezmos de iglesias filiales (funciona como "mini caja" por filial)
+model DiezmoFilial {
+  id               String   @id @default(cuid())
+  monto            Decimal  @db.Decimal(12, 2)
+  mes              Int
+  anio             Int
+  comentario       String?
+  creadoEn         DateTime @default(now())
+  actualizadoEn    DateTime @updatedAt
+  filialId         String
+  monedaId         String
+  cajaId           String
+  usuarioId        String
+  creadoPorId      String
+  actualizadoPorId String?
+  actualizadoPor   Usuario? @relation("DiezmoFilialActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja     @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario  @relation("DiezmoFilialCreadoPor", fields: [creadoPorId], references: [id])
+  filial           Filial   @relation(fields: [filialId], references: [id])
+  moneda           Moneda   @relation(fields: [monedaId], references: [id])
+  usuario          Usuario  @relation(fields: [usuarioId], references: [id])
+
+  @@index([filialId])
+  @@index([monedaId])
+  @@index([cajaId])
+  @@index([usuarioId])
+  @@index([anio, mes])
+  @@index([filialId, anio, mes])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("diezmos_filiales")
+}
+
+/// Egresos de la caja general de diezmos filiales
+model EgresoFilial {
+  id               String    @id @default(cuid())
+  fechaSalida      DateTime  @default(now())
+  solicitante      String
+  monto            Decimal   @db.Decimal(12, 2)
+  descripcionGasto String?
+  comentario       String?
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+  monedaId         String
+  tipoGastoId      String
+  cajaId           String
+  usuarioId        String
+  creadoPorId      String
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("EgresoFilialActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja      @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario   @relation("EgresoFilialCreadoPor", fields: [creadoPorId], references: [id])
+  moneda           Moneda    @relation(fields: [monedaId], references: [id])
+  tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id])
+  usuario          Usuario   @relation(fields: [usuarioId], references: [id])
+
+  @@index([monedaId])
+  @@index([cajaId])
+  @@index([tipoGastoId])
+  @@index([usuarioId])
+  @@index([fechaSalida])
+  @@index([creadoEn])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("egresos_filiales")
+}
+
+/// Roles del sistema con permisos configurables
+model Rol {
+  id               String       @id @default(cuid())
+  nombre           String       @unique
+  descripcion      String?
+  esAdmin          Boolean      @default(false)
+  activo           Boolean      @default(true)
+  creadoEn         DateTime     @default(now())
+  actualizadoEn    DateTime     @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  actualizadoPor   Usuario?     @relation("RolActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?     @relation("RolCreadoPor", fields: [creadoPorId], references: [id])
+  permisos         RolPermiso[]
+  usuarios         Usuario[]
+
+  @@index([activo])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("roles")
+}
+
+/// Permisos disponibles en el sistema (módulos)
+model Permiso {
+  id               String       @id @default(cuid())
+  modulo           String       @unique
+  nombre           String
+  descripcion      String?
+  orden            Int          @default(0)
+  activo           Boolean      @default(true)
+  creadoEn         DateTime     @default(now())
+  actualizadoEn    DateTime     @updatedAt
+  creadoPorId      String?
+  actualizadoPorId String?
+  actualizadoPor   Usuario?     @relation("PermisoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor        Usuario?     @relation("PermisoCreadoPor", fields: [creadoPorId], references: [id])
+  roles            RolPermiso[]
+
+  @@index([activo, orden])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@map("permisos")
+}
+
+/// Relación entre roles y permisos (qué módulos puede acceder cada rol)
+model RolPermiso {
+  id            String   @id @default(cuid())
+  rolId         String
+  permisoId     String
+  puedeVer      Boolean  @default(true)
+  puedeCrear    Boolean  @default(false)
+  puedeEditar   Boolean  @default(false)
+  puedeEliminar Boolean  @default(false)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+  permiso       Permiso  @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  rol           Rol      @relation(fields: [rolId], references: [id], onDelete: Cascade)
+
+  @@unique([rolId, permisoId])
+  @@index([rolId])
+  @@index([permisoId])
+  @@map("roles_permisos")
+}
 
 /// Usuarios del sistema con acceso al dashboard
 model Usuario {
-  id            String    @id @default(cuid())
-  nombre        String
-  apellido      String
-  correo        String    @unique
-  contrasena    String    // Hash de la contraseña
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
+  id                         String             @id @default(cuid())
+  nombre                     String
+  apellido                   String
+  correo                     String             @unique
+  contrasena                 String
+  activo                     Boolean            @default(true)
+  creadoEn                   DateTime           @default(now())
+  actualizadoEn              DateTime           @updatedAt
+  rolId                      String?
+  auditoriasRealizadas       AuditoriaLog[]
+  cajasModificadas           Caja[]             @relation("CajaActualizadoPor")
+  cajasCreadas               Caja[]             @relation("CajaCreadoPor")
+  diezmosFilialesModificados DiezmoFilial[]     @relation("DiezmoFilialActualizadoPor")
+  diezmosFilialesCreados     DiezmoFilial[]     @relation("DiezmoFilialCreadoPor")
+  diezmosFiliales            DiezmoFilial[]
+  donacionesModificadas      Donacion[]         @relation("DonacionActualizadoPor")
+  donacionesCreadas          Donacion[]         @relation("DonacionCreadoPor")
+  donaciones                 Donacion[]
+  donacionesTracking         DonacionTracking[]
+  egresosModificados         Egreso[]           @relation("EgresoActualizadoPor")
+  egresosCreados             Egreso[]           @relation("EgresoCreadoPor")
+  egresos                    Egreso[]
+  egresosFilialesModificados EgresoFilial[]     @relation("EgresoFilialActualizadoPor")
+  egresosFilialesCreados     EgresoFilial[]     @relation("EgresoFilialCreadoPor")
+  egresosFiliales            EgresoFilial[]
+  filialesModificadas        Filial[]           @relation("FilialActualizadoPor")
+  filialesCreadas            Filial[]           @relation("FilialCreadoPor")
+  ingresosModificados        Ingreso[]          @relation("IngresoActualizadoPor")
+  ingresosCreados            Ingreso[]          @relation("IngresoCreadoPor")
+  ingresos                   Ingreso[]
+  monedasModificadas         Moneda[]           @relation("MonedaActualizadoPor")
+  monedasCreadas             Moneda[]           @relation("MonedaCreadoPor")
+  paisesModificados          Pais[]             @relation("PaisActualizadoPor")
+  paisesCreados              Pais[]             @relation("PaisCreadoPor")
+  permisosModificados        Permiso[]          @relation("PermisoActualizadoPor")
+  permisosCreados            Permiso[]          @relation("PermisoCreadoPor")
+  rolesModificados           Rol[]              @relation("RolActualizadoPor")
+  rolesCreados               Rol[]              @relation("RolCreadoPor")
+  sociedadesModificadas      Sociedad[]         @relation("SociedadActualizadoPor")
+  sociedadesCreadas          Sociedad[]         @relation("SociedadCreadoPor")
+  tiposGastoModificados      TipoGasto[]        @relation("TipoGastoActualizadoPor")
+  tiposGastoCreados          TipoGasto[]        @relation("TipoGastoCreadoPor")
+  tiposIngresoModificados    TipoIngreso[]      @relation("TipoIngresoActualizadoPor")
+  tiposIngresoCreados        TipoIngreso[]      @relation("TipoIngresoCreadoPor")
+  tiposServicioModificados   TipoServicio[]     @relation("TipoServicioActualizadoPor")
+  tiposServicioCreados       TipoServicio[]     @relation("TipoServicioCreadoPor")
+  rol                        Rol?               @relation(fields: [rolId], references: [id], onDelete: Restrict)
 
-  // Relaciones: usuario que registró ingresos y egresos
-  ingresos Ingreso[]
-  egresos  Egreso[]
-
+  @@index([activo])
+  @@index([correo, activo])
+  @@index([rolId])
   @@map("usuarios")
 }
 
 /// Cajas contables - cada caja maneja su propio dinero
 model Caja {
-  id          String   @id @default(cuid())
-  nombre      String   @unique
-  descripcion String?
-  activa      Boolean  @default(true)
-  creadoEn    DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
+  id                  String             @id @default(cuid())
+  nombre              String             @unique
+  descripcion         String?
+  activa              Boolean            @default(true)
+  esGeneral           Boolean            @default(false)
+  orden               Int                @default(0)
+  creadoEn            DateTime           @default(now())
+  actualizadoEn       DateTime           @updatedAt
+  creadoPorId         String?
+  actualizadoPorId    String?
+  sociedadId          String?
+  tipoIngresoId       String?
+  actualizadoPor      Usuario?           @relation("CajaActualizadoPor", fields: [actualizadoPorId], references: [id])
+  creadoPor           Usuario?           @relation("CajaCreadoPor", fields: [creadoPorId], references: [id])
+  sociedad            Sociedad?          @relation(fields: [sociedadId], references: [id])
+  tipoIngreso         TipoIngreso?       @relation(fields: [tipoIngresoId], references: [id])
+  diezmosFiliales     DiezmoFilial[]
+  donaciones          Donacion[]
+  donacionesTracking  DonacionTracking[] @relation("DonacionTrackingCaja")
+  egresos             Egreso[]
+  egresosFiliales     EgresoFilial[]
+  ingresos            Ingreso[]          @relation("CajaPrincipal")
+  ingresosSecundarios Ingreso[]          @relation("CajaSecundaria")
 
-  // Relaciones
-  ingresos Ingreso[]
-  egresos  Egreso[]
-
+  @@index([sociedadId])
+  @@index([tipoIngresoId])
+  @@index([activa, orden])
+  @@index([activa, esGeneral])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
   @@map("cajas")
+}
+
+/// Montos de ingresos por moneda
+model IngresoMonto {
+  id        String  @id @default(cuid())
+  monto     Decimal @db.Decimal(12, 2)
+  ingresoId String
+  monedaId  String
+  ingreso   Ingreso @relation(fields: [ingresoId], references: [id], onDelete: Cascade)
+  moneda    Moneda  @relation(fields: [monedaId], references: [id])
+
+  @@unique([ingresoId, monedaId])
+  @@index([ingresoId])
+  @@index([monedaId])
+  @@map("ingreso_montos")
 }
 
 /// Registro de ingresos (recaudación de dinero)
 model Ingreso {
-  id              String       @id @default(cuid())
-  
-  // Clasificación del ingreso
-  sociedad        Sociedad
-  servicio        TipoServicio
-  tipoIngreso     TipoIngreso
-  
-  // Montos - separados por moneda
-  montoUSD        Decimal      @default(0) @db.Decimal(12, 2)
-  montoGTQ        Decimal      @default(0) @db.Decimal(12, 2)
-  
-  // Fecha de recaudación (editable para fechas pasadas)
-  fechaRecaudacion DateTime    @default(now())
-  
-  // Observaciones
-  comentario      String?      @db.Text
-  
-  // Timestamps
-  creadoEn        DateTime     @default(now())
-  actualizadoEn   DateTime     @updatedAt
-  
-  // Relaciones
-  cajaId          String
-  caja            Caja         @relation(fields: [cajaId], references: [id], onDelete: Restrict)
-  
-  usuarioId       String
-  usuario         Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  id               String         @id @default(cuid())
+  fechaRecaudacion DateTime       @default(now())
+  comentario       String?
+  creadoEn         DateTime       @default(now())
+  actualizadoEn    DateTime       @updatedAt
+  creadoPorId      String
+  actualizadoPorId String?
+  sociedadId       String
+  servicioId       String
+  tipoIngresoId    String
+  cajaId           String
+  cajaSecundariaId String?
+  usuarioId        String
+  montos           IngresoMonto[]
+  actualizadoPor   Usuario?       @relation("IngresoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja           @relation("CajaPrincipal", fields: [cajaId], references: [id])
+  cajaSecundaria   Caja?          @relation("CajaSecundaria", fields: [cajaSecundariaId], references: [id])
+  creadoPor        Usuario        @relation("IngresoCreadoPor", fields: [creadoPorId], references: [id])
+  servicio         TipoServicio   @relation(fields: [servicioId], references: [id])
+  sociedad         Sociedad       @relation(fields: [sociedadId], references: [id])
+  tipoIngreso      TipoIngreso    @relation(fields: [tipoIngresoId], references: [id])
+  usuario          Usuario        @relation(fields: [usuarioId], references: [id])
 
   @@index([cajaId])
+  @@index([cajaSecundariaId])
   @@index([usuarioId])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@index([sociedadId])
+  @@index([servicioId])
+  @@index([tipoIngresoId])
   @@index([fechaRecaudacion])
-  @@index([sociedad, servicio, tipoIngreso])
+  @@index([cajaId, fechaRecaudacion])
+  @@index([cajaSecundariaId, fechaRecaudacion])
+  @@index([sociedadId, fechaRecaudacion])
+  @@index([fechaRecaudacion, cajaId, sociedadId])
+  @@index([creadoEn])
   @@map("ingresos")
 }
 
 /// Registro de egresos (salidas de dinero)
 model Egreso {
-  id            String    @id @default(cuid())
-  
-  // Fecha de salida (editable para fechas pasadas)
-  fechaSalida   DateTime  @default(now())
-  
-  // Solicitante del egreso
-  solicitante   String
-  
-  // Clasificación del gasto
-  tipoGasto     TipoGasto
-  descripcionGasto String? @db.Text // Para detallar cuando es "OTROS"
-  
-  // Monto retirado
-  monto         Decimal   @db.Decimal(12, 2)
-  moneda        Moneda
-  
-  // Observaciones
-  comentario    String?   @db.Text
-  
-  // Timestamps
-  creadoEn      DateTime  @default(now())
-  actualizadoEn DateTime  @updatedAt
-  
-  // Relaciones
-  cajaId        String
-  caja          Caja      @relation(fields: [cajaId], references: [id], onDelete: Restrict)
-  
-  usuarioId     String
-  usuario       Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  id               String    @id @default(cuid())
+  fechaSalida      DateTime  @default(now())
+  solicitante      String
+  monto            Decimal   @db.Decimal(12, 2)
+  descripcionGasto String?
+  comentario       String?
+  numeroFactura    String?
+  creadoEn         DateTime  @default(now())
+  actualizadoEn    DateTime  @updatedAt
+  tipoGastoId      String
+  monedaId         String
+  cajaId           String
+  usuarioId        String
+  creadoPorId      String
+  actualizadoPorId String?
+  actualizadoPor   Usuario?  @relation("EgresoActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja      @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario   @relation("EgresoCreadoPor", fields: [creadoPorId], references: [id])
+  moneda           Moneda    @relation(fields: [monedaId], references: [id])
+  tipoGasto        TipoGasto @relation(fields: [tipoGastoId], references: [id])
+  usuario          Usuario   @relation(fields: [usuarioId], references: [id])
 
   @@index([cajaId])
   @@index([usuarioId])
+  @@index([tipoGastoId])
+  @@index([monedaId])
   @@index([fechaSalida])
-  @@index([tipoGasto])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@index([cajaId, fechaSalida])
+  @@index([cajaId, monedaId])
+  @@index([fechaSalida, cajaId])
+  @@index([tipoGastoId, monedaId])
+  @@index([creadoEn])
+  @@index([numeroFactura])
   @@map("egresos")
+}
+
+/// Registro de donaciones (van a la CAJA GENERAL, con tracking en caja Donaciones)
+model Donacion {
+  id               String            @id @default(cuid())
+  nombre           String
+  numeroDocumento  String
+  telefono         String?
+  fecha            DateTime          @default(now())
+  monto            Decimal           @db.Decimal(12, 2)
+  comentario       String?
+  creadoEn         DateTime          @default(now())
+  actualizadoEn    DateTime          @updatedAt
+  tipoOfrendaId    String
+  monedaId         String
+  cajaId           String
+  usuarioId        String
+  creadoPorId      String
+  actualizadoPorId String?
+  actualizadoPor   Usuario?          @relation("DonacionActualizadoPor", fields: [actualizadoPorId], references: [id])
+  caja             Caja              @relation(fields: [cajaId], references: [id])
+  creadoPor        Usuario           @relation("DonacionCreadoPor", fields: [creadoPorId], references: [id])
+  moneda           Moneda            @relation(fields: [monedaId], references: [id])
+  tipoOfrenda      TipoIngreso       @relation(fields: [tipoOfrendaId], references: [id])
+  usuario          Usuario           @relation(fields: [usuarioId], references: [id])
+  tracking         DonacionTracking?
+
+  @@index([cajaId])
+  @@index([usuarioId])
+  @@index([tipoOfrendaId])
+  @@index([monedaId])
+  @@index([fecha])
+  @@index([nombre])
+  @@index([creadoEn])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@index([numeroDocumento])
+  @@map("donaciones")
+}
+
+/// Tracking de donaciones para la caja "Donaciones" (solo referencia, no afecta saldos)
+model DonacionTracking {
+  id              String      @id @default(cuid())
+  nombre          String
+  numeroDocumento String
+  telefono        String?
+  fecha           DateTime    @default(now())
+  monto           Decimal     @db.Decimal(12, 2)
+  comentario      String?
+  creadoEn        DateTime    @default(now())
+  donacionId      String      @unique
+  tipoOfrendaId   String
+  monedaId        String
+  cajaId          String?
+  usuarioId       String
+  caja            Caja?       @relation("DonacionTrackingCaja", fields: [cajaId], references: [id])
+  donacion        Donacion    @relation(fields: [donacionId], references: [id], onDelete: Cascade)
+  moneda          Moneda      @relation(fields: [monedaId], references: [id])
+  tipoOfrenda     TipoIngreso @relation(fields: [tipoOfrendaId], references: [id])
+  usuario         Usuario     @relation(fields: [usuarioId], references: [id])
+
+  @@index([fecha])
+  @@index([tipoOfrendaId])
+  @@index([monedaId])
+  @@index([nombre])
+  @@map("donaciones_tracking")
+}
+
+/// Log de auditoría para cambios en configuración
+model AuditoriaLog {
+  id             String   @id @default(cuid())
+  tabla          String
+  registroId     String
+  operacion      String
+  datoAnterior   Json?
+  datoNuevo      Json?
+  descripcion    String?
+  fechaOperacion DateTime @default(now())
+  usuarioId      String
+  usuario        Usuario  @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId])
+  @@index([tabla])
+  @@index([registroId])
+  @@index([operacion])
+  @@index([fechaOperacion])
+  @@index([tabla, registroId])
+  @@index([usuarioId, fechaOperacion])
+  @@map("auditoria_logs")
 }

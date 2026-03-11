@@ -3,23 +3,22 @@
 import { useState } from "react";
 import { Button, Input, Card } from "@/components/ui";
 import { useRouter } from "next/navigation";
+import { login } from "@/app/actions/auth";
 
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
-    {}
-  );
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
-    // Validaciones de maquetación
-    const newErrors: { email?: string; password?: string } = {};
+    // Validaciones
+    const newErrors: { [key: string]: string } = {};
 
     if (!email) {
       newErrors.email = "El correo electrónico es obligatorio";
@@ -29,8 +28,8 @@ export default function LoginPage() {
 
     if (!password) {
       newErrors.password = "La contraseña es obligatoria";
-    } else if (password.length < 6) {
-      newErrors.password = "La contraseña debe tener al menos 6 caracteres";
+    } else if (password.length < 4) {
+      newErrors.password = "La contraseña debe tener al menos 4 caracteres";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -41,40 +40,47 @@ export default function LoginPage() {
     setErrors({});
     setIsLoading(true);
 
-    // Simulación de login para maquetación
-    setTimeout(() => {
+    try {
+      const result = await login(email, password);
+
+      if (result.success) {
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        setErrors({ general: result.error || "Error al iniciar sesión" });
+      }
+    } catch {
+      setErrors({ general: "Error de conexión. Intente nuevamente." });
+    } finally {
       setIsLoading(false);
-      router.push("/dashboard");
-    }, 1500);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#eef4f7] to-[#d9e8ef] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo y título */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
-            <svg
-              className="w-8 h-8 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#203b46] rounded-2xl mb-4 shadow-lg">
+            <span className="text-3xl">⛪</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Sistema Contable</h1>
-          <p className="text-gray-500 mt-1">Iglesia - Administración Interna</p>
+          <h1 className="text-2xl font-bold text-[#203b46]">
+            Sistema Contable
+          </h1>
+          <p className="text-[#40768c] mt-1">
+            Iglesia - Administración Interna
+          </p>
         </div>
 
         {/* Formulario de login */}
         <Card className="shadow-xl">
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5">
+            {errors.general && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {errors.general}
+              </div>
+            )}
+
             <div>
               <Input
                 label="Correo electrónico"
@@ -147,14 +153,15 @@ export default function LoginPage() {
               className="w-full"
               size="lg"
               isLoading={isLoading}
+              disabled={isLoading}
             >
-              Iniciar sesión
+              {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
             </Button>
           </form>
         </Card>
 
         {/* Footer */}
-        <p className="text-center text-sm text-gray-400 mt-6">
+        <p className="text-center text-sm text-[#73a9bf] mt-6">
           Sistema de uso exclusivo para administradores autorizados
         </p>
       </div>
