@@ -12,15 +12,19 @@
     "db:reset:confirm": "npx tsx scripts/limpiar-datos.ts"
   },
   "dependencies": {
+    "@next/bundle-analyzer": "^16.1.6",
     "@prisma/adapter-pg": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",
+    "@tanstack/react-query": "^5.90.21",
+    "@tanstack/react-query-devtools": "^5.91.3",
     "bcryptjs": "^3.0.3",
     "next": "16.1.1",
     "pg": "^8.16.3",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

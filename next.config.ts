@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import withBundleAnalyzer from "@next/bundle-analyzer";
 
 const nextConfig: NextConfig = {
   // Remove X-Powered-By header
@@ -18,8 +19,14 @@ const nextConfig: NextConfig = {
       "@supabase/supabase-js",
       "@supabase/ssr",
       "@prisma/client",
+      "@tanstack/react-query",
     ],
   },
 };
 
-export default nextConfig;
+// Bundle Analyzer: ejecutar con ANALYZE=true npm run build
+// Genera reportes HTML en .next/analyze/ para identificar dependencias pesadas
+export default withBundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  openAnalyzer: false,
+})(nextConfig);

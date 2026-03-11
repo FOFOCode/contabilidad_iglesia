@@ -15,6 +15,7 @@ import {
 import { eliminarIngreso, actualizarIngreso } from "@/app/actions/operaciones";
 import { useRouter } from "next/navigation";
 import { parsearFechaLocal } from "@/lib/fechas";
+import { useDebounce } from "@/hooks/useDebounce";
 
 // Función robusta para manejar fechas consistentemente
 function asegurarFecha(fecha: Date | string): Date {
@@ -122,7 +123,7 @@ export function ListadoIngresosClient({
   // Ordenamiento por fecha
   const [ordenFecha, setOrdenFecha] = useState<"desc" | "asc">("desc");
 
-  // Filtros
+  // Filtros: valores "raw" que el usuario escribe + valores debounced para los de texto
   const [filtros, setFiltros] = useState({
     desde: "",
     hasta: "",
@@ -130,6 +131,16 @@ export function ListadoIngresosClient({
     tipoIngresoId: "",
     monedaId: "",
   });
+
+  // Debounce en los inputs de fecha para evitar re-filtrar en cada keystroke
+  const debouncedDesde = useDebounce(filtros.desde, 250);
+  const debouncedHasta = useDebounce(filtros.hasta, 250);
+
+  // Filtros efectivos (usan valores debounced para fechas)
+  const filtrosEfectivos = useMemo(
+    () => ({ ...filtros, desde: debouncedDesde, hasta: debouncedHasta }),
+    [filtros, debouncedDesde, debouncedHasta],
+  );
 
   // Memoizar opciones de select
   const sociedadOptions = useMemo(
@@ -161,34 +172,38 @@ export function ListadoIngresosClient({
     () =>
       ingresos
         .filter((ingreso) => {
-          if (filtros.desde) {
-            const desde = new Date(filtros.desde);
+          if (filtrosEfectivos.desde) {
+            const desde = new Date(filtrosEfectivos.desde);
             const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
             if (fechaIngreso < desde) return false;
           }
-          if (filtros.hasta) {
-            const hasta = new Date(filtros.hasta);
+          if (filtrosEfectivos.hasta) {
+            const hasta = new Date(filtrosEfectivos.hasta);
             hasta.setHours(23, 59, 59);
             const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
             if (fechaIngreso > hasta) return false;
           }
           if (
-            filtros.sociedadId &&
+            filtrosEfectivos.sociedadId &&
             ingreso.sociedad.nombre !==
-              sociedades.find((s) => s.id === filtros.sociedadId)?.nombre
+              sociedades.find((s) => s.id === filtrosEfectivos.sociedadId)
+                ?.nombre
           ) {
             return false;
           }
           if (
-            filtros.tipoIngresoId &&
+            filtrosEfectivos.tipoIngresoId &&
             ingreso.tipoIngreso.nombre !==
-              tiposIngreso.find((t) => t.id === filtros.tipoIngresoId)?.nombre
+              tiposIngreso.find((t) => t.id === filtrosEfectivos.tipoIngresoId)
+                ?.nombre
           ) {
             return false;
           }
           if (
-            filtros.monedaId &&
-            !ingreso.montos.some((m) => m.moneda.id === filtros.monedaId)
+            filtrosEfectivos.monedaId &&
+            !ingreso.montos.some(
+              (m) => m.moneda.id === filtrosEfectivos.monedaId,
+            )
           ) {
             return false;
           }
@@ -199,7 +214,7 @@ export function ListadoIngresosClient({
           const db = asegurarFecha(b.fechaRecaudacion).getTime();
           return ordenFecha === "desc" ? db - da : da - db;
         }),
-    [ingresos, filtros, sociedades, tiposIngreso, ordenFecha],
+    [ingresos, filtrosEfectivos, sociedades, tiposIngreso, ordenFecha],
   );
 
   // Cálculos de paginación
@@ -221,12 +236,17 @@ export function ListadoIngresosClient({
 
   const handleDelete = async (id: string) => {
     setError(null);
+    // Optimistic update: eliminar de UI inmediatamente sin esperar al servidor
+    const snapshot = ingresos;
+    setIngresos(ingresos.filter((i) => i.id !== id));
+    setDeleteConfirm(null);
     startTransition(async () => {
       try {
         await eliminarIngreso(id);
-        setIngresos(ingresos.filter((i) => i.id !== id));
-        setDeleteConfirm(null);
       } catch (e) {
+        // Rollback si falla el servidor
+        setIngresos(snapshot);
+        setDeleteConfirm(id);
         setError("Error al eliminar el ingreso");
         console.error(e);
       }

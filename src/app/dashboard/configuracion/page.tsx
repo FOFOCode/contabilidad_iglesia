@@ -1,6 +1,15 @@
 import { Header } from "@/components/layout";
-import { ConfiguracionClient } from "./ConfiguracionClient";
-import { UsuariosConfig } from "./UsuariosConfig";
+import dynamic from "next/dynamic";
+
+const ConfiguracionClient = dynamic(() =>
+  import("./ConfiguracionClient").then((m) => ({
+    default: m.ConfiguracionClient,
+  })),
+);
+
+const UsuariosConfig = dynamic(() =>
+  import("./UsuariosConfig").then((m) => ({ default: m.UsuariosConfig })),
+);
 import {
   getMonedas,
   getSociedades,

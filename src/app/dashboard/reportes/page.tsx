@@ -1,5 +1,9 @@
 import { Header } from "@/components/layout";
-import { ReportesClient } from "./ReportesClient";
+import dynamic from "next/dynamic";
+
+const ReportesClient = dynamic(() =>
+  import("./ReportesClient").then((m) => ({ default: m.ReportesClient })),
+);
 import { prisma } from "@/lib/prisma";
 import { getUsuarioActual } from "@/app/actions/auth";
 import { redirect } from "next/navigation";

@@ -6,6 +6,11 @@ import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
 import { registrarAuditoria } from "@/lib/auditoria";
 import { dbSaldoCaja, dbCajasConSaldos } from "@/lib/db-functions";
+import {
+  crearIngresoSchema,
+  crearEgresoSchema,
+  validarSchema,
+} from "@/lib/schemas";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -39,6 +44,8 @@ interface CrearIngresoData {
 }
 
 export async function crearIngreso(data: CrearIngresoData) {
+  // Validar schema antes de cualquier query a BD (evita hits innecesarios)
+  validarSchema(crearIngresoSchema, data);
   await validarPermisoActual("ingresos", "crear");
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
@@ -270,6 +277,8 @@ interface CrearEgresoData {
 }
 
 export async function crearEgreso(data: CrearEgresoData) {
+  // Validar schema antes de cualquier query a BD
+  validarSchema(crearEgresoSchema, data);
   await validarPermisoActual("egresos", "crear");
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
