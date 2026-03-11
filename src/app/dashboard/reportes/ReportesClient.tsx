@@ -266,12 +266,12 @@ export function ReportesClient({
   // Memoizar opciones de select para evitar recalcular en cada render
   const sociedadOptions = useMemo(
     () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    [sociedades]
+    [sociedades],
   );
 
   const cajaOptions = useMemo(
     () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    [cajas]
+    [cajas],
   );
 
   const monedaOptions = useMemo(
@@ -280,7 +280,7 @@ export function ReportesClient({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   const paisOptions = useMemo(
@@ -289,7 +289,7 @@ export function ReportesClient({
         value: p.id,
         label: p.nombre,
       })),
-    [paises]
+    [paises],
   );
 
   const handleComboboxChange = useCallback((name: string, value: string) => {
@@ -301,7 +301,7 @@ export function ReportesClient({
       const { name, value } = e.target;
       setFiltros((prev) => ({ ...prev, [name]: value }));
     },
-    []
+    [],
   );
 
   // Años disponibles para el reporte analítico
@@ -379,13 +379,13 @@ export function ReportesClient({
       // Filtrar por moneda si se seleccionó una
       if (filtros.monedaId) {
         movimientos = movimientos.filter((mov) =>
-          mov.montos.some((m) => m.monedaId === filtros.monedaId)
+          mov.montos.some((m) => m.monedaId === filtros.monedaId),
         );
       }
 
       // Ordenar por fecha descendente
       movimientos.sort(
-        (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+        (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
       );
 
       setResultados(movimientos);
@@ -472,9 +472,44 @@ export function ReportesClient({
 
   const totales = useMemo(() => calcularTotales(), [calcularTotales]);
 
+  // Agrupar ingresos por tipoIngreso y moneda para el bloque ledger
+  const ingresosPorTipo = useMemo(() => {
+    // { monedaId -> { tipoIngreso -> { total, simbolo, codigo } } }
+    const result: Record<
+      string,
+      { simbolo: string; codigo: string; tipos: Record<string, number> }
+    > = {};
+
+    resultados.forEach((mov) => {
+      if (mov.tipo !== "Ingreso") return;
+      const label = mov.tipoIngreso || "Ingreso";
+      mov.montos.forEach((m) => {
+        if (!result[m.monedaId]) {
+          result[m.monedaId] = {
+            simbolo: m.monedaSimbolo,
+            codigo: m.monedaCodigo,
+            tipos: {},
+          };
+        }
+        result[m.monedaId].tipos[label] =
+          (result[m.monedaId].tipos[label] || 0) + m.monto;
+      });
+    });
+
+    return result;
+  }, [resultados]);
+
   // Función para exportar a Excel (CSV)
   const exportarExcel = () => {
-    const headers = ["Fecha", "Tipo", "Concepto", "Caja", "Sociedad", "Moneda", "Monto"];
+    const headers = [
+      "Fecha",
+      "Tipo",
+      "Concepto",
+      "Caja",
+      "Sociedad",
+      "Moneda",
+      "Monto",
+    ];
     const rows = resultados.flatMap((mov) =>
       mov.montos.map((m) => [
         new Date(mov.fecha).toLocaleDateString("es-GT"),
@@ -484,7 +519,7 @@ export function ReportesClient({
         mov.sociedad || "",
         m.monedaCodigo,
         (mov.tipo === "Ingreso" ? "" : "-") + m.monto.toFixed(2),
-      ])
+      ]),
     );
 
     // Agregar filas vacías y totales
@@ -518,7 +553,15 @@ export function ReportesClient({
 
     // Agregar totales generales
     totalesRows.push(["", "", "", "", "", "", ""]); // Fila vacía
-    totalesRows.push(["", "", "", "", "", "Total Registros:", resultados.length.toString()]);
+    totalesRows.push([
+      "",
+      "",
+      "",
+      "",
+      "",
+      "Total Registros:",
+      resultados.length.toString(),
+    ]);
 
     const csvContent = [headers, ...rows, ...totalesRows]
       .map((row) => row.map((cell) => `"${cell}"`).join(","))
@@ -656,7 +699,7 @@ export function ReportesClient({
         </div>
         <div class="fecha-generacion">
           <strong>Fecha de Generación:</strong> ${obtenerFechaElSalvador().toLocaleString(
-            "es-GT"
+            "es-GT",
           )}
         </div>
         
@@ -671,18 +714,20 @@ export function ReportesClient({
                   <span class="ingreso">Ingresos: ${
                     data.simbolo
                   }${data.ingresos.toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
+                    minimumFractionDigits: 2,
+                  })}</span><br>
                   <span class="egreso">Egresos: ${
                     data.simbolo
                   }${data.egresos.toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
+                    minimumFractionDigits: 2,
+                  })}</span><br>
                   <strong>Balance: ${data.simbolo}${(
-                data.ingresos - data.egresos
-              ).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
+                    data.ingresos - data.egresos
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</strong>
                 </div>
-              `
+              `,
             )
             .join("")}
         </div>
@@ -715,13 +760,13 @@ export function ReportesClient({
                               mov.tipo === "Ingreso" ? "+" : "-"
                             }${m.monedaSimbolo}${m.monto.toLocaleString(
                               "es-GT",
-                              { minimumFractionDigits: 2 }
-                            )}</span>`
+                              { minimumFractionDigits: 2 },
+                            )}</span>`,
                         )
                         .join("<br>")}
                     </td>
                   </tr>
-                `
+                `,
               )
               .join("")}
           </tbody>
@@ -826,7 +871,7 @@ export function ReportesClient({
     Object.entries(datosSaldosActuales.totalesPorMoneda || {}).forEach(
       ([monedaId, datos]: [string, any]) => {
         const moneda = datosSaldosActuales.monedas?.find(
-          (m: any) => m.id === monedaId
+          (m: any) => m.id === monedaId,
         );
         rows.push([
           "",
@@ -836,7 +881,7 @@ export function ReportesClient({
           datos.egresos.toFixed(2),
           datos.saldo.toFixed(2),
         ]);
-      }
+      },
     );
 
     const csvContent = [headers, ...rows]
@@ -885,7 +930,7 @@ export function ReportesClient({
       <body>
         <h1>Reporte de Saldos Actuales de Cajas</h1>
         <p class="fecha">Generado: ${obtenerFechaElSalvador().toLocaleString(
-          "es-GT"
+          "es-GT",
         )}</p>
         
         <h2>Resumen por Moneda</h2>
@@ -893,24 +938,26 @@ export function ReportesClient({
           ${Object.entries(datosSaldosActuales.totalesPorMoneda || {})
             .map(([monedaId, datos]: [string, any]) => {
               const moneda = datosSaldosActuales.monedas?.find(
-                (m: any) => m.id === monedaId
+                (m: any) => m.id === monedaId,
               );
               return `
                 <div class="resumen-card">
                   <strong>${moneda?.codigo || monedaId}</strong><br>
                   <span class="positivo">Ingresos: ${moneda?.simbolo || "$"}${(
-                datos.ingresos || 0
-              ).toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
+                    datos.ingresos || 0
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</span><br>
                   <span class="negativo">Egresos: ${moneda?.simbolo || "$"}${(
-                datos.egresos || 0
-              ).toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
+                    datos.egresos || 0
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</span><br>
                   <strong>Saldo: ${moneda?.simbolo || "$"}${(
-                datos.saldo || 0
-              ).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
+                    datos.saldo || 0
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</strong>
                 </div>
               `;
             })
@@ -959,13 +1006,13 @@ export function ReportesClient({
                           saldo.saldo >= 0 ? "positivo" : "negativo"
                         }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
                           "es-GT",
-                          { minimumFractionDigits: 2 }
+                          { minimumFractionDigits: 2 },
                         )}</td>
                       </tr>
-                    `
+                    `,
                       )
                       .join("")}
-                  `
+                  `,
                     )
                     .join("")}
                 `
@@ -1003,13 +1050,13 @@ export function ReportesClient({
                           saldo.saldo >= 0 ? "positivo" : "negativo"
                         }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
                           "es-GT",
-                          { minimumFractionDigits: 2 }
+                          { minimumFractionDigits: 2 },
                         )}</td>
                       </tr>
-                    `
+                    `,
                       )
                       .join("")}
-                  `
+                  `,
                     )
                     .join("")}
                 `
@@ -1045,13 +1092,13 @@ export function ReportesClient({
                           saldo.saldo >= 0 ? "positivo" : "negativo"
                         }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
                           "es-GT",
-                          { minimumFractionDigits: 2 }
+                          { minimumFractionDigits: 2 },
                         )}</td>
                       </tr>
-                    `
+                    `,
                       )
                       .join("")}
-                  `
+                  `,
                     )
                     .join("")}
                 `
@@ -1171,8 +1218,8 @@ export function ReportesClient({
     if (!datosAnaliticos) return 0;
     return Math.max(
       ...datosAnaliticos.datosMensuales.map((d) =>
-        Math.max(d.ingresos, d.egresos)
-      )
+        Math.max(d.ingresos, d.egresos),
+      ),
     );
   }, [datosAnaliticos]);
 
@@ -1938,6 +1985,66 @@ export function ReportesClient({
             })}
           </div>
 
+          {/* Resumen contable estilo libro mayor */}
+          {Object.entries(totales).some(
+            ([, d]) => d.ingresos > 0 || d.egresos > 0,
+          ) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4 md:mb-5">
+              {Object.entries(totales).map(([monedaId, data]) => {
+                if (data.ingresos === 0 && data.egresos === 0) return null;
+                const tiposMoneda = ingresosPorTipo[monedaId];
+                const totalOfrendas =
+                  tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
+                const balance = totalOfrendas - data.egresos;
+                return (
+                  <div
+                    key={monedaId}
+                    className="bg-white border border-[#dceaef] rounded-xl px-5 py-4 font-mono text-sm shadow-sm"
+                  >
+                    <p className="text-xs font-sans font-semibold text-[#73a9bf] uppercase tracking-wider mb-3">
+                      {data.codigo} — Resumen
+                    </p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#305969]">Ofrendas</span>
+                        <span className="text-[#2ba193] font-semibold">
+                          {data.simbolo}
+                          {totalOfrendas.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#305969]">(-) Egresos</span>
+                        <span className="text-[#e0451f] font-semibold">
+                          {data.simbolo}
+                          {data.egresos.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <div className="border-t border-[#305969]/30 pt-1 mt-1 flex justify-between items-center">
+                        <span className="text-[#203b46] font-bold font-sans text-xs uppercase tracking-wide">
+                          Balance
+                        </span>
+                        <span
+                          className={`font-bold text-base ${
+                            balance >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
+                          }`}
+                        >
+                          {data.simbolo}
+                          {balance.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Tabla de resultados */}
           <Card>
             <div className="flex items-center justify-between mb-4">
@@ -2142,7 +2249,7 @@ export function ReportesClient({
                 .sort((a, b) => b.total - a.total)
                 .map((soc, idx) => {
                   const maxTotal = Math.max(
-                    ...datosAnaliticos.porSociedad.map((s) => s.total)
+                    ...datosAnaliticos.porSociedad.map((s) => s.total),
                   );
                   return (
                     <div
@@ -2452,7 +2559,7 @@ export function ReportesClient({
                         year: "numeric",
                         month: "long",
                         day: "numeric",
-                      }
+                      },
                     )}
                   </p>
                 </div>
@@ -2883,7 +2990,7 @@ export function ReportesClient({
                       </tr>
                     ))}
                   {datosDiezmosFiliales.porMes.filter(
-                    (m: any) => m.cantidad > 0
+                    (m: any) => m.cantidad > 0,
                   ).length === 0 && (
                     <tr>
                       <td
@@ -3158,7 +3265,7 @@ export function ReportesClient({
               {Object.entries(datosSaldosActuales.totalesPorMoneda).map(
                 ([monedaId, datos]: [string, any]) => {
                   const moneda = datosSaldosActuales.monedas.find(
-                    (m: any) => m.id === monedaId
+                    (m: any) => m.id === monedaId,
                   );
                   return (
                     <Card key={monedaId}>
@@ -3210,7 +3317,7 @@ export function ReportesClient({
                       </div>
                     </Card>
                   );
-                }
+                },
               )}
             </div>
           </div>
@@ -3331,7 +3438,7 @@ export function ReportesClient({
                             })}
                           </td>
                         </tr>
-                      ))
+                      )),
                     )}
                   </tbody>
                 </table>
@@ -3404,7 +3511,7 @@ export function ReportesClient({
                             })}
                           </td>
                         </tr>
-                      ))
+                      )),
                     )}
                   </tbody>
                 </table>

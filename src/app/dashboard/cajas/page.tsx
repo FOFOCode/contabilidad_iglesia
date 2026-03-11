@@ -12,6 +12,11 @@ export default async function CajasPage() {
     descripcion: c.descripcion,
     activa: c.activa,
     esGeneral: c.esGeneral,
+    // esSubcaja = tiene sociedad/tipoIngreso Y esGeneral=true (checkbox "Guardar en Caja General" activado)
+    // → su dinero ya está físicamente en Caja General, no contar dos veces
+    esSubcaja:
+      !c.esVirtual && c.esGeneral && !!(c.sociedadId || c.tipoIngresoId),
+    esVirtual: c.esVirtual ?? false,
     sociedad: c.sociedad ? { nombre: c.sociedad.nombre } : null,
     tipoIngreso: c.tipoIngreso ? { nombre: c.tipoIngreso.nombre } : null,
     saldos: c.saldos,
