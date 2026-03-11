@@ -70,45 +70,9 @@ export default async function DashboardPage() {
     total: Number(e._sum.monto) || 0,
   }));
 
-  // Agrupar ingresos por sociedad
-  const ingresosPorSociedadAgrupados: Record<
-    string,
-    { nombre: string; montos: Record<string, number> }
-  > = {};
-  resumen.ingresosPorSociedad.forEach((ing) => {
-    const socId = ing.sociedad.id;
-    if (!ingresosPorSociedadAgrupados[socId]) {
-      ingresosPorSociedadAgrupados[socId] = {
-        nombre: ing.sociedad.nombre,
-        montos: {},
-      };
-    }
-    ing.montos.forEach((m) => {
-      const monedaId = m.moneda.id;
-      if (!ingresosPorSociedadAgrupados[socId].montos[monedaId]) {
-        ingresosPorSociedadAgrupados[socId].montos[monedaId] = 0;
-      }
-      ingresosPorSociedadAgrupados[socId].montos[monedaId] += Number(m.monto);
-    });
-  });
-
-  const ingresosPorSociedad = Object.entries(ingresosPorSociedadAgrupados).map(
-    ([id, data]) => ({
-      sociedadId: id,
-      nombre: data.nombre,
-      montos: Object.entries(data.montos).map(([monedaId, total]) => ({
-        monedaId,
-        total,
-      })),
-    })
-  );
-
-  // Egresos por tipo
-  const egresosPorTipo = resumen.egresosPorTipo.map((e) => ({
-    tipoGastoId: e.tipoGastoId,
-    monedaId: e.monedaId,
-    total: Number(e._sum.monto) || 0,
-  }));
+  // Estos datos ya no se usan en el dashboard simplificado
+  const ingresosPorSociedad: never[] = [];
+  const egresosPorTipo: never[] = [];
 
   // Cajas con saldos
   const cajasConSaldos = resumen.cajasConSaldos.map((c) => ({
@@ -150,14 +114,11 @@ export default async function DashboardPage() {
     esPrincipal: m.esPrincipal,
   }));
 
-  // Tipos de gasto
-  const tiposGasto = resumen.tiposGasto.map((t) => ({
-    id: t.id,
-    nombre: t.nombre,
-  }));
+  // Tipos de gasto (no usados en dashboard simplificado)
+  const tiposGasto: never[] = [];
 
-  // Cajas Virtuales por Tipo de Ingreso (NUEVO)
-  const cajasVirtuales = resumen.cajasVirtuales || [];
+  // Cajas Virtuales (no usados en dashboard simplificado)
+  const cajasVirtuales: never[] = [];
 
   return (
     <DashboardClient

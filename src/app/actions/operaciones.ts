@@ -5,6 +5,7 @@ import { Prisma } from "@/generated/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
 import { registrarAuditoria } from "@/lib/auditoria";
+import { dbSaldoCaja, dbCajasConSaldos } from "@/lib/db-functions";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -425,90 +426,15 @@ export async function actualizarEgreso(id: string, data: ActualizarEgresoData) {
 }
 
 // Obtener saldo de una caja por moneda
+// Delega a fn_saldo_caja() — 1 round-trip en lugar de 4 queries secuenciales.
 export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
   return withRetry(async () => {
-    // Obtener datos de la caja (necesario para saber si es general o subcaja)
-    const caja = await prisma.caja.findUnique({
-      where: { id: cajaId },
-      include: { sociedad: true, tipoIngreso: true },
-    });
-
-    if (!caja) {
-      throw new Error(`Caja no encontrada: ${cajaId}`);
+    const saldos = await dbSaldoCaja(cajaId, monedaId);
+    if (saldos.length === 0) {
+      // Caja no encontrada o sin monedas activas → verificar que exista
+      const caja = await prisma.caja.findUnique({ where: { id: cajaId } });
+      if (!caja) throw new Error(`Caja no encontrada: ${cajaId}`);
     }
-
-    const monedas = await prisma.moneda.findMany({
-      where: monedaId ? { id: monedaId, activa: true } : { activa: true },
-      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
-    });
-
-    // Determinar si esta es una subcaja de sociedad (no general, con sociedadId o tipoIngresoId)
-    const esSubcaja =
-      !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
-
-    // Para cajas de sociedades: buscar ingresos SECUNDARIOS (tracking)
-    // Para cajas generales: buscar ingresos PRINCIPALES (dinero real)
-    const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
-      by: ["monedaId"],
-      where: {
-        ...(esSubcaja
-          ? {
-              // Ingresos donde esta caja es SECUNDARIA (tracking)
-              ingreso: { cajaSecundariaId: cajaId },
-            }
-          : {
-              // Ingresos donde esta caja es PRINCIPAL (dinero real)
-              ingreso: { cajaId },
-            }),
-        ...(monedaId ? { monedaId } : {}),
-      },
-      _sum: { monto: true },
-    });
-
-    // Donaciones solo se suman a cajas generales
-    const donacionesPorMoneda = await prisma.donacion.groupBy({
-      by: ["monedaId"],
-      where: {
-        ...(caja.esGeneral ? { cajaId } : { cajaId: "never" }), // Nunca buscar si no es general
-        ...(monedaId ? { monedaId } : {}),
-      },
-      _sum: { monto: true },
-    });
-
-    // Egresos siempre se asocian a la caja principal
-    const egresosPorMoneda = await prisma.egreso.groupBy({
-      by: ["monedaId"],
-      where: {
-        cajaId,
-        ...(monedaId ? { monedaId } : {}),
-      },
-      _sum: { monto: true },
-    });
-
-    const saldos = monedas.map((moneda) => {
-      const ingresos =
-        ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0);
-      const donaciones =
-        donacionesPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0);
-      const egresos =
-        egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0);
-      const totalIngresos = Number(ingresos) + Number(donaciones);
-      const totalEgresos = Number(egresos);
-      const saldo = totalIngresos - totalEgresos;
-
-      return {
-        monedaId: moneda.id,
-        monedaCodigo: moneda.codigo,
-        monedaSimbolo: moneda.simbolo,
-        ingresos: Math.round(totalIngresos * 100) / 100,
-        egresos: Math.round(totalEgresos * 100) / 100,
-        saldo: Math.round(saldo * 100) / 100,
-      };
-    });
-
     return saldos;
   });
 }
@@ -517,7 +443,17 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
 // CAJAS - SALDOS
 // =====================
 
-export async function obtenerCajasConSaldos(filtros?: {
+// Delega a fn_cajas_con_saldos() — 1 round-trip en lugar de 8+ queries.
+export async function obtenerCajasConSaldos(_filtros?: {
+  anio?: number;
+  fechaInicio?: string;
+  fechaFin?: string;
+}) {
+  return withRetry(() => dbCajasConSaldos());
+}
+
+// LEGACY KEPT BELOW — referenciado solo internamente para la vista detalle
+async function _obtenerCajasConSaldosLegacy(filtros?: {
   anio?: number;
   fechaInicio?: string;
   fechaFin?: string;
@@ -788,7 +724,7 @@ export async function obtenerCajasConSaldos(filtros?: {
 }
 
 // =====================
-// CAJAS VIRTUALES - DETALLE
+// CAJAS VIRTUALES - DETALLE (usa legacy directamente)
 // =====================
 
 async function obtenerDetalleCajaDonaciones() {

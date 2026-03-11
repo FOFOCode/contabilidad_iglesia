@@ -3,6 +3,7 @@
 import { prisma, withRetry } from "@/lib/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
+import { dbSaldoFiliales, dbResumenFiliales } from "@/lib/db-functions";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -403,7 +404,21 @@ export async function eliminarEgresoFilial(id: string) {
 // SALDOS Y RESUMEN
 // =====================
 
+// Delega a fn_resumen_filiales() — 1 round-trip en lugar de 4 queries + agregación JS.
 export async function obtenerResumenFiliales() {
+  return withRetry(async () => {
+    const db = await dbResumenFiliales();
+    return {
+      filiales: db.filiales,
+      totalesGenerales: db.totalesGenerales,
+      monedas: db.monedas,
+      tiposGasto: db.tiposGasto,
+    };
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _obtenerResumenFilialesLegacy() {
   return withRetry(async () => {
     const [filiales, monedas, tiposGasto] = await Promise.all([
       prisma.filial.findMany({
@@ -532,7 +547,13 @@ export async function obtenerDatosFormularioEgresoFilial() {
 // SALDO DE CAJA GENERAL FILIALES
 // =====================
 
+// Delega a fn_saldo_filiales() — 1 round-trip en lugar de 3 queries.
 export async function obtenerSaldoFiliales() {
+  return withRetry(() => dbSaldoFiliales());
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _obtenerSaldoFilialesLegacy() {
   return withRetry(async () => {
     const monedas = await prisma.moneda.findMany({
       where: { activa: true },
