@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getCachedUsuario } from "@/lib/usuario-cache";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 
@@ -49,7 +50,7 @@ export async function login(correo: string, contrasena: string) {
       "[Auth] Usuario encontrado:",
       usuario.correo,
       "Activo:",
-      usuario.activo
+      usuario.activo,
     );
     if (!usuario.activo) {
       console.log("[Auth] Usuario desactivado:", correo);
@@ -60,7 +61,7 @@ export async function login(correo: string, contrasena: string) {
     console.log("[Auth] Verificando contraseña para:", usuario.correo);
     const contrasenaValida = await bcrypt.compare(
       contrasena,
-      usuario.contrasena
+      usuario.contrasena,
     );
     console.log("[Auth] Contraseña válida:", contrasenaValida);
     if (!contrasenaValida) {
@@ -146,13 +147,13 @@ export async function getUsuarioActual() {
     try {
       const decodedValue = Buffer.from(
         sessionCookie.value,
-        "base64"
+        "base64",
       ).toString();
 
       // Validar que el contenido decodificado no esté vacío
       if (!decodedValue || decodedValue.trim() === "") {
         console.error(
-          "[Auth] Contenido de cookie vacío después de decodificar"
+          "[Auth] Contenido de cookie vacío después de decodificar",
         );
         await limpiarCookieCorrupta();
         return null;
@@ -172,36 +173,9 @@ export async function getUsuarioActual() {
       return null;
     }
 
-    // Verificar que el usuario sigue existiendo y activo, incluir rol en misma consulta
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: sessionData.id },
-      select: {
-        id: true,
-        nombre: true,
-        apellido: true,
-        correo: true,
-        activo: true,
-        rol: {
-          select: {
-            id: true,
-            nombre: true,
-            permisos: {
-              select: {
-                puedeVer: true,
-                puedeCrear: true,
-                puedeEditar: true,
-                puedeEliminar: true,
-                permiso: {
-                  select: {
-                    modulo: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    // Verificar que el usuario sigue existiendo y activo, incluir rol en misma consulta.
+    // getCachedUsuario deduplica la query dentro del mismo request (React cache).
+    const usuario = await getCachedUsuario(sessionData.id);
 
     if (!usuario) {
       console.log("[Auth] Usuario no encontrado en BD, id:", sessionData.id);
