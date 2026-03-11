@@ -177,7 +177,7 @@ export function DashboardClient({
             r.ingresos > 0 ||
             r.egresos > 0 ||
             r.ingresosAnual > 0 ||
-            r.egresosAnual > 0
+            r.egresosAnual > 0,
         ),
     [
       monedas,
@@ -187,7 +187,7 @@ export function DashboardClient({
       egresosMesAnterior,
       ingresosAnio,
       egresosAnio,
-    ]
+    ],
   );
 
   if (!configurado) {
@@ -244,16 +244,27 @@ export function DashboardClient({
       {/* Resumen del mes */}
       {resumenPorMoneda.length > 0 ? (
         resumenPorMoneda.map(
-          ({ moneda, ingresos, egresos, balance, ingresosAnt, egresosAnt, balanceAnt }) => {
+          ({
+            moneda,
+            ingresos,
+            egresos,
+            balance,
+            ingresosAnt,
+            egresosAnt,
+            balanceAnt,
+          }) => {
             const cambioBalance = calcularCambio(balance, balanceAnt);
             return (
               <section key={moneda.id}>
                 <h2 className="text-base md:text-lg font-semibold text-[#203b46] mb-2 md:mb-3">
-                  📅 Resumen del Mes{monedas.length > 1 ? ` — ${moneda.codigo}` : ""}
+                  📅 Resumen del Mes
+                  {monedas.length > 1 ? ` — ${moneda.codigo}` : ""}
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
                   <Card className="bg-[#ebfaf8] border-[#aeeae3]">
-                    <div className="text-xs text-[#20796f] mb-1 font-medium">Ingresos</div>
+                    <div className="text-xs text-[#20796f] mb-1 font-medium">
+                      Ingresos
+                    </div>
                     <div className="text-2xl font-bold text-[#15514a]">
                       {formatMonto(ingresos, moneda.simbolo)}
                     </div>
@@ -264,7 +275,9 @@ export function DashboardClient({
                     )}
                   </Card>
                   <Card className="bg-[#fcece9] border-[#f3b5a5]">
-                    <div className="text-xs text-[#b43718] mb-1 font-medium">Egresos</div>
+                    <div className="text-xs text-[#b43718] mb-1 font-medium">
+                      Egresos
+                    </div>
                     <div className="text-2xl font-bold text-[#e0451f]">
                       {formatMonto(egresos, moneda.simbolo)}
                     </div>
@@ -281,7 +294,9 @@ export function DashboardClient({
                         : "bg-gradient-to-br from-[#4a1a10] to-[#7a2f1f] border-[#e0451f]/30"
                     }`}
                   >
-                    <div className="text-xs text-white/70 mb-1 font-medium">Balance Neto</div>
+                    <div className="text-xs text-white/70 mb-1 font-medium">
+                      Balance Neto
+                    </div>
                     <div
                       className={`text-2xl font-bold ${
                         balance >= 0 ? "text-[#aeeae3]" : "text-[#f3b5a5]"
@@ -299,7 +314,7 @@ export function DashboardClient({
                 </div>
               </section>
             );
-          }
+          },
         )
       ) : (
         <Card className="bg-[#fcf6e9] border-[#f2dca6]">
@@ -313,8 +328,13 @@ export function DashboardClient({
       {cajasConSaldos.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2 md:mb-3">
-            <h2 className="text-base md:text-lg font-semibold text-[#203b46]">🏦 Estado de Cajas</h2>
-            <Link href="/dashboard/cajas" className="text-sm text-[#2ba193] hover:underline font-medium">
+            <h2 className="text-base md:text-lg font-semibold text-[#203b46]">
+              🏦 Estado de Cajas
+            </h2>
+            <Link
+              href="/dashboard/cajas"
+              className="text-sm text-[#2ba193] hover:underline font-medium"
+            >
               Ver todas →
             </Link>
           </div>
@@ -329,9 +349,13 @@ export function DashboardClient({
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xl">{caja.esGeneral ? "🏦" : "📦"}</span>
+                    <span className="text-xl">
+                      {caja.esGeneral ? "🏦" : "📦"}
+                    </span>
                     <div>
-                      <div className="font-semibold text-[#203b46] text-sm">{caja.nombre}</div>
+                      <div className="font-semibold text-[#203b46] text-sm">
+                        {caja.nombre}
+                      </div>
                       {caja.esGeneral && (
                         <div className="text-xs text-[#2ba193]">Principal</div>
                       )}
@@ -341,13 +365,17 @@ export function DashboardClient({
                     caja.saldos
                       .filter((s) => s.saldo !== 0)
                       .map((saldo) => {
-                        const moneda = monedas.find((m) => m.id === saldo.monedaId);
+                        const moneda = monedas.find(
+                          (m) => m.id === saldo.monedaId,
+                        );
                         if (!moneda) return null;
                         return (
                           <div
                             key={saldo.monedaId}
                             className={`text-xl font-bold ${
-                              saldo.saldo >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
+                              saldo.saldo >= 0
+                                ? "text-[#2ba193]"
+                                : "text-[#e0451f]"
                             }`}
                           >
                             {formatMonto(saldo.saldo, moneda.simbolo)}
@@ -355,7 +383,9 @@ export function DashboardClient({
                         );
                       })
                   ) : (
-                    <div className="text-sm text-[#b9d4df]">Sin movimientos</div>
+                    <div className="text-sm text-[#b9d4df]">
+                      Sin movimientos
+                    </div>
                   )}
                 </Card>
               </Link>
@@ -369,8 +399,13 @@ export function DashboardClient({
         {/* Últimos ingresos */}
         <Card>
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-[#203b46]">📥 Últimos Ingresos</h3>
-            <Link href="/dashboard/ingresos" className="text-sm text-[#2ba193] hover:underline">
+            <h3 className="font-semibold text-[#203b46]">
+              📥 Últimos Ingresos
+            </h3>
+            <Link
+              href="/dashboard/ingresos"
+              className="text-sm text-[#2ba193] hover:underline"
+            >
               Ver todos →
             </Link>
           </div>
@@ -403,7 +438,9 @@ export function DashboardClient({
               ))}
             </div>
           ) : (
-            <p className="text-[#73a9bf] text-center py-4">No hay ingresos recientes</p>
+            <p className="text-[#73a9bf] text-center py-4">
+              No hay ingresos recientes
+            </p>
           )}
         </Card>
 
@@ -411,7 +448,10 @@ export function DashboardClient({
         <Card>
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-semibold text-[#203b46]">📤 Últimos Egresos</h3>
-            <Link href="/dashboard/egresos" className="text-sm text-[#e0451f] hover:underline">
+            <Link
+              href="/dashboard/egresos"
+              className="text-sm text-[#e0451f] hover:underline"
+            >
               Ver todos →
             </Link>
           </div>
@@ -425,7 +465,9 @@ export function DashboardClient({
                   <div>
                     <div className="flex items-center gap-2">
                       <Badge variant="warning">{egreso.tipoGasto.nombre}</Badge>
-                      <span className="text-sm text-[#73a9bf]">{egreso.solicitante}</span>
+                      <span className="text-sm text-[#73a9bf]">
+                        {egreso.solicitante}
+                      </span>
                     </div>
                     <div className="text-xs text-[#73a9bf] mt-1">
                       {formatDate(egreso.fechaSalida)}
@@ -438,7 +480,9 @@ export function DashboardClient({
               ))}
             </div>
           ) : (
-            <p className="text-[#73a9bf] text-center py-4">No hay egresos recientes</p>
+            <p className="text-[#73a9bf] text-center py-4">
+              No hay egresos recientes
+            </p>
           )}
         </Card>
       </section>
