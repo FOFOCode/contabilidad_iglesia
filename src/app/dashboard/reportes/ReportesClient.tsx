@@ -663,8 +663,10 @@ export function ReportesClient({
     const n = resultados.length;
     // Tamaño de fuente y padding adaptativos según cantidad de registros
     const bodyFontSize = n > 60 ? 9 : n > 40 ? 10 : n > 20 ? 11 : 12;
-    const tdPad = n > 60 ? "3px 6px" : n > 40 ? "4px 7px" : n > 20 ? "5px 8px" : "6px 10px";
-    const thPad = n > 60 ? "5px 6px" : n > 40 ? "6px 7px" : n > 20 ? "7px 8px" : "8px 10px";
+    const tdPad =
+      n > 60 ? "3px 6px" : n > 40 ? "4px 7px" : n > 20 ? "5px 8px" : "6px 10px";
+    const thPad =
+      n > 60 ? "5px 6px" : n > 40 ? "6px 7px" : n > 20 ? "7px 8px" : "8px 10px";
 
     // Construir filas de la tabla de ingresos por tipo para cada moneda en el ledger
     const ledgerHTML = Object.entries(totales)
@@ -701,10 +703,11 @@ export function ReportesClient({
     const monedaActivas = Object.entries(totales).filter(
       ([, d]) => d.ingresos > 0 || d.egresos > 0,
     );
-    const resumenCols = monedaActivas.length > 0
-      ? monedaActivas
-          .map(
-            ([, data]) => `
+    const resumenCols =
+      monedaActivas.length > 0
+        ? monedaActivas
+            .map(
+              ([, data]) => `
             <td style="padding:0 8px 0 0;vertical-align:top;width:${Math.floor(100 / monedaActivas.length)}%;">
               <div style="background:#eef4f7;padding:10px 14px;border-left:4px solid #203b46;">
                 <strong style="font-size:${bodyFontSize + 1}px;">${data.codigo}</strong><br>
@@ -714,9 +717,9 @@ export function ReportesClient({
               </div>
             </td>
           `,
-          )
-          .join("")
-      : `<td><em>Sin datos</em></td>`;
+            )
+            .join("")
+        : `<td><em>Sin datos</em></td>`;
 
     const printContent = `
       <!DOCTYPE html>
