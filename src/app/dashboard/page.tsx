@@ -7,11 +7,14 @@ import { DashboardClient } from "./DashboardClient";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  // Verificar si el sistema está configurado
-  const config = await verificarConfiguracionInicial();
+  // Run config check and data fetch in parallel — avoids a sequential round-trip.
+  const [config, resumenOrNull] = await Promise.all([
+    verificarConfiguracionInicial(),
+    obtenerResumenDashboard().catch(() => null),
+  ]);
 
   // Si no está configurado, mostrar mensaje de bienvenida
-  if (!config.configurado) {
+  if (!config.configurado || !resumenOrNull) {
     return (
       <DashboardClient
         monedas={[]}
@@ -37,7 +40,7 @@ export default async function DashboardPage() {
   }
 
   // Obtener datos del dashboard
-  const resumen = await obtenerResumenDashboard();
+  const resumen = resumenOrNull;
 
   // Transformar datos para el cliente (convertir Decimal a number)
   const ingresosMes = resumen.ingresosMes.map((i) => ({

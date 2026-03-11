@@ -10,9 +10,13 @@ import { obtenerMisPermisos } from "@/app/actions/permisos";
 import { redirect } from "next/navigation";
 
 export default async function FilialesPage() {
-  const [usuario, { permisos }] = await Promise.all([
+  // All fetches in one parallel round-trip
+  const [usuario, { permisos }, resumen, diezmos, egresos] = await Promise.all([
     getUsuarioActual(),
     obtenerMisPermisos(),
+    obtenerResumenFiliales(),
+    obtenerDiezmosFiliales(),
+    obtenerEgresosFiliales(),
   ]);
 
   if (!usuario) {
@@ -30,12 +34,6 @@ export default async function FilialesPage() {
   if (!permisosFiliales.puedeVer) {
     redirect("/dashboard");
   }
-
-  const [resumen, diezmos, egresos] = await Promise.all([
-    obtenerResumenFiliales(),
-    obtenerDiezmosFiliales(),
-    obtenerEgresosFiliales(),
-  ]);
 
   // Serializar Decimals
   const diezmosSerializados = diezmos.map((d) => ({
