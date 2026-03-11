@@ -84,6 +84,9 @@ export function CajaDetalleClient({
     fechaHasta: "",
     tipo: "",
   });
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [paginaFiliales, setPaginaFiliales] = useState(1);
+  const FILAS_POR_PAGINA = 20;
 
   // Filtrar movimientos
   const movimientosFiltrados = movimientosIniciales.filter((mov) => {
@@ -131,7 +134,15 @@ export function CajaDetalleClient({
       >,
       countIngresos: 0,
       countEgresos: 0,
-    }
+    },
+  );
+
+  const totalPaginas = Math.ceil(
+    movimientosFiltrados.length / FILAS_POR_PAGINA,
+  );
+  const movimientosPaginados = movimientosFiltrados.slice(
+    (paginaActual - 1) * FILAS_POR_PAGINA,
+    paginaActual * FILAS_POR_PAGINA,
   );
 
   const columns = [
@@ -359,17 +370,19 @@ export function CajaDetalleClient({
               label="Desde"
               type="date"
               value={filtros.fechaDesde}
-              onChange={(e) =>
-                setFiltros({ ...filtros, fechaDesde: e.target.value })
-              }
+              onChange={(e) => {
+                setFiltros({ ...filtros, fechaDesde: e.target.value });
+                setPaginaActual(1);
+              }}
             />
             <Input
               label="Hasta"
               type="date"
               value={filtros.fechaHasta}
-              onChange={(e) =>
-                setFiltros({ ...filtros, fechaHasta: e.target.value })
-              }
+              onChange={(e) => {
+                setFiltros({ ...filtros, fechaHasta: e.target.value });
+                setPaginaActual(1);
+              }}
             />
             <Combobox
               label="Tipo"
@@ -378,7 +391,10 @@ export function CajaDetalleClient({
                 { value: "egreso", label: "Egresos" },
               ]}
               value={filtros.tipo}
-              onChange={(value) => setFiltros({ ...filtros, tipo: value })}
+              onChange={(value) => {
+                setFiltros({ ...filtros, tipo: value });
+                setPaginaActual(1);
+              }}
               placeholder="Todos"
               clearable
               searchable={false}
@@ -387,9 +403,10 @@ export function CajaDetalleClient({
               <Button
                 variant="secondary"
                 className="flex-1"
-                onClick={() =>
-                  setFiltros({ fechaDesde: "", fechaHasta: "", tipo: "" })
-                }
+                onClick={() => {
+                  setFiltros({ fechaDesde: "", fechaHasta: "", tipo: "" });
+                  setPaginaActual(1);
+                }}
               >
                 Limpiar
               </Button>
@@ -400,10 +417,121 @@ export function CajaDetalleClient({
           <div className="overflow-x-auto">
             <Table
               columns={columns}
-              data={movimientosFiltrados}
+              data={movimientosPaginados}
               emptyMessage="No hay movimientos registrados"
             />
           </div>
+
+          {/* Paginación movimientos principales */}
+          {totalPaginas > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-4 border-t border-[#dceaef]">
+              <div className="text-sm text-[#73a9bf]">
+                Mostrando{" "}
+                <span className="font-semibold text-[#305969]">
+                  {(paginaActual - 1) * FILAS_POR_PAGINA + 1}
+                </span>{" "}
+                -{" "}
+                <span className="font-semibold text-[#305969]">
+                  {Math.min(
+                    paginaActual * FILAS_POR_PAGINA,
+                    movimientosFiltrados.length,
+                  )}
+                </span>{" "}
+                de{" "}
+                <span className="font-semibold text-[#305969]">
+                  {movimientosFiltrados.length}
+                </span>{" "}
+                movimientos
+              </div>
+              <div className="flex items-center gap-1 bg-[#f5f9fb] rounded-xl p-1">
+                <button
+                  onClick={() => setPaginaActual(1)}
+                  disabled={paginaActual === 1}
+                  className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Primera página"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                  disabled={paginaActual === 1}
+                  className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Anterior"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                </button>
+                <span className="px-4 py-1.5 text-sm font-semibold text-white bg-[#2ba193] rounded-lg mx-1">
+                  {paginaActual} / {totalPaginas}
+                </span>
+                <button
+                  onClick={() =>
+                    setPaginaActual((p) => Math.min(totalPaginas, p + 1))
+                  }
+                  disabled={paginaActual === totalPaginas}
+                  className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Siguiente"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setPaginaActual(totalPaginas)}
+                  disabled={paginaActual === totalPaginas}
+                  className="p-2 rounded-lg text-[#40768c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Última página"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Movimientos de Filiales */}
@@ -494,10 +622,141 @@ export function CajaDetalleClient({
                     ),
                   },
                 ]}
-                data={movimientosFiliales}
+                data={movimientosFiliales.slice(
+                  (paginaFiliales - 1) * FILAS_POR_PAGINA,
+                  paginaFiliales * FILAS_POR_PAGINA,
+                )}
                 emptyMessage="No hay movimientos de filiales"
               />
             </div>
+            {Math.ceil(movimientosFiliales.length / FILAS_POR_PAGINA) > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-4 border-t border-[#d4c5e8]">
+                <div className="text-sm text-[#8b7ba8]">
+                  Mostrando{" "}
+                  <span className="font-semibold text-[#6b4b9c]">
+                    {(paginaFiliales - 1) * FILAS_POR_PAGINA + 1}
+                  </span>{" "}
+                  -{" "}
+                  <span className="font-semibold text-[#6b4b9c]">
+                    {Math.min(
+                      paginaFiliales * FILAS_POR_PAGINA,
+                      movimientosFiliales.length,
+                    )}
+                  </span>{" "}
+                  de{" "}
+                  <span className="font-semibold text-[#6b4b9c]">
+                    {movimientosFiliales.length}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 bg-[#f3eeff] rounded-xl p-1">
+                  <button
+                    onClick={() => setPaginaFiliales(1)}
+                    disabled={paginaFiliales === 1}
+                    className="p-2 rounded-lg text-[#6b4b9c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Primera página"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setPaginaFiliales((p) => Math.max(1, p - 1))}
+                    disabled={paginaFiliales === 1}
+                    className="p-2 rounded-lg text-[#6b4b9c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Anterior"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 19l-7-7 7-7"
+                      />
+                    </svg>
+                  </button>
+                  <span className="px-4 py-1.5 text-sm font-semibold text-white bg-[#6b4b9c] rounded-lg mx-1">
+                    {paginaFiliales} /{" "}
+                    {Math.ceil(movimientosFiliales.length / FILAS_POR_PAGINA)}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setPaginaFiliales((p) =>
+                        Math.min(
+                          Math.ceil(
+                            movimientosFiliales.length / FILAS_POR_PAGINA,
+                          ),
+                          p + 1,
+                        ),
+                      )
+                    }
+                    disabled={
+                      paginaFiliales ===
+                      Math.ceil(movimientosFiliales.length / FILAS_POR_PAGINA)
+                    }
+                    className="p-2 rounded-lg text-[#6b4b9c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Siguiente"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() =>
+                      setPaginaFiliales(
+                        Math.ceil(
+                          movimientosFiliales.length / FILAS_POR_PAGINA,
+                        ),
+                      )
+                    }
+                    disabled={
+                      paginaFiliales ===
+                      Math.ceil(movimientosFiliales.length / FILAS_POR_PAGINA)
+                    }
+                    className="p-2 rounded-lg text-[#6b4b9c] hover:bg-white hover:shadow-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Última página"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </Card>
         )}
 

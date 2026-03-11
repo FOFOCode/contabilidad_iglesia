@@ -183,6 +183,7 @@ export function MultipleIngresoForm({
   };
 
   const addRow = () => {
+    if (rows.length >= 100) return; // límite de filas por envío
     setRows([...rows, createEmptyRow(nextId)]);
     setNextId(nextId + 1);
   };
