@@ -78,6 +78,9 @@ export function ListadoEgresosClient({
   const [paginaActual, setPaginaActual] = useState(1);
   const filasPorPagina = 10;
 
+  // Ordenamiento por fecha
+  const [ordenFecha, setOrdenFecha] = useState<"desc" | "asc">("desc");
+
   // Filtros
   const [filtros, setFiltros] = useState({
     desde: "",
@@ -101,32 +104,38 @@ export function ListadoEgresosClient({
     [monedas],
   );
 
-  // Filtrar egresos localmente - memoizado
+  // Filtrar y ordenar egresos localmente - memoizado
   const egresosFiltrados = useMemo(
     () =>
-      egresos.filter((egreso) => {
-        if (filtros.desde) {
-          const desde = new Date(filtros.desde);
-          if (new Date(egreso.fechaSalida) < desde) return false;
-        }
-        if (filtros.hasta) {
-          const hasta = new Date(filtros.hasta);
-          hasta.setHours(23, 59, 59);
-          if (new Date(egreso.fechaSalida) > hasta) return false;
-        }
-        if (
-          filtros.tipoGastoId &&
-          egreso.tipoGasto.nombre !==
-            tiposGasto.find((t) => t.id === filtros.tipoGastoId)?.nombre
-        ) {
-          return false;
-        }
-        if (filtros.monedaId && egreso.moneda.id !== filtros.monedaId) {
-          return false;
-        }
-        return true;
-      }),
-    [egresos, filtros, tiposGasto],
+      egresos
+        .filter((egreso) => {
+          if (filtros.desde) {
+            const desde = new Date(filtros.desde);
+            if (new Date(egreso.fechaSalida) < desde) return false;
+          }
+          if (filtros.hasta) {
+            const hasta = new Date(filtros.hasta);
+            hasta.setHours(23, 59, 59);
+            if (new Date(egreso.fechaSalida) > hasta) return false;
+          }
+          if (
+            filtros.tipoGastoId &&
+            egreso.tipoGasto.nombre !==
+              tiposGasto.find((t) => t.id === filtros.tipoGastoId)?.nombre
+          ) {
+            return false;
+          }
+          if (filtros.monedaId && egreso.moneda.id !== filtros.monedaId) {
+            return false;
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          const da = new Date(a.fechaSalida).getTime();
+          const db = new Date(b.fechaSalida).getTime();
+          return ordenFecha === "desc" ? db - da : da - db;
+        }),
+    [egresos, filtros, tiposGasto, ordenFecha],
   );
 
   // Cálculos de paginación
@@ -501,9 +510,46 @@ export function ListadoEgresosClient({
 
       {/* Filtros */}
       <Card className="mb-4 md:mb-5">
-        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
-          Filtros
-        </h3>
+        <div className="flex items-center justify-between mb-3 md:mb-4">
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide">
+            Filtros
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              setOrdenFecha((o) => (o === "desc" ? "asc" : "desc"));
+              setPaginaActual(1);
+            }}
+            className="flex items-center gap-1.5 text-xs font-medium text-[#e0451f] hover:text-[#b43718] bg-[#fcece9] hover:bg-[#f9d8d0] border border-[#f3b5a5] hover:border-[#e0451f] px-2.5 py-1.5 rounded-lg transition-colors"
+            title={`Ordenar por fecha ${
+              ordenFecha === "desc" ? "ascendente" : "descendente"
+            }`}
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              {ordenFecha === "desc" ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
+                />
+              )}
+            </svg>
+            Fecha {ordenFecha === "desc" ? "↓ Reciente" : "↑ Antigua"}
+          </button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <Input
             label="Desde"
@@ -628,7 +674,38 @@ export function ListadoEgresosClient({
         <Table
           columns={columns}
           data={egresosPaginados}
-          emptyMessage="No hay egresos registrados."
+          emptyMessage={
+            <div className="flex flex-col items-center gap-3 py-4">
+              <div className="w-16 h-16 bg-[#fcece9] rounded-full flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-[#e0451f]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                  />
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-[#305969] font-semibold text-base">
+                  Sin egresos registrados
+                </p>
+                <p className="text-[#73a9bf] text-sm mt-1">
+                  {filtros.desde ||
+                  filtros.hasta ||
+                  filtros.tipoGastoId ||
+                  filtros.monedaId
+                    ? "No hay egresos que coincidan con los filtros aplicados"
+                    : 'Registra tu primer egreso usando el botón "Nuevo Egreso"'}
+                </p>
+              </div>
+            </div>
+          }
         />
 
         {/* Paginación */}

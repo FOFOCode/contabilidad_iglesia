@@ -468,6 +468,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Sociedad"
+                id={`row-${row.id}-sociedad`}
                 options={sociedadOptions}
                 value={row.sociedadId}
                 onChange={(value) => updateRow(row.id, "sociedadId", value)}
@@ -477,6 +478,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Tipo de Servicio"
+                id={`row-${row.id}-servicio`}
                 options={servicioOptions}
                 value={row.servicioId}
                 onChange={(value) => updateRow(row.id, "servicioId", value)}
@@ -486,6 +488,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Tipo de Ingreso"
+                id={`row-${row.id}-tipo-ingreso`}
                 options={tipoIngresoOptions}
                 value={row.tipoIngresoId}
                 onChange={(value) => updateRow(row.id, "tipoIngresoId", value)}
@@ -495,6 +498,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Caja"
+                id={`row-${row.id}-caja`}
                 options={cajaOptions}
                 value={row.cajaId}
                 onChange={(value) => updateRow(row.id, "cajaId", value)}
@@ -529,6 +533,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Moneda"
+                id={`row-${row.id}-moneda`}
                 options={monedaOptions}
                 value={row.monedaId}
                 onChange={(value) => updateRow(row.id, "monedaId", value)}

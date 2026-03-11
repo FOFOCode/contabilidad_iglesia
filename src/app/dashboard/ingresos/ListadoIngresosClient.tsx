@@ -119,6 +119,9 @@ export function ListadoIngresosClient({
   const [paginaActual, setPaginaActual] = useState(1);
   const filasPorPagina = 10;
 
+  // Ordenamiento por fecha
+  const [ordenFecha, setOrdenFecha] = useState<"desc" | "asc">("desc");
+
   // Filtros
   const [filtros, setFiltros] = useState({
     desde: "",
@@ -153,44 +156,50 @@ export function ListadoIngresosClient({
     [monedas],
   );
 
-  // Filtrar ingresos localmente - memoizado
+  // Filtrar y ordenar ingresos localmente - memoizado
   const ingresosFiltrados = useMemo(
     () =>
-      ingresos.filter((ingreso) => {
-        if (filtros.desde) {
-          const desde = new Date(filtros.desde);
-          const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
-          if (fechaIngreso < desde) return false;
-        }
-        if (filtros.hasta) {
-          const hasta = new Date(filtros.hasta);
-          hasta.setHours(23, 59, 59);
-          const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
-          if (fechaIngreso > hasta) return false;
-        }
-        if (
-          filtros.sociedadId &&
-          ingreso.sociedad.nombre !==
-            sociedades.find((s) => s.id === filtros.sociedadId)?.nombre
-        ) {
-          return false;
-        }
-        if (
-          filtros.tipoIngresoId &&
-          ingreso.tipoIngreso.nombre !==
-            tiposIngreso.find((t) => t.id === filtros.tipoIngresoId)?.nombre
-        ) {
-          return false;
-        }
-        if (
-          filtros.monedaId &&
-          !ingreso.montos.some((m) => m.moneda.id === filtros.monedaId)
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    [ingresos, filtros, sociedades, tiposIngreso],
+      ingresos
+        .filter((ingreso) => {
+          if (filtros.desde) {
+            const desde = new Date(filtros.desde);
+            const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
+            if (fechaIngreso < desde) return false;
+          }
+          if (filtros.hasta) {
+            const hasta = new Date(filtros.hasta);
+            hasta.setHours(23, 59, 59);
+            const fechaIngreso = asegurarFecha(ingreso.fechaRecaudacion);
+            if (fechaIngreso > hasta) return false;
+          }
+          if (
+            filtros.sociedadId &&
+            ingreso.sociedad.nombre !==
+              sociedades.find((s) => s.id === filtros.sociedadId)?.nombre
+          ) {
+            return false;
+          }
+          if (
+            filtros.tipoIngresoId &&
+            ingreso.tipoIngreso.nombre !==
+              tiposIngreso.find((t) => t.id === filtros.tipoIngresoId)?.nombre
+          ) {
+            return false;
+          }
+          if (
+            filtros.monedaId &&
+            !ingreso.montos.some((m) => m.moneda.id === filtros.monedaId)
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          const da = asegurarFecha(a.fechaRecaudacion).getTime();
+          const db = asegurarFecha(b.fechaRecaudacion).getTime();
+          return ordenFecha === "desc" ? db - da : da - db;
+        }),
+    [ingresos, filtros, sociedades, tiposIngreso, ordenFecha],
   );
 
   // Cálculos de paginación
@@ -602,9 +611,46 @@ export function ListadoIngresosClient({
 
       {/* Filtros */}
       <Card className="mb-4 md:mb-5">
-        <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide mb-3 md:mb-4">
-          Filtros
-        </h3>
+        <div className="flex items-center justify-between mb-3 md:mb-4">
+          <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide">
+            Filtros
+          </h3>
+          <button
+            type="button"
+            onClick={() => {
+              setOrdenFecha((o) => (o === "desc" ? "asc" : "desc"));
+              setPaginaActual(1);
+            }}
+            className="flex items-center gap-1.5 text-xs font-medium text-[#40768c] hover:text-[#2ba193] bg-[#eef4f7] hover:bg-[#ebfaf8] border border-[#b9d4df] hover:border-[#aeeae3] px-2.5 py-1.5 rounded-lg transition-colors"
+            title={`Ordenar por fecha ${
+              ordenFecha === "desc" ? "ascendente" : "descendente"
+            }`}
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              {ordenFecha === "desc" ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
+                />
+              )}
+            </svg>
+            Fecha {ordenFecha === "desc" ? "↓ Reciente" : "↑ Antigua"}
+          </button>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
           <Input
             label="Desde"
@@ -741,7 +787,39 @@ export function ListadoIngresosClient({
         <Table
           columns={columns}
           data={ingresosPaginados}
-          emptyMessage="No hay ingresos registrados. ¡Crea el primero!"
+          emptyMessage={
+            <div className="flex flex-col items-center gap-3 py-4">
+              <div className="w-16 h-16 bg-[#ebfaf8] rounded-full flex items-center justify-center">
+                <svg
+                  className="w-8 h-8 text-[#2ba193]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-[#305969] font-semibold text-base">
+                  Sin ingresos registrados
+                </p>
+                <p className="text-[#73a9bf] text-sm mt-1">
+                  {filtros.desde ||
+                  filtros.hasta ||
+                  filtros.sociedadId ||
+                  filtros.tipoIngresoId ||
+                  filtros.monedaId
+                    ? "No hay ingresos que coincidan con los filtros aplicados"
+                    : 'Registra tu primer ingreso usando el botón "Nuevo Ingreso"'}
+                </p>
+              </div>
+            </div>
+          }
         />
 
         {/* Paginación */}
