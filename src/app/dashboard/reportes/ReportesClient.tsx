@@ -227,14 +227,21 @@ export function ReportesClient({
   const [isPending, startTransition] = useTransition();
   const [vistaActiva, setVistaActiva] = useState<TipoVista>("movimientos");
   const [paises, setPaises] = useState<Pais[]>([]);
-  const [filtros, setFiltros] = useState({
-    tipoReporte: "todos",
-    periodo: "mes",
-    fechaInicio: "",
-    fechaFin: "",
-    cajaId: "",
-    sociedadId: "",
-    monedaId: "",
+  const [filtros, setFiltros] = useState(() => {
+    const _fmt = (d: Date) => {
+      const p = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    const { inicio, fin } = calcularFechas("mes");
+    return {
+      tipoReporte: "todos",
+      periodo: "mes",
+      fechaInicio: _fmt(inicio),
+      fechaFin: _fmt(fin),
+      cajaId: "",
+      sociedadId: "",
+      monedaId: "",
+    };
   });
   const [filtrosAnaliticos, setFiltrosAnaliticos] = useState({
     anio: obtenerFechaElSalvador().getFullYear(),
@@ -254,6 +261,8 @@ export function ReportesClient({
     monedaId: "",
   });
   const [resultados, setResultados] = useState<MovimientoReporte[]>([]);
+  const POR_PAGINA = 10;
+  const [paginaActual, setPaginaActual] = useState(1);
   const [datosAnaliticos, setDatosAnaliticos] =
     useState<DatosAnaliticos | null>(null);
   const [datosSaldosActuales, setDatosSaldosActuales] = useState<any>(null);
@@ -299,7 +308,15 @@ export function ReportesClient({
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
       const { name, value } = e.target;
-      setFiltros((prev) => ({ ...prev, [name]: value }));
+      if (name === "fechaInicio" || name === "fechaFin") {
+        setFiltros((prev) => ({
+          ...prev,
+          [name]: value,
+          periodo: "personalizado",
+        }));
+      } else {
+        setFiltros((prev) => ({ ...prev, [name]: value }));
+      }
     },
     [],
   );
@@ -338,19 +355,18 @@ export function ReportesClient({
       let fechaInicio: Date | undefined;
       let fechaFin: Date | undefined;
 
-      if (filtros.periodo === "personalizado") {
-        if (filtros.fechaInicio) {
-          const [y, m, d] = filtros.fechaInicio.split("-").map(Number);
-          fechaInicio = new Date(y, m - 1, d, 0, 0, 0);
-        }
-        if (filtros.fechaFin) {
-          const [y, m, d] = filtros.fechaFin.split("-").map(Number);
-          fechaFin = new Date(y, m - 1, d, 23, 59, 59);
-        }
-      } else {
+      if (filtros.fechaInicio) {
+        const [y, m, d] = filtros.fechaInicio.split("-").map(Number);
+        fechaInicio = new Date(y, m - 1, d, 0, 0, 0);
+      }
+      if (filtros.fechaFin) {
+        const [y, m, d] = filtros.fechaFin.split("-").map(Number);
+        fechaFin = new Date(y, m - 1, d, 23, 59, 59);
+      }
+      if (!fechaInicio || !fechaFin) {
         const fechas = calcularFechas(filtros.periodo);
-        fechaInicio = fechas.inicio;
-        fechaFin = fechas.fin;
+        fechaInicio = fechaInicio || fechas.inicio;
+        fechaFin = fechaFin || fechas.fin;
       }
 
       // Enviar fechas como ISO strings para evitar problemas de serialización
@@ -389,6 +405,7 @@ export function ReportesClient({
       );
 
       setResultados(movimientos);
+      setPaginaActual(1);
       setMostrarResultados(true);
     });
   };
@@ -423,6 +440,21 @@ export function ReportesClient({
       setMostrarResultados(true);
     });
   };
+
+  // Sincronizar fechas cuando cambia el período preset
+  useEffect(() => {
+    if (filtros.periodo !== "personalizado") {
+      const { inicio, fin } = calcularFechas(filtros.periodo);
+      const p = (n: number) => String(n).padStart(2, "0");
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      setFiltros((prev) => ({
+        ...prev,
+        fechaInicio: fmt(inicio),
+        fechaFin: fmt(fin),
+      }));
+    }
+  }, [filtros.periodo]);
 
   // Cargar países al montar
   useEffect(() => {
@@ -1642,6 +1674,22 @@ export function ReportesClient({
               onChange={(value) => handleComboboxChange("periodo", value)}
               searchable={false}
             />
+            <Input
+              label="Fecha Inicio"
+              name="fechaInicio"
+              type="date"
+              value={filtros.fechaInicio}
+              onChange={handleChange}
+            />
+            <Input
+              label="Fecha Fin"
+              name="fechaFin"
+              type="date"
+              value={filtros.fechaFin}
+              onChange={handleChange}
+            />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
             <Combobox
               label="Caja"
               options={cajaOptions}
@@ -1661,25 +1709,6 @@ export function ReportesClient({
               searchable={false}
             />
           </div>
-
-          {filtros.periodo === "personalizado" && (
-            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
-              <Input
-                label="Fecha Inicio"
-                name="fechaInicio"
-                type="date"
-                value={filtros.fechaInicio}
-                onChange={handleChange}
-              />
-              <Input
-                label="Fecha Fin"
-                name="fechaFin"
-                type="date"
-                value={filtros.fechaFin}
-                onChange={handleChange}
-              />
-            </div>
-          )}
 
           {filtros.tipoReporte !== "egresos" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
@@ -2109,7 +2138,52 @@ export function ReportesClient({
                 </p>
               </div>
             ) : (
-              <Table data={resultados} columns={columns} />
+              <>
+                <Table
+                  data={resultados.slice(
+                    (paginaActual - 1) * POR_PAGINA,
+                    paginaActual * POR_PAGINA,
+                  )}
+                  columns={columns}
+                />
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#cce0e8]">
+                  <span className="text-xs text-[#73a9bf]">
+                    Mostrando {(paginaActual - 1) * POR_PAGINA + 1}–
+                    {Math.min(paginaActual * POR_PAGINA, resultados.length)} de{" "}
+                    {resultados.length} registros
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                      disabled={paginaActual === 1}
+                      className="px-3 py-1 text-xs rounded border border-[#cce0e8] text-[#40768c] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#e8f4f8] transition-colors"
+                    >
+                      ← Anterior
+                    </button>
+                    <span className="text-xs text-[#40768c] font-medium">
+                      Página {paginaActual} de{" "}
+                      {Math.ceil(resultados.length / POR_PAGINA)}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setPaginaActual((p) =>
+                          Math.min(
+                            Math.ceil(resultados.length / POR_PAGINA),
+                            p + 1,
+                          ),
+                        )
+                      }
+                      disabled={
+                        paginaActual ===
+                        Math.ceil(resultados.length / POR_PAGINA)
+                      }
+                      className="px-3 py-1 text-xs rounded border border-[#cce0e8] text-[#40768c] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#e8f4f8] transition-colors"
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </Card>
         </>

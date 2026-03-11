@@ -104,6 +104,7 @@ export function ListadoIngresosClient({
   const [ingresos, setIngresos] = useState(ingresosIniciales);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<IngresoData | null>(null);
   const [editando, setEditando] = useState<IngresoData | null>(null);
@@ -247,7 +248,11 @@ export function ListadoIngresosClient({
         // Rollback si falla el servidor
         setIngresos(snapshot);
         setDeleteConfirm(id);
-        setError("Error al eliminar el ingreso");
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Error al eliminar el ingreso. Intente nuevamente.",
+        );
         console.error(e);
       }
     });
@@ -373,8 +378,12 @@ export function ListadoIngresosClient({
           comentario: "",
           montos: [],
         });
+        setSuccessMessage("Ingreso actualizado correctamente");
+        setTimeout(() => setSuccessMessage(null), 3000);
       } catch (e) {
-        setError("Error al actualizar el ingreso");
+        setError(
+          e instanceof Error ? e.message : "Error al actualizar el ingreso",
+        );
         console.error(e);
       }
     });
@@ -595,8 +604,54 @@ export function ListadoIngresosClient({
   return (
     <div className="p-4 md:p-5 lg:p-6">
       {error && (
-        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
-          {error}
+        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-5 h-5 text-[#2ba193] shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="text-[#15514a] font-medium">{successMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-[#2ba193] hover:text-[#208079] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -1112,8 +1167,19 @@ export function ListadoIngresosClient({
             className="space-y-4"
           >
             {error && (
-              <div className="bg-[#fcece9] text-[#e0451f] p-3 rounded-lg text-sm">
-                {error}
+              <div className="bg-[#fcece9] border border-[#e0451f] p-3 rounded-lg text-sm flex items-start gap-2 text-[#b43718]">
+                <svg
+                  className="w-4 h-4 shrink-0 mt-0.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>{error}</span>
               </div>
             )}
 

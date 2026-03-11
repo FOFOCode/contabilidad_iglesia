@@ -38,6 +38,11 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             ${className}
           `}
           {...props}
+          onWheel={
+            props.type === "number"
+              ? (e) => e.currentTarget.blur()
+              : props.onWheel
+          }
         />
         {error && (
           <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
@@ -56,7 +61,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 Input.displayName = "Input";

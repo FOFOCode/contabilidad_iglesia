@@ -63,6 +63,7 @@ export function DonacionesClient({
   const [donaciones, setDonaciones] = useState(donacionesIniciales);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<DonacionData | null>(null);
   const [editando, setEditando] = useState<DonacionData | null>(null);
@@ -92,13 +93,13 @@ export function DonacionesClient({
   // Memoizar opciones de select
   const tipoOfrendaOptions = useMemo(
     () => tiposOfrenda.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposOfrenda]
+    [tiposOfrenda],
   );
 
   const monedaOptions = useMemo(
     () =>
       monedas.map((m) => ({ value: m.id, label: `${m.simbolo} ${m.codigo}` })),
-    [monedas]
+    [monedas],
   );
 
   // Filtrar donaciones localmente
@@ -128,7 +129,7 @@ export function DonacionesClient({
         }
         return true;
       }),
-    [donaciones, filtros]
+    [donaciones, filtros],
   );
 
   // Cálculos de paginación
@@ -137,9 +138,9 @@ export function DonacionesClient({
     () =>
       donacionesFiltradas.slice(
         (paginaActual - 1) * filasPorPagina,
-        paginaActual * filasPorPagina
+        paginaActual * filasPorPagina,
       ),
-    [donacionesFiltradas, paginaActual]
+    [donacionesFiltradas, paginaActual],
   );
 
   // Resetear página cuando cambian los filtros
@@ -170,12 +171,12 @@ export function DonacionesClient({
           router.refresh();
         } catch (err) {
           setError(
-            err instanceof Error ? err.message : "Error al eliminar donación"
+            err instanceof Error ? err.message : "Error al eliminar donación",
           );
         }
       });
     },
-    [router]
+    [router],
   );
 
   const handleEditar = useCallback((donacion: DonacionData) => {
@@ -244,15 +245,17 @@ export function DonacionesClient({
                   moneda:
                     monedas.find((m) => m.id === formEdit.monedaId) || d.moneda,
                 }
-              : d
-          )
+              : d,
+          ),
         );
 
         setEditando(null);
+        setSuccessMessage("Donación actualizada correctamente");
+        setTimeout(() => setSuccessMessage(null), 3000);
         router.refresh();
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Error al actualizar donación"
+          err instanceof Error ? err.message : "Error al actualizar donación",
         );
       }
     });
@@ -283,16 +286,56 @@ export function DonacionesClient({
 
   return (
     <div className="p-6 space-y-6">
-      {/* Mensaje de error */}
       {error && (
-        <Card className="p-4 bg-red-50 border-red-200">
-          <div className="flex items-center justify-between">
-            <p className="text-red-700">{error}</p>
-            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-              ✕
-            </Button>
+        <div className="p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{error}</span>
           </div>
-        </Card>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-5 h-5 text-[#2ba193] shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="text-[#15514a] font-medium">{successMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-[#2ba193] hover:text-[#208079] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {/* Header con acciones */}
@@ -627,7 +670,7 @@ export function DonacionesClient({
                 <p className="text-xl font-bold text-[#2ba193]">
                   {formatearMonto(
                     detalleSeleccionado.monto,
-                    detalleSeleccionado.moneda.simbolo
+                    detalleSeleccionado.moneda.simbolo,
                   )}
                 </p>
               </div>

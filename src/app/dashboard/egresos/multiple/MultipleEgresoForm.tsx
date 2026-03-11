@@ -372,9 +372,9 @@ export function MultipleEgresoForm({
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
         <Card className="text-center p-8 max-w-md">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-[#fcece9] rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
-              className="w-8 h-8 text-green-600"
+              className="w-8 h-8 text-[#e0451f]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -387,10 +387,10 @@ export function MultipleEgresoForm({
               />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-800 mb-2">
+          <h3 className="text-xl font-semibold text-[#5a1c0c] mb-2">
             ¡Egresos Guardados!
           </h3>
-          <p className="text-gray-600">Redirigiendo al listado...</p>
+          <p className="text-[#e0451f]">Redirigiendo al listado...</p>
         </Card>
       </div>
     );
@@ -399,8 +399,28 @@ export function MultipleEgresoForm({
   return (
     <form onSubmit={handleSubmit} className="p-4 md:p-6">
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+        <div className="mb-4 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 
