@@ -89,7 +89,7 @@ export function ListadoEgresosClient({
   // Memoizar opciones de select
   const tipoGastoOptions = useMemo(
     () => tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposGasto]
+    [tiposGasto],
   );
 
   const monedaOptions = useMemo(
@@ -98,7 +98,7 @@ export function ListadoEgresosClient({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   // Filtrar egresos localmente - memoizado
@@ -126,7 +126,7 @@ export function ListadoEgresosClient({
         }
         return true;
       }),
-    [egresos, filtros, tiposGasto]
+    [egresos, filtros, tiposGasto],
   );
 
   // Cálculos de paginación
@@ -135,9 +135,9 @@ export function ListadoEgresosClient({
     () =>
       egresosFiltrados.slice(
         (paginaActual - 1) * filasPorPagina,
-        paginaActual * filasPorPagina
+        paginaActual * filasPorPagina,
       ),
-    [egresosFiltrados, paginaActual, filasPorPagina]
+    [egresosFiltrados, paginaActual, filasPorPagina],
   );
 
   // Resetear página cuando cambian los filtros
@@ -176,7 +176,7 @@ export function ListadoEgresosClient({
       });
       setError(null);
     },
-    [tiposGasto]
+    [tiposGasto],
   );
 
   const handleActualizar = useCallback(() => {
@@ -228,14 +228,14 @@ export function ListadoEgresosClient({
                   moneda:
                     monedas.find((m) => m.id === formEdit.monedaId) || e.moneda,
                 }
-              : e
-          )
+              : e,
+          ),
         );
 
         setEditando(null);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Error al actualizar egreso"
+          err instanceof Error ? err.message : "Error al actualizar egreso",
         );
       }
     });
@@ -260,11 +260,14 @@ export function ListadoEgresosClient({
         .map((moneda) => {
           const total = egresosFiltrados
             .filter((e) => e.moneda.id === moneda.id)
-            .reduce((acc, e) => acc + Number(e.monto), 0);
+            .reduce(
+              (acc, e) => Math.round((acc + Number(e.monto)) * 100) / 100,
+              0,
+            );
           return { moneda, total };
         })
         .filter((t) => t.total > 0),
-    [monedas, egresosFiltrados]
+    [monedas, egresosFiltrados],
   );
 
   const columns = [
@@ -573,8 +576,8 @@ export function ListadoEgresosClient({
                 {filtros.desde && filtros.hasta
                   ? `${filtros.desde} al ${filtros.hasta}`
                   : filtros.desde
-                  ? `Desde ${filtros.desde}`
-                  : `Hasta ${filtros.hasta}`}
+                    ? `Desde ${filtros.desde}`
+                    : `Hasta ${filtros.hasta}`}
               </span>
             )}
             {!filtros.desde && !filtros.hasta && (
@@ -595,6 +598,7 @@ export function ListadoEgresosClient({
                       {moneda.simbolo}{" "}
                       {total.toLocaleString("es-GT", {
                         minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
                       })}
                     </div>
                   </div>
@@ -639,7 +643,7 @@ export function ListadoEgresosClient({
               <span className="font-semibold text-[#305969]">
                 {Math.min(
                   paginaActual * filasPorPagina,
-                  egresosFiltrados.length
+                  egresosFiltrados.length,
                 )}
               </span>{" "}
               de{" "}
@@ -775,7 +779,7 @@ export function ListadoEgresosClient({
                   <p className="text-xs text-[#73a9bf] uppercase">Fecha</p>
                   <p className="font-medium text-[#203b46]">
                     {new Date(
-                      detalleSeleccionado.fechaSalida
+                      detalleSeleccionado.fechaSalida,
                     ).toLocaleDateString("es-GT", {
                       weekday: "long",
                       year: "numeric",

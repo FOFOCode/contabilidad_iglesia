@@ -53,7 +53,7 @@ export function NuevaDonacionForm({
   // Memoizar opciones de selects
   const tipoOfrendaOptions = useMemo(
     () => tiposOfrenda.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposOfrenda]
+    [tiposOfrenda],
   );
 
   const monedaOptions = useMemo(
@@ -62,13 +62,13 @@ export function NuevaDonacionForm({
         value: m.id,
         label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    >,
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -116,7 +116,7 @@ export function NuevaDonacionForm({
           telefono: formData.telefono.trim() || undefined,
           tipoOfrendaId: formData.tipoOfrendaId,
           fecha: fechaLocal,
-          monto: parseFloat(formData.monto),
+          monto: Math.round(parseFloat(formData.monto) * 100) / 100,
           monedaId: formData.monedaId,
           usuarioId,
           comentario: formData.comentario.trim() || undefined,

@@ -7,7 +7,7 @@ import { validarPermiso } from "@/lib/permisos";
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
   modulo: string,
-  accion: "crear" | "editar" | "eliminar"
+  accion: "crear" | "editar" | "eliminar",
 ) {
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
@@ -50,7 +50,7 @@ export async function obtenerPaises() {
     prisma.pais.findMany({
       where: { activo: true },
       orderBy: { orden: "asc" },
-    })
+    }),
   );
 }
 
@@ -58,7 +58,7 @@ export async function obtenerTodosPaises() {
   return withRetry(() =>
     prisma.pais.findMany({
       orderBy: [{ activo: "desc" }, { orden: "asc" }],
-    })
+    }),
   );
 }
 
@@ -76,7 +76,7 @@ export async function crearPais(data: { nombre: string; codigo?: string }) {
 
 export async function actualizarPais(
   id: string,
-  data: { nombre?: string; codigo?: string; activo?: boolean; orden?: number }
+  data: { nombre?: string; codigo?: string; activo?: boolean; orden?: number },
 ) {
   await validarPermisoActual("filiales", "editar");
   return prisma.pais.update({
@@ -91,7 +91,7 @@ export async function eliminarPais(id: string) {
   const filiales = await prisma.filial.count({ where: { paisId: id } });
   if (filiales > 0) {
     throw new Error(
-      "No se puede eliminar un país con iglesias filiales asignadas"
+      "No se puede eliminar un país con iglesias filiales asignadas",
     );
   }
   return prisma.pais.delete({ where: { id } });
@@ -107,7 +107,7 @@ export async function obtenerFiliales() {
       where: { activa: true },
       include: { pais: true },
       orderBy: { orden: "asc" },
-    })
+    }),
   );
 }
 
@@ -116,7 +116,7 @@ export async function obtenerTodasFiliales() {
     prisma.filial.findMany({
       include: { pais: true },
       orderBy: [{ activa: "desc" }, { orden: "asc" }],
-    })
+    }),
   );
 }
 
@@ -146,7 +146,7 @@ export async function actualizarFilial(
     paisId?: string;
     activa?: boolean;
     orden?: number;
-  }
+  },
 ) {
   await validarPermisoActual("filiales", "editar");
   return prisma.filial.update({
@@ -323,10 +323,10 @@ export async function crearEgresoFilial(data: CrearEgresoFilialData) {
     throw new Error(
       `Saldo insuficiente. Disponible: ${simbolo}${disponible.toLocaleString(
         "es-GT",
-        { minimumFractionDigits: 2 }
+        { minimumFractionDigits: 2 },
       )}. Intenta egresar: ${simbolo}${data.monto.toLocaleString("es-GT", {
         minimumFractionDigits: 2,
-      })}`
+      })}`,
     );
   }
 
@@ -475,9 +475,9 @@ export async function obtenerResumenFiliales() {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
         monedaSimbolo: moneda.simbolo,
-        totalIngresos,
-        totalEgresos,
-        saldo: totalIngresos - totalEgresos,
+        totalIngresos: Math.round(totalIngresos * 100) / 100,
+        totalEgresos: Math.round(totalEgresos * 100) / 100,
+        saldo: Math.round((totalIngresos - totalEgresos) * 100) / 100,
       };
     });
 
@@ -553,10 +553,10 @@ export async function obtenerSaldoFiliales() {
 
     const saldos = monedas.map((moneda) => {
       const ingresos = Number(
-        diezmosPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto || 0
+        diezmosPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto || 0,
       );
       const egresos = Number(
-        egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto || 0
+        egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto || 0,
       );
       const saldo = ingresos - egresos;
 
@@ -564,9 +564,9 @@ export async function obtenerSaldoFiliales() {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
         monedaSimbolo: moneda.simbolo,
-        ingresos,
-        egresos,
-        saldo,
+        ingresos: Math.round(ingresos * 100) / 100,
+        egresos: Math.round(egresos * 100) / 100,
+        saldo: Math.round(saldo * 100) / 100,
       };
     });
 
@@ -641,16 +641,27 @@ export async function obtenerReporteDiezmosFiliales(filtros?: {
 
   // Agrupar por país
   const porPais = Object.values(
-    diezmos.reduce((acc, d) => {
-      const paisId = d.filial.pais.id;
-      const paisNombre = d.filial.pais.nombre;
-      if (!acc[paisId]) {
-        acc[paisId] = { id: paisId, nombre: paisNombre, total: 0, cantidad: 0 };
-      }
-      acc[paisId].total += Number(d.monto);
-      acc[paisId].cantidad += 1;
-      return acc;
-    }, {} as Record<string, { id: string; nombre: string; total: number; cantidad: number }>)
+    diezmos.reduce(
+      (acc, d) => {
+        const paisId = d.filial.pais.id;
+        const paisNombre = d.filial.pais.nombre;
+        if (!acc[paisId]) {
+          acc[paisId] = {
+            id: paisId,
+            nombre: paisNombre,
+            total: 0,
+            cantidad: 0,
+          };
+        }
+        acc[paisId].total += Number(d.monto);
+        acc[paisId].cantidad += 1;
+        return acc;
+      },
+      {} as Record<
+        string,
+        { id: string; nombre: string; total: number; cantidad: number }
+      >,
+    ),
   );
 
   const totalGeneral = diezmos.reduce((sum, d) => sum + Number(d.monto), 0);
@@ -689,23 +700,34 @@ export async function obtenerReporteCajaFiliales(filtros?: {
 
   // Agrupar por tipo de gasto
   const porTipoGasto = Object.values(
-    egresos.reduce((acc, e) => {
-      const tipoId = e.tipoGasto.id;
-      const tipoNombre = e.tipoGasto.nombre;
-      if (!acc[tipoId]) {
-        acc[tipoId] = { id: tipoId, nombre: tipoNombre, total: 0, cantidad: 0 };
-      }
-      acc[tipoId].total += Number(e.monto);
-      acc[tipoId].cantidad += 1;
-      return acc;
-    }, {} as Record<string, { id: string; nombre: string; total: number; cantidad: number }>)
+    egresos.reduce(
+      (acc, e) => {
+        const tipoId = e.tipoGasto.id;
+        const tipoNombre = e.tipoGasto.nombre;
+        if (!acc[tipoId]) {
+          acc[tipoId] = {
+            id: tipoId,
+            nombre: tipoNombre,
+            total: 0,
+            cantidad: 0,
+          };
+        }
+        acc[tipoId].total += Number(e.monto);
+        acc[tipoId].cantidad += 1;
+        return acc;
+      },
+      {} as Record<
+        string,
+        { id: string; nombre: string; total: number; cantidad: number }
+      >,
+    ),
   );
 
   // Agrupar por mes
   const porMes = Array.from({ length: 12 }, (_, i) => {
     const mes = i + 1;
     const egresosMes = egresos.filter(
-      (e) => new Date(e.fechaSalida).getMonth() === i
+      (e) => new Date(e.fechaSalida).getMonth() === i,
     );
     const total = egresosMes.reduce((sum, e) => sum + Number(e.monto), 0);
 

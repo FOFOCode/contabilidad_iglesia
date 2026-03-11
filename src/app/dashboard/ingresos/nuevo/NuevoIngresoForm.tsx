@@ -83,22 +83,22 @@ export function NuevoIngresoForm({
   // Memoizar opciones de selects para evitar recálculos
   const sociedadOptions = useMemo(
     () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    [sociedades]
+    [sociedades],
   );
 
   const servicioOptions = useMemo(
     () => servicios.map((s) => ({ value: s.id, label: s.nombre })),
-    [servicios]
+    [servicios],
   );
 
   const tipoIngresoOptions = useMemo(
     () => tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposIngreso]
+    [tiposIngreso],
   );
 
   const cajaOptions = useMemo(
     () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    [cajas]
+    [cajas],
   );
 
   const monedaOptions = useMemo(
@@ -107,72 +107,62 @@ export function NuevoIngresoForm({
         value: m.id,
         label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   // Buscar caja basada en sociedad y tipo de ingreso
+  // Regla: el checkbox "esGeneral" de la caja matcheada decide el routing:
+  //   - esGeneral=true  → el dinero va a la Caja General principal + tracking en esta caja
+  //   - esGeneral=false → el dinero va directo y solo a esta caja
   useEffect(() => {
     if (formData.sociedadId && formData.tipoIngresoId) {
       let cajaPrincipal: Caja | undefined;
       let cajaSecundariaEncontrada: Caja | undefined;
 
-      // Obtener el tipo de ingreso seleccionado
-      const tipoIngresoSeleccionado = tiposIngreso.find(
-        (t) => t.id === formData.tipoIngresoId
+      // Caja General principal: la única sin sociedad ni tipo asignados
+      const mainCajaGeneral = cajas.find(
+        (c) => c.esGeneral && !c.sociedadId && !c.tipoIngresoId,
       );
-      const esOfrenda = tipoIngresoSeleccionado?.nombre
-        .toLowerCase()
-        .includes("ofrenda");
 
-      // Buscar caja general
-      const cajaGeneral = cajas.find((c) => c.esGeneral);
-
-      // Buscar caja específica: sociedad + tipo de ingreso
+      // Buscar la caja que mejor coincida con sociedad + tipo
       const cajaEspecifica = cajas.find(
         (c) =>
           c.sociedadId === formData.sociedadId &&
-          c.tipoIngresoId === formData.tipoIngresoId &&
-          !c.esGeneral
+          c.tipoIngresoId === formData.tipoIngresoId,
       );
-
-      // Buscar caja solo por tipo de ingreso (cualquier sociedad)
       const cajaPorTipo = cajas.find(
         (c) =>
           c.tipoIngresoId === formData.tipoIngresoId &&
           !c.sociedadId &&
-          !c.esGeneral
+          !c.esGeneral,
       );
-
-      // Buscar caja solo por sociedad (cualquier tipo de ingreso)
       const cajaPorSociedad = cajas.find(
         (c) =>
           c.sociedadId === formData.sociedadId &&
           !c.tipoIngresoId &&
-          !c.esGeneral
+          !c.esGeneral,
       );
 
-      if (esOfrenda) {
-        // TIPO OFRENDA: Usa sistema dual (General + tracking por sociedad)
-        if (cajaGeneral) {
-          cajaPrincipal = cajaGeneral;
-          // Prioridad para tracking: específica > por sociedad
-          cajaSecundariaEncontrada =
-            cajaEspecifica || cajaPorSociedad || undefined;
-        }
-      } else {
-        // OTROS TIPOS: Van directo a su caja específica (sin tracking)
-        // Prioridad: específica (sociedad+tipo) > por tipo > general
-        if (cajaEspecifica) {
-          cajaPrincipal = cajaEspecifica;
-          cajaSecundariaEncontrada = undefined;
-        } else if (cajaPorTipo) {
-          cajaPrincipal = cajaPorTipo;
-          cajaSecundariaEncontrada = undefined;
-        } else if (cajaGeneral) {
-          // Si no hay caja específica, usar general (sin tracking)
-          cajaPrincipal = cajaGeneral;
+      const cajaMatchada = cajaEspecifica || cajaPorTipo || cajaPorSociedad;
+
+      if (cajaMatchada) {
+        if (
+          cajaMatchada.esGeneral &&
+          mainCajaGeneral &&
+          mainCajaGeneral.id !== cajaMatchada.id
+        ) {
+          // Checkbox marcado → el dinero pasa por Caja General, esta caja es tracking
+          cajaPrincipal = mainCajaGeneral;
+          cajaSecundariaEncontrada = cajaMatchada;
+        } else {
+          // Checkbox NO marcado → el dinero va directo a esta caja únicamente
+          cajaPrincipal = cajaMatchada;
           cajaSecundariaEncontrada = undefined;
         }
+      } else if (mainCajaGeneral) {
+        // Fallback: usar Caja General si no hay ninguna coincidencia
+        cajaPrincipal = mainCajaGeneral;
+        cajaSecundariaEncontrada = undefined;
       }
 
       if (cajaPrincipal) {
@@ -189,7 +179,7 @@ export function NuevoIngresoForm({
       setCajaSugerida(false);
       setCajaSecundaria(null);
     }
-  }, [formData.sociedadId, formData.tipoIngresoId, cajas, tiposIngreso]);
+  }, [formData.sociedadId, formData.tipoIngresoId, cajas]);
 
   // Si se selecciona caja manualmente
   useEffect(() => {
@@ -203,7 +193,7 @@ export function NuevoIngresoForm({
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    >,
   ) => {
     const { name, value } = e.target;
 
@@ -267,7 +257,7 @@ export function NuevoIngresoForm({
           montos: [
             {
               monedaId: formData.monedaId,
-              monto: parseFloat(parseFloat(formData.monto).toFixed(2)),
+              monto: Math.round(parseFloat(formData.monto) * 100) / 100,
             },
           ],
         });

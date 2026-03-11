@@ -77,7 +77,7 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
           };
         })
         .filter((t) => t.ingresos > 0 || t.egresos > 0),
-    [monedas, cajas]
+    [monedas, cajas],
   );
 
   const formatMonto = (monto: number, simbolo: string) => {
@@ -88,37 +88,6 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
     <div className="p-4 md:p-6">
       {/* Resumen global */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {totalesGlobales.length > 0 ? (
-          totalesGlobales.map(({ moneda, ingresos, egresos, saldo }) => (
-            <Card
-              key={moneda.id}
-              className="bg-gradient-to-br from-[#203b46] to-[#305969] text-white"
-            >
-              <div className="text-sm opacity-75">
-                Saldo Total {moneda.codigo}
-              </div>
-              <div
-                className={`text-3xl font-bold my-2 ${
-                  saldo >= 0 ? "text-[#aeeae3]" : "text-[#f3b5a5]"
-                }`}
-              >
-                {formatMonto(saldo, moneda.simbolo)}
-              </div>
-              <div className="flex justify-between text-xs opacity-75">
-                <span>Ingresos: {formatMonto(ingresos, moneda.simbolo)}</span>
-                <span>Egresos: {formatMonto(egresos, moneda.simbolo)}</span>
-              </div>
-            </Card>
-          ))
-        ) : (
-          <Card className="col-span-full bg-[#eef4f7] border-[#b9d4df]">
-            <p className="text-[#40768c] text-center py-4">
-              No hay movimientos registrados aún. Las cajas mostrarán saldos
-              cuando registres ingresos y egresos.
-            </p>
-          </Card>
-        )}
-
         <Card className="bg-[#eef4f7] border-[#b9d4df]">
           <div className="text-sm text-[#40768c]">Cajas Activas</div>
           <div className="text-3xl font-bold text-[#305969] my-2">
@@ -138,7 +107,7 @@ export function CajasClient({ cajas, monedas }: CajasClientProps) {
         {cajas.map((caja) => {
           const isExpanded = expandedCaja === caja.id;
           const hasSaldos = caja.saldos.some(
-            (s) => s.ingresos > 0 || s.egresos > 0
+            (s) => s.ingresos > 0 || s.egresos > 0,
           );
 
           // Diseño especial para cajas virtuales

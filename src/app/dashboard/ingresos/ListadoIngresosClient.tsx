@@ -25,7 +25,7 @@ function asegurarFecha(fecha: Date | string): Date {
   const date = new Date(fecha);
   // Ajustar para asegurar que estamos en la fecha correcta local
   const offset = date.getTimezoneOffset();
-  const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+  const adjustedDate = new Date(date.getTime() - offset * 60 * 1000);
   return adjustedDate;
 }
 
@@ -131,17 +131,17 @@ export function ListadoIngresosClient({
   // Memoizar opciones de select
   const sociedadOptions = useMemo(
     () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    [sociedades]
+    [sociedades],
   );
 
   const tipoIngresoOptions = useMemo(
     () => tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposIngreso]
+    [tiposIngreso],
   );
 
   const tiposServicioOptions = useMemo(
     () => tiposServicio.map((s) => ({ value: s.nombre, label: s.nombre })),
-    [tiposServicio]
+    [tiposServicio],
   );
 
   const monedaOptions = useMemo(
@@ -150,7 +150,7 @@ export function ListadoIngresosClient({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   // Filtrar ingresos localmente - memoizado
@@ -190,7 +190,7 @@ export function ListadoIngresosClient({
         }
         return true;
       }),
-    [ingresos, filtros, sociedades, tiposIngreso]
+    [ingresos, filtros, sociedades, tiposIngreso],
   );
 
   // Cálculos de paginación
@@ -199,9 +199,9 @@ export function ListadoIngresosClient({
     () =>
       ingresosFiltrados.slice(
         (paginaActual - 1) * filasPorPagina,
-        paginaActual * filasPorPagina
+        paginaActual * filasPorPagina,
       ),
-    [ingresosFiltrados, paginaActual, filasPorPagina]
+    [ingresosFiltrados, paginaActual, filasPorPagina],
   );
 
   // Resetear página cuando cambian los filtros
@@ -224,12 +224,12 @@ export function ListadoIngresosClient({
     });
   };
 
-const handleEditar = useCallback((ingreso: IngresoData) => {
+  const handleEditar = useCallback((ingreso: IngresoData) => {
     setEditando(ingreso);
-    
+
     // Usar función robusta para convertir fecha
     const fechaStringInput = fechaParaInput(ingreso.fechaRecaudacion);
-    
+
     setFormEdit({
       fechaRecaudacion: fechaStringInput,
       sociedadId: ingreso.sociedad.nombre,
@@ -275,10 +275,10 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
       try {
         // Encontrar IDs originales
         const sociedad = sociedades.find(
-          (s) => s.nombre === formEdit.sociedadId
+          (s) => s.nombre === formEdit.sociedadId,
         );
         const tipoIngreso = tiposIngreso.find(
-          (t) => t.nombre === formEdit.tipoIngresoId
+          (t) => t.nombre === formEdit.tipoIngresoId,
         );
 
         if (!sociedad || !tipoIngreso) {
@@ -288,7 +288,7 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
 
         console.log("=== DEBUG handleActualizar ===");
         console.log("formEdit.fechaRecaudacion:", formEdit.fechaRecaudacion);
-        
+
         // Crear fecha robusta para servidor
         const fechaLocal = parsearFechaLocal(formEdit.fechaRecaudacion);
 
@@ -299,7 +299,7 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
           comentario: formEdit.comentario || undefined,
           montos: formEdit.montos.map((m) => ({
             monedaId: m.monedaId,
-            monto: parseFloat(parseFloat(m.monto).toFixed(2)),
+            monto: Math.round(parseFloat(m.monto) * 100) / 100,
           })),
         });
 
@@ -318,16 +318,20 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
                   tipoIngresoId: tipoIngreso.id,
                   tipoIngreso: { nombre: tipoIngreso.nombre },
                   comentario: formEdit.comentario || null,
-                  montos: formEdit.montos.map((m) => {
-                    const moneda = monedas.find((mon) => mon.id === m.monedaId);
-                    return {
-                      monto: parseFloat(parseFloat(m.monto).toFixed(2)),
-                      moneda: moneda!,
-                    };
-                  }),
+                  montos: formEdit.montos.map(
+                    (m: { monedaId: string; monto: string }) => {
+                      const moneda = monedas.find(
+                        (mon) => mon.id === m.monedaId,
+                      );
+                      return {
+                        monto: Math.round(parseFloat(m.monto) * 100) / 100,
+                        moneda: moneda!,
+                      };
+                    },
+                  ),
                 }
-              : ing
-          )
+              : ing,
+          ),
         );
         console.log("=== FIN DEBUG handleActualizar ===\n");
 
@@ -368,14 +372,14 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
         .map((moneda) => {
           const total = ingresosFiltrados.reduce((acc, ingreso) => {
             const montoEnMoneda = ingreso.montos.find(
-              (m) => m.moneda.id === moneda.id
+              (m) => m.moneda.id === moneda.id,
             );
             return acc + (montoEnMoneda ? Number(montoEnMoneda.monto) : 0);
           }, 0);
           return { moneda, total };
         })
         .filter((t) => t.total > 0),
-    [monedas, ingresosFiltrados]
+    [monedas, ingresosFiltrados],
   );
 
   const columns = [
@@ -686,8 +690,8 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
                 {filtros.desde && filtros.hasta
                   ? `${filtros.desde} al ${filtros.hasta}`
                   : filtros.desde
-                  ? `Desde ${filtros.desde}`
-                  : `Hasta ${filtros.hasta}`}
+                    ? `Desde ${filtros.desde}`
+                    : `Hasta ${filtros.hasta}`}
               </span>
             )}
             {!filtros.desde && !filtros.hasta && (
@@ -752,7 +756,7 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
               <span className="font-semibold text-[#305969]">
                 {Math.min(
                   paginaActual * filasPorPagina,
-                  ingresosFiltrados.length
+                  ingresosFiltrados.length,
                 )}
               </span>{" "}
               de{" "}
@@ -888,7 +892,9 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
                   <p className="text-xs text-[#73a9bf] uppercase">Fecha</p>
                   <p className="font-medium text-[#203b46]">
                     {(() => {
-                      const fecha = asegurarFecha(detalleSeleccionado.fechaRecaudacion);
+                      const fecha = asegurarFecha(
+                        detalleSeleccionado.fechaRecaudacion,
+                      );
                       return fecha.toLocaleDateString("es-GT", {
                         weekday: "long",
                         year: "numeric",
@@ -1097,7 +1103,7 @@ const handleEditar = useCallback((ingreso: IngresoData) => {
                     type="button"
                     onClick={() => {
                       const nuevosMontos = formEdit.montos.filter(
-                        (_, i) => i !== index
+                        (_, i) => i !== index,
                       );
                       setFormEdit({ ...formEdit, montos: nuevosMontos });
                     }}

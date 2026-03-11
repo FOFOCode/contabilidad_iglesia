@@ -9,7 +9,7 @@ import { registrarAuditoria } from "@/lib/auditoria";
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
   modulo: string,
-  accion: "crear" | "editar" | "eliminar"
+  accion: "crear" | "editar" | "eliminar",
 ) {
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
@@ -63,7 +63,7 @@ export async function crearIngreso(data: CrearIngresoData) {
           montos: {
             create: data.montos.map((m) => ({
               monedaId: m.monedaId,
-              monto: m.monto,
+              monto: Math.round(m.monto * 100) / 100,
             })),
           },
         },
@@ -85,11 +85,11 @@ export async function crearIngreso(data: CrearIngresoData) {
             "monto:",
             m.monto,
             "tipo:",
-            typeof m.monto
+            typeof m.monto,
           );
         });
         return result;
-      })
+      }),
   );
 }
 
@@ -130,8 +130,8 @@ export async function obtenerIngresos(filtros?: FiltrosIngreso) {
               ],
             }
           : filtros?.cajaId
-          ? { cajaId: filtros.cajaId }
-          : {}),
+            ? { cajaId: filtros.cajaId }
+            : {}),
       },
       include: {
         sociedad: true,
@@ -143,7 +143,7 @@ export async function obtenerIngresos(filtros?: FiltrosIngreso) {
         usuario: { select: { nombre: true, apellido: true } },
       },
       orderBy: { fechaRecaudacion: "desc" },
-    })
+    }),
   );
 }
 
@@ -160,7 +160,7 @@ export async function obtenerIngresoPorId(id: string) {
         montos: { include: { moneda: true } },
         usuario: { select: { nombre: true, apellido: true } },
       },
-    })
+    }),
   );
 }
 
@@ -184,7 +184,7 @@ interface ActualizarIngresoData {
 
 export async function actualizarIngreso(
   id: string,
-  data: ActualizarIngresoData
+  data: ActualizarIngresoData,
 ) {
   await validarPermisoActual("ingresos", "editar");
 
@@ -210,7 +210,7 @@ export async function actualizarIngreso(
           montos: {
             create: data.montos.map((m) => ({
               monedaId: m.monedaId,
-              monto: m.monto,
+              monto: Math.round(m.monto * 100) / 100,
             })),
           },
         }),
@@ -224,7 +224,7 @@ export async function actualizarIngreso(
         cajaSecundaria: true,
         usuario: { select: { nombre: true, apellido: true } },
       },
-    })
+    }),
   );
 }
 
@@ -260,10 +260,10 @@ export async function crearEgreso(data: CrearEgresoData) {
     throw new Error(
       `Saldo insuficiente en la caja. Disponible: ${simbolo}${disponible.toLocaleString(
         "es-GT",
-        { minimumFractionDigits: 2 }
+        { minimumFractionDigits: 2 },
       )}. Intenta egresar: ${simbolo}${data.monto.toLocaleString("es-GT", {
         minimumFractionDigits: 2,
-      })}`
+      })}`,
     );
   }
 
@@ -271,7 +271,7 @@ export async function crearEgreso(data: CrearEgresoData) {
     data: {
       fechaSalida: data.fechaSalida,
       solicitante: data.solicitante,
-      monto: data.monto,
+      monto: Math.round(data.monto * 100) / 100,
       descripcionGasto: data.descripcionGasto,
       comentario: data.comentario,
       numeroFactura: data.numeroFactura || null,
@@ -323,7 +323,7 @@ export async function obtenerEgresos(filtros?: FiltrosEgreso) {
         usuario: { select: { nombre: true, apellido: true } },
       },
       orderBy: { fechaSalida: "desc" },
-    })
+    }),
   );
 }
 
@@ -337,7 +337,7 @@ export async function obtenerEgresoPorId(id: string) {
         caja: true,
         usuario: { select: { nombre: true, apellido: true } },
       },
-    })
+    }),
   );
 }
 
@@ -390,10 +390,10 @@ export async function actualizarEgreso(id: string, data: ActualizarEgresoData) {
       throw new Error(
         `Saldo insuficiente en la caja. Disponible: ${simbolo}${saldoDisponible.toLocaleString(
           "es-GT",
-          { minimumFractionDigits: 2 }
+          { minimumFractionDigits: 2 },
         )}. Intenta egresar: ${simbolo}${nuevoMonto.toLocaleString("es-GT", {
           minimumFractionDigits: 2,
-        })}`
+        })}`,
       );
     }
   }
@@ -404,7 +404,10 @@ export async function actualizarEgreso(id: string, data: ActualizarEgresoData) {
       data: {
         fechaSalida: data.fechaSalida,
         solicitante: data.solicitante,
-        monto: data.monto,
+        monto:
+          data.monto !== undefined
+            ? Math.round(data.monto * 100) / 100
+            : undefined,
         descripcionGasto: data.descripcionGasto,
         comentario: data.comentario,
         tipoGastoId: data.tipoGastoId,
@@ -417,7 +420,7 @@ export async function actualizarEgreso(id: string, data: ActualizarEgresoData) {
         caja: true,
         usuario: { select: { nombre: true, apellido: true } },
       },
-    })
+    }),
   );
 }
 
@@ -493,15 +496,16 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
         egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
         new Prisma.Decimal(0);
       const totalIngresos = Number(ingresos) + Number(donaciones);
-      const saldo = totalIngresos - Number(egresos);
+      const totalEgresos = Number(egresos);
+      const saldo = totalIngresos - totalEgresos;
 
       return {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
         monedaSimbolo: moneda.simbolo,
-        ingresos: totalIngresos,
-        egresos: Number(egresos),
-        saldo,
+        ingresos: Math.round(totalIngresos * 100) / 100,
+        egresos: Math.round(totalEgresos * 100) / 100,
+        saldo: Math.round(saldo * 100) / 100,
       };
     });
 
@@ -522,50 +526,56 @@ export async function obtenerCajasConSaldos(filtros?: {
   // Los filtros de fecha se pueden implementar en el frontend si es necesario
 
   // Obtener datos base en paralelo (minimal - solo lo necesario)
-  const [cajas, monedas, ingresosData, egresosData, donacionesData, donacionesTrackingData] =
-    await Promise.all([
-      prisma.caja.findMany({
-        where: { activa: true },
-        include: {
-          sociedad: true,
-          tipoIngreso: true,
-        },
-        orderBy: { orden: "asc" },
-      }),
-      prisma.moneda.findMany({
-        where: { activa: true },
-        orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
-      }),
-      // Ingresos principales: obtener datos y agrupar en JS
-      prisma.ingresoMonto.findMany({
-        where: { ingreso: { caja: { activa: true } } },
-        include: {
-          ingreso: { select: { cajaId: true } },
-          moneda: { select: { id: true } },
-        },
-      }),
-      // Egresos: agrupar por caja Y moneda
-      prisma.egreso.groupBy({
-        by: ["cajaId", "monedaId"],
-        where: {
-          caja: { activa: true },
-        },
-        _sum: { monto: true },
-      }),
-      // Donaciones: agrupar por caja Y moneda (dinero real en caja General)
-      prisma.donacion.groupBy({
-        by: ["cajaId", "monedaId"],
-        where: {
-          caja: { activa: true },
-        },
-        _sum: { monto: true },
-      }),
-      // Donaciones Tracking: para la caja virtual de Donaciones
-      prisma.donacionTracking.groupBy({
-        by: ["monedaId"],
-        _sum: { monto: true },
-      }),
-    ]);
+  const [
+    cajas,
+    monedas,
+    ingresosData,
+    egresosData,
+    donacionesData,
+    donacionesTrackingData,
+  ] = await Promise.all([
+    prisma.caja.findMany({
+      where: { activa: true },
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+      },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    }),
+    // Ingresos principales: obtener datos y agrupar en JS
+    prisma.ingresoMonto.findMany({
+      where: { ingreso: { caja: { activa: true } } },
+      include: {
+        ingreso: { select: { cajaId: true } },
+        moneda: { select: { id: true } },
+      },
+    }),
+    // Egresos: agrupar por caja Y moneda
+    prisma.egreso.groupBy({
+      by: ["cajaId", "monedaId"],
+      where: {
+        caja: { activa: true },
+      },
+      _sum: { monto: true },
+    }),
+    // Donaciones: agrupar por caja Y moneda (dinero real en caja General)
+    prisma.donacion.groupBy({
+      by: ["cajaId", "monedaId"],
+      where: {
+        caja: { activa: true },
+      },
+      _sum: { monto: true },
+    }),
+    // Donaciones Tracking: para la caja virtual de Donaciones
+    prisma.donacionTracking.groupBy({
+      by: ["monedaId"],
+      _sum: { monto: true },
+    }),
+  ]);
 
   // Obtener ingresos secundarios por caja (para tracking de sociedades)
   const ingresosSecundarios = await prisma.ingresoMonto.findMany({
@@ -587,7 +597,7 @@ export async function obtenerCajasConSaldos(filtros?: {
     const key = `${item.ingreso.cajaId}-${item.monedaId}`;
     ingresosPrincipalesMap.set(
       key,
-      (ingresosPrincipalesMap.get(key) || 0) + item.monto.toNumber()
+      (ingresosPrincipalesMap.get(key) || 0) + item.monto.toNumber(),
     );
   });
   const ingresosSecundariosMap = new Map<string, number>();
@@ -595,7 +605,7 @@ export async function obtenerCajasConSaldos(filtros?: {
     const key = `${item.ingreso.cajaSecundariaId}-${item.monedaId}`;
     ingresosSecundariosMap.set(
       key,
-      (ingresosSecundariosMap.get(key) || 0) + item.monto.toNumber()
+      (ingresosSecundariosMap.get(key) || 0) + item.monto.toNumber(),
     );
   });
 
@@ -603,7 +613,7 @@ export async function obtenerCajasConSaldos(filtros?: {
   donacionesData.forEach((don) => {
     donacionesMap.set(
       `${don.cajaId}-${don.monedaId}`,
-      Number(don._sum.monto || 0)
+      Number(don._sum.monto || 0),
     );
   });
 
@@ -611,7 +621,7 @@ export async function obtenerCajasConSaldos(filtros?: {
   egresosData.forEach((egr) => {
     egresosMap.set(
       `${egr.cajaId}-${egr.monedaId}`,
-      Number(egr._sum.monto || 0)
+      Number(egr._sum.monto || 0),
     );
   });
 
@@ -642,12 +652,18 @@ export async function obtenerCajasConSaldos(filtros?: {
   const cajasConSaldos = cajas.map((caja) => {
     const saldos = monedas.map((moneda) => {
       const key = `${caja.id}-${moneda.id}`;
-      const esSubcaja =
-        !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
+      // Una caja es de seguimiento (tracking) si tiene sociedad o tipo de ingreso asignado,
+      // independientemente de si esGeneral está marcado.
+      // - Si esGeneral=true en una sub-caja → el dinero va a la Caja General física;
+      //   el tracking queda en secundariosMap con esta caja como secundaria.
+      // - Si esGeneral=false en una sub-caja → el dinero va directo a esta caja;
+      //   queda en principalesMap.
+      // Ambos mapas se suman para cubrir datos históricos y datos nuevos.
+      const esSubcaja = !!(caja.sociedadId || caja.tipoIngresoId);
 
-      // Ingresos: si es subcaja usa secundarios, sino usa principales por caja
       let ingresosBase = esSubcaja
-        ? ingresosSecundariosMap.get(key) || 0
+        ? (ingresosSecundariosMap.get(key) || 0) +
+          (ingresosPrincipalesMap.get(key) || 0)
         : ingresosPrincipalesMap.get(key) || 0;
 
       // Si es caja Filiales, agregar diezmos filiales
@@ -669,9 +685,9 @@ export async function obtenerCajasConSaldos(filtros?: {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
         monedaSimbolo: moneda.simbolo,
-        ingresos,
-        egresos,
-        saldo: ingresos - egresos,
+        ingresos: Math.round(ingresos * 100) / 100,
+        egresos: Math.round(egresos * 100) / 100,
+        saldo: Math.round((ingresos - egresos) * 100) / 100,
       };
     });
 
@@ -687,9 +703,9 @@ export async function obtenerCajasConSaldos(filtros?: {
   // Crear caja virtual de Donaciones usando los datos de tracking
   if (donacionesTrackingData.length > 0) {
     const saldosDonaciones = monedas.map((moneda) => {
-      const total = donacionesTrackingData
-        .find((d) => d.monedaId === moneda.id)?._sum.monto || 
-        new Prisma.Decimal(0);
+      const total =
+        donacionesTrackingData.find((d) => d.monedaId === moneda.id)?._sum
+          .monto || new Prisma.Decimal(0);
       return {
         monedaId: moneda.id,
         monedaCodigo: moneda.codigo,
@@ -721,7 +737,7 @@ export async function obtenerCajasConSaldos(filtros?: {
   // IMPORTANTE: Si existe una caja "Filiales" real, no crear virtual
   // La caja real contiene los saldos reales de los diezmos y egresos
   const cajaFilialesReal = cajas.find(
-    (c) => c.nombre === "Filiales" && !c.esGeneral
+    (c) => c.nombre === "Filiales" && !c.esGeneral,
   );
 
   if (
@@ -730,10 +746,10 @@ export async function obtenerCajasConSaldos(filtros?: {
   ) {
     const saldosFiliales = monedas.map((moneda) => {
       const diezmo = diezmosFilialesPorMoneda.find(
-        (d) => d.monedaId === moneda.id
+        (d) => d.monedaId === moneda.id,
       );
       const egreso = egresosFilialesPorMoneda.find(
-        (e) => e.monedaId === moneda.id
+        (e) => e.monedaId === moneda.id,
       );
       const ingresos = Number(diezmo?._sum.monto || 0);
       const egresos = Number(egreso?._sum.monto || 0);
@@ -1094,12 +1110,18 @@ export async function obtenerDetalleCaja(cajaId: string) {
     const ingresosMap = new Map<string, number>();
     ingresosPorMonedaData.forEach((item) => {
       const numMonto = item.monto.toNumber();
-      ingresosMap.set(item.monedaId, (ingresosMap.get(item.monedaId) || 0) + numMonto);
+      ingresosMap.set(
+        item.monedaId,
+        (ingresosMap.get(item.monedaId) || 0) + numMonto,
+      );
     });
 
     diezmosFilialesPorMoneda.forEach((item) => {
       const numMonto = Number(item._sum.monto || 0);
-      ingresosMap.set(item.monedaId, (ingresosMap.get(item.monedaId) || 0) + numMonto);
+      ingresosMap.set(
+        item.monedaId,
+        (ingresosMap.get(item.monedaId) || 0) + numMonto,
+      );
     });
 
     // Convertir el mapa de vuelta a array
@@ -1120,7 +1142,7 @@ export async function obtenerDetalleCaja(cajaId: string) {
       "primero:",
       ingresosPorMonedaData[0].monto.toString(),
       "tipo:",
-      typeof ingresosPorMonedaData[0].monto
+      typeof ingresosPorMonedaData[0].monto,
     );
     console.log("en number:", Number(ingresosPorMonedaData[0].monto));
   }
@@ -1155,12 +1177,18 @@ export async function obtenerDetalleCaja(cajaId: string) {
     const egresosMap = new Map<string, number>();
     egresosPorMoneda.forEach((item) => {
       const numMonto = Number(item._sum.monto || 0);
-      egresosMap.set(item.monedaId, (egresosMap.get(item.monedaId) || 0) + numMonto);
+      egresosMap.set(
+        item.monedaId,
+        (egresosMap.get(item.monedaId) || 0) + numMonto,
+      );
     });
 
     egresosFilialesPorMoneda.forEach((item) => {
       const numMonto = Number(item._sum.monto || 0);
-      egresosMap.set(item.monedaId, (egresosMap.get(item.monedaId) || 0) + numMonto);
+      egresosMap.set(
+        item.monedaId,
+        (egresosMap.get(item.monedaId) || 0) + numMonto,
+      );
     });
 
     // Convertir el mapa de vuelta al formato esperado
@@ -1185,13 +1213,13 @@ export async function obtenerDetalleCaja(cajaId: string) {
   const saldos = monedas.map((moneda) => {
     // Handle both raw query and groupBy results
     const ingresoItem = (ingresosPorMoneda as any[]).find(
-      (i: any) => i.monedaId === moneda.id
+      (i: any) => i.monedaId === moneda.id,
     );
     const totalIngresos = ingresoItem
       ? new Prisma.Decimal(
           ingresoItem.monto !== undefined
             ? ingresoItem.monto
-            : ingresoItem._sum?.monto || 0
+            : ingresoItem._sum?.monto || 0,
         )
       : new Prisma.Decimal(0);
 
@@ -1207,14 +1235,15 @@ export async function obtenerDetalleCaja(cajaId: string) {
 
     return {
       moneda: serializarMoneda(moneda),
-      ingresos: Number(totalIngresos),
-      donaciones: Number(totalDonaciones),
-      egresos: Number(totalEgresos),
-      saldo: Number(totalIngresosConDonaciones) - Number(totalEgresos),
+      ingresos: Math.round(Number(totalIngresos) * 100) / 100,
+      donaciones: Math.round(Number(totalDonaciones) * 100) / 100,
+      egresos: Math.round(Number(totalEgresos) * 100) / 100,
+      saldo:
+        Math.round(
+          (Number(totalIngresosConDonaciones) - Number(totalEgresos)) * 100,
+        ) / 100,
     };
   });
-
-
 
   // Serializar ingresos para evitar Decimal en montos
   const ingresosSerializados = ingresos.map((ing) => ({
@@ -1560,7 +1589,9 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
 
   const donacionesSerializadas = donaciones.map((don) => {
     const conceptoBase = `Donación - ${don.nombre}`;
-    const referencia = don.numeroDocumento ? ` (DUI: ${don.numeroDocumento})` : "";
+    const referencia = don.numeroDocumento
+      ? ` (DUI: ${don.numeroDocumento})`
+      : "";
     return {
       id: don.id,
       fecha: don.fecha,
@@ -1609,7 +1640,9 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
 
   const egresosSerializados = egresos.map((eg) => {
     const conceptoBase = eg.descripcionGasto || eg.tipoGasto.nombre;
-    const referencia = eg.numeroFactura ? ` (Factura: ${eg.numeroFactura})` : "";
+    const referencia = eg.numeroFactura
+      ? ` (Factura: ${eg.numeroFactura})`
+      : "";
     return {
       id: eg.id,
       fecha: eg.fechaSalida,
@@ -1684,7 +1717,7 @@ interface FiltrosReporteAnalitico {
 }
 
 export async function obtenerDatosReporteAnalitico(
-  filtros: FiltrosReporteAnalitico
+  filtros: FiltrosReporteAnalitico,
 ) {
   // Determinar rango de fechas: personalizado o por año completo
   let inicioRango: Date;
@@ -1783,26 +1816,26 @@ export async function obtenerDatosReporteAnalitico(
   // Filtrar ingresos por moneda si se especifica
   const ingresosFiltrados = filtros.monedaId
     ? ingresos.filter((ing) =>
-        ing.montos.some((m) => m.monedaId === filtros.monedaId)
+        ing.montos.some((m) => m.monedaId === filtros.monedaId),
       )
     : ingresos;
 
   // 1. Datos mensuales para gráfica de tendencia
   const datosMensuales = Array.from({ length: 12 }, (_, mes) => {
     const ingresosDelMes = ingresosFiltrados.filter(
-      (ing) => new Date(ing.fechaRecaudacion).getMonth() === mes
+      (ing) => new Date(ing.fechaRecaudacion).getMonth() === mes,
     );
     const donacionesDelMes = donaciones.filter(
-      (don) => new Date(don.fecha).getMonth() === mes
+      (don) => new Date(don.fecha).getMonth() === mes,
     );
     const diezmosDelMes = diezmosFiliales.filter(
-      (dz) => new Date(dz.creadoEn).getMonth() === mes
+      (dz) => new Date(dz.creadoEn).getMonth() === mes,
     );
     const egresosDelMes = egresos.filter(
-      (eg) => new Date(eg.fechaSalida).getMonth() === mes
+      (eg) => new Date(eg.fechaSalida).getMonth() === mes,
     );
     const egresosFilalesDelMes = egresosFiliales.filter(
-      (eg) => new Date(eg.fechaSalida).getMonth() === mes
+      (eg) => new Date(eg.fechaSalida).getMonth() === mes,
     );
 
     let totalIngresos = 0;
@@ -1857,7 +1890,7 @@ export async function obtenerDatosReporteAnalitico(
   // 2. Desglose por Sociedad
   const porSociedad = sociedades.map((soc) => {
     const ingresosDeS = ingresosFiltrados.filter(
-      (ing) => ing.sociedadId === soc.id
+      (ing) => ing.sociedadId === soc.id,
     );
     let total = 0;
     ingresosDeS.forEach((ing) => {
@@ -1878,7 +1911,7 @@ export async function obtenerDatosReporteAnalitico(
   // 3. Desglose por Tipo de Ingreso (con desglose por sociedad)
   const porTipoIngreso = tiposIngreso.map((tipo) => {
     const ingresosDeT = ingresosFiltrados.filter(
-      (ing) => ing.tipoIngresoId === tipo.id
+      (ing) => ing.tipoIngresoId === tipo.id,
     );
     let total = 0;
     ingresosDeT.forEach((ing) => {
@@ -1944,7 +1977,7 @@ export async function obtenerDatosReporteAnalitico(
     // Incluir ingresos donde esta caja es principal O secundaria
     // (tracking secundario solo para ofrendas)
     const ingresosDeCaja = ingresosFiltrados.filter(
-      (ing) => ing.cajaId === caja.id || ing.cajaSecundariaId === caja.id
+      (ing) => ing.cajaId === caja.id || ing.cajaSecundariaId === caja.id,
     );
     const donacionesDeCaja = donaciones.filter((don) => don.cajaId === caja.id);
     const egresosDeCaja = egresos.filter((eg) => eg.cajaId === caja.id);
@@ -1964,7 +1997,7 @@ export async function obtenerDatosReporteAnalitico(
 
     const totalEgresos = egresosDeCaja.reduce(
       (sum, eg) => sum + Number(eg.monto),
-      0
+      0,
     );
 
     return {
@@ -1979,11 +2012,11 @@ export async function obtenerDatosReporteAnalitico(
   // Agregar "Caja Filiales" (virtual) si hay movimientos de filiales
   const totalDiezmosFiliales = diezmosFiliales.reduce(
     (sum, dz) => sum + Number(dz.monto),
-    0
+    0,
   );
   const totalEgresosFiliales = egresosFiliales.reduce(
     (sum, eg) => sum + Number(eg.monto),
-    0
+    0,
   );
 
   if (totalDiezmosFiliales > 0 || totalEgresosFiliales > 0) {
@@ -2019,7 +2052,7 @@ export async function obtenerDatosReporteAnalitico(
   totalEgresosAnio = egresos.reduce((sum, eg) => sum + Number(eg.monto), 0);
   totalEgresosAnio += egresosFiliales.reduce(
     (sum, eg) => sum + Number(eg.monto),
-    0
+    0,
   );
 
   // Serializar moneda seleccionada
@@ -2063,16 +2096,16 @@ export async function obtenerReporteSaldosActuales() {
 
     // Filtrar solo cajas reales (no virtuales)
     const cajasReales = cajas.filter(
-      (c) => !("esVirtual" in c) || !(c as any).esVirtual
+      (c) => !("esVirtual" in c) || !(c as any).esVirtual,
     );
     const cajasVirtuales = cajas.filter(
-      (c) => "esVirtual" in c && (c as any).esVirtual
+      (c) => "esVirtual" in c && (c as any).esVirtual,
     );
 
     // Organizar datos por tipo
     const cajasGenerales = cajasReales.filter((c) => c.esGeneral);
     const cajasSociedades = cajasReales.filter(
-      (c) => !c.esGeneral && c.sociedadId
+      (c) => !c.esGeneral && c.sociedadId,
     );
     const cajasOtras = cajasReales.filter((c) => !c.esGeneral && !c.sociedadId);
 
@@ -2181,7 +2214,7 @@ export async function obtenerLogAuditoria(filtros: FiltrosAuditoria) {
         fechaOperacion: "desc",
       },
       take: filtros.limite || 100,
-    })
+    }),
   );
 }
 

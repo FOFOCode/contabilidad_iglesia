@@ -446,8 +446,8 @@ export function ConfiguracionClient({
               await updateMoneda(id, { activa: !item.activa });
               setMonedas(
                 monedas.map((m) =>
-                  m.id === id ? { ...m, activa: !m.activa } : m
-                )
+                  m.id === id ? { ...m, activa: !m.activa } : m,
+                ),
               );
             }
             break;
@@ -458,8 +458,8 @@ export function ConfiguracionClient({
               await updateTipoServicio(id, { activo: !item.activo });
               setTiposServicio(
                 tiposServicio.map((s) =>
-                  s.id === id ? { ...s, activo: !s.activo } : s
-                )
+                  s.id === id ? { ...s, activo: !s.activo } : s,
+                ),
               );
             }
             break;
@@ -470,8 +470,8 @@ export function ConfiguracionClient({
               await updateSociedad(id, { activa: !item.activa });
               setSociedades(
                 sociedades.map((s) =>
-                  s.id === id ? { ...s, activa: !s.activa } : s
-                )
+                  s.id === id ? { ...s, activa: !s.activa } : s,
+                ),
               );
             }
             break;
@@ -482,8 +482,8 @@ export function ConfiguracionClient({
               await updateTipoIngreso(id, { activo: !item.activo });
               setTiposIngreso(
                 tiposIngreso.map((t) =>
-                  t.id === id ? { ...t, activo: !t.activo } : t
-                )
+                  t.id === id ? { ...t, activo: !t.activo } : t,
+                ),
               );
             }
             break;
@@ -494,8 +494,8 @@ export function ConfiguracionClient({
               await updateTipoGasto(id, { activo: !item.activo });
               setTiposGasto(
                 tiposGasto.map((t) =>
-                  t.id === id ? { ...t, activo: !t.activo } : t
-                )
+                  t.id === id ? { ...t, activo: !t.activo } : t,
+                ),
               );
             }
             break;
@@ -506,8 +506,8 @@ export function ConfiguracionClient({
               await updateCaja(id, { activa: !item.activa });
               setCajas(
                 cajas.map((c) =>
-                  c.id === id ? { ...c, activa: !c.activa } : c
-                )
+                  c.id === id ? { ...c, activa: !c.activa } : c,
+                ),
               );
             }
             break;
@@ -555,7 +555,7 @@ export function ConfiguracionClient({
         setError(
           e.message?.includes("foreign key")
             ? "No se puede eliminar porque hay registros que dependen de este elemento"
-            : "Error al eliminar"
+            : "Error al eliminar",
         );
         console.error(e);
         setDeleteConfirm(null);
@@ -593,9 +593,9 @@ export function ConfiguracionClient({
                         tasaCambio: Number(updated.tasaCambio),
                       }
                     : formData.esPrincipal
-                    ? { ...m, esPrincipal: false }
-                    : m
-                )
+                      ? { ...m, esPrincipal: false }
+                      : m,
+                ),
               );
             } else {
               const created = await createMoneda({
@@ -634,8 +634,8 @@ export function ConfiguracionClient({
                         nombre: formData.nombre,
                         descripcion: formData.descripcion,
                       }
-                    : s
-                )
+                    : s,
+                ),
               );
             } else {
               const created = await createTipoServicio({
@@ -663,8 +663,8 @@ export function ConfiguracionClient({
                         nombre: formData.nombre,
                         descripcion: formData.descripcion,
                       }
-                    : s
-                )
+                    : s,
+                ),
               );
             } else {
               const created = await createSociedad({
@@ -689,8 +689,8 @@ export function ConfiguracionClient({
                         nombre: formData.nombre,
                         descripcion: formData.descripcion,
                       }
-                    : t
-                )
+                    : t,
+                ),
               );
             } else {
               const created = await createTipoIngreso({
@@ -715,8 +715,8 @@ export function ConfiguracionClient({
                         nombre: formData.nombre,
                         descripcion: formData.descripcion,
                       }
-                    : t
-                )
+                    : t,
+                ),
               );
             } else {
               const created = await createTipoGasto({
@@ -750,25 +750,25 @@ export function ConfiguracionClient({
                           ? sociedades.find((s) => s.id === formData.sociedadId)
                             ? {
                                 nombre: sociedades.find(
-                                  (s) => s.id === formData.sociedadId
+                                  (s) => s.id === formData.sociedadId,
                                 )!.nombre,
                               }
                             : null
                           : null,
                         tipoIngreso: formData.tipoIngresoId
                           ? tiposIngreso.find(
-                              (t) => t.id === formData.tipoIngresoId
+                              (t) => t.id === formData.tipoIngresoId,
                             )
                             ? {
                                 nombre: tiposIngreso.find(
-                                  (t) => t.id === formData.tipoIngresoId
+                                  (t) => t.id === formData.tipoIngresoId,
                                 )!.nombre,
                               }
                             : null
                           : null,
                       }
-                    : c
-                )
+                    : c,
+                ),
               );
             } else {
               const created = await createCaja({
@@ -787,7 +787,7 @@ export function ConfiguracionClient({
                     ? sociedades.find((s) => s.id === formData.sociedadId)
                       ? {
                           nombre: sociedades.find(
-                            (s) => s.id === formData.sociedadId
+                            (s) => s.id === formData.sociedadId,
                           )!.nombre,
                         }
                       : null
@@ -796,7 +796,7 @@ export function ConfiguracionClient({
                     ? tiposIngreso.find((t) => t.id === formData.tipoIngresoId)
                       ? {
                           nombre: tiposIngreso.find(
-                            (t) => t.id === formData.tipoIngresoId
+                            (t) => t.id === formData.tipoIngresoId,
                           )!.nombre,
                         }
                       : null
@@ -823,7 +823,7 @@ export function ConfiguracionClient({
         setError(
           e.message?.includes("Unique constraint")
             ? "Ya existe un elemento con ese nombre o código"
-            : "Error al guardar"
+            : "Error al guardar",
         );
         console.error(e);
       }
@@ -1419,35 +1419,49 @@ export function ConfiguracionClient({
                         placeholder="Sin tipo de ingreso"
                         clearable
                       />
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="esGeneral"
-                          checked={formData.esGeneral}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              esGeneral: e.target.checked,
-                            }))
-                          }
-                          className="w-4 h-4 text-[#2ba193] bg-gray-100 border-gray-300 rounded focus:ring-[#2ba193] focus:ring-2"
-                        />
-                        <label
-                          htmlFor="esGeneral"
-                          className="text-sm font-medium text-[#305969]"
-                        >
-                          Es caja general (recibe ofrendas de todas las
-                          sociedades)
-                        </label>
-                      </div>
-                      <div className="p-3 bg-[#eef4f7] rounded-lg border border-[#b9d4df]">
-                        <p className="text-xs text-[#40768c]">
-                          <strong>Nota:</strong> Si es caja general, recibirá
-                          todas las ofrendas sin importar la sociedad. De lo
-                          contrario, la sociedad y tipo de ingreso determinan
-                          qué ingresos se asignan automáticamente.
-                        </p>
-                      </div>
+                      {(formData.sociedadId || formData.tipoIngresoId) && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="esGeneral"
+                              checked={formData.esGeneral}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  esGeneral: e.target.checked,
+                                }))
+                              }
+                              className="w-4 h-4 text-[#2ba193] bg-gray-100 border-gray-300 rounded focus:ring-[#2ba193] focus:ring-2"
+                            />
+                            <label
+                              htmlFor="esGeneral"
+                              className="text-sm font-medium text-[#305969]"
+                            >
+                              Guardar dinero en Caja General (seguimiento
+                              separado)
+                            </label>
+                          </div>
+                          <div className="p-3 bg-[#eef4f7] rounded-lg border border-[#b9d4df]">
+                            <p className="text-xs text-[#40768c]">
+                              {formData.esGeneral ? (
+                                <>
+                                  <strong>✅ Activado:</strong> El dinero
+                                  ingresado aquí se acumula físicamente en Caja
+                                  General, pero esta caja mostrará su propio
+                                  total para visualización y reportes.
+                                </>
+                              ) : (
+                                <>
+                                  <strong>☐ Desactivado:</strong> El dinero se
+                                  guarda directamente en esta caja, sin pasar
+                                  por Caja General.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </>
@@ -1469,8 +1483,8 @@ export function ConfiguracionClient({
                 {isPending
                   ? "Guardando..."
                   : editingItem
-                  ? "Guardar Cambios"
-                  : "Agregar"}
+                    ? "Guardar Cambios"
+                    : "Agregar"}
               </Button>
             </div>
           </div>

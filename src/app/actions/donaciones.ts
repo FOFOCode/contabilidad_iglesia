@@ -4,11 +4,10 @@ import { prisma, withRetry } from "@/lib/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
 
-
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
   modulo: string,
-  accion: "crear" | "editar" | "eliminar"
+  accion: "crear" | "editar" | "eliminar",
 ) {
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
@@ -28,7 +27,7 @@ async function obtenerCajaGeneral() {
 
   if (!cajaGeneral) {
     throw new Error(
-      "No existe una caja general configurada. Por favor configure una caja como 'General' en Configuración > Cajas."
+      "No existe una caja general configurada. Por favor configure una caja como 'General' en Configuración > Cajas.",
     );
   }
 
@@ -65,7 +64,8 @@ export async function crearDonacion(data: CrearDonacionData) {
     cajaDonaciones = await prisma.caja.create({
       data: {
         nombre: "Donaciones",
-        descripcion: "Caja virtual para tracking de donaciones (el dinero real va a la caja General)",
+        descripcion:
+          "Caja virtual para tracking de donaciones (el dinero real va a la caja General)",
         activa: true,
         esGeneral: false,
         orden: 9998,
@@ -75,10 +75,8 @@ export async function crearDonacion(data: CrearDonacionData) {
   }
 
   // Redondear monto a 2 decimales de forma precisa y convertir a string para Prisma
-  const montoString = (
-    Math.round(data.monto * 100) / 100
-  ).toFixed(2);
-  
+  const montoString = (Math.round(data.monto * 100) / 100).toFixed(2);
+
   console.log("[DEBUG] Monto original:", data.monto);
   console.log("[DEBUG] Monto redondeado:", montoString);
 
@@ -152,7 +150,7 @@ export async function obtenerDonaciones(filtros?: FiltrosDonacion) {
         usuario: { select: { nombre: true, apellido: true } },
       },
       orderBy: { fecha: "desc" },
-    })
+    }),
   );
 }
 
@@ -166,7 +164,7 @@ export async function obtenerDonacionPorId(id: string) {
         caja: true,
         usuario: { select: { nombre: true, apellido: true } },
       },
-    })
+    }),
   );
 }
 
@@ -182,7 +180,7 @@ interface FiltrosDonacionTracking {
 }
 
 export async function obtenerDonacionesTracking(
-  filtros?: FiltrosDonacionTracking
+  filtros?: FiltrosDonacionTracking,
 ) {
   return withRetry(() =>
     prisma.donacionTracking.findMany({
@@ -202,13 +200,13 @@ export async function obtenerDonacionesTracking(
         usuario: { select: { nombre: true, apellido: true } },
       },
       orderBy: { fecha: "desc" },
-    })
+    }),
   );
 }
 
 export async function obtenerResumenDonacionesTracking(
   desde?: Date,
-  hasta?: Date
+  hasta?: Date,
 ) {
   const donaciones = await prisma.donacionTracking.findMany({
     where: {
@@ -275,7 +273,7 @@ interface ActualizarDonacionData {
 
 export async function actualizarDonacion(
   id: string,
-  data: ActualizarDonacionData
+  data: ActualizarDonacionData,
 ) {
   await validarPermisoActual("donaciones", "editar");
 
@@ -283,7 +281,8 @@ export async function actualizarDonacion(
   const montoRedondeado =
     data.monto !== undefined ? Math.round(data.monto * 100) / 100 : undefined;
 
-  return prisma.donacion.update({
+  // Actualizar donación y su tracking en una transacción
+  const donacion = await prisma.donacion.update({
     where: { id },
     data: {
       nombre: data.nombre,
@@ -302,6 +301,28 @@ export async function actualizarDonacion(
       usuario: { select: { nombre: true, apellido: true } },
     },
   });
+
+  // Sincronizar el tracking con los mismos datos actualizados
+  const trackingData: Record<string, unknown> = {};
+  if (data.nombre !== undefined) trackingData.nombre = data.nombre;
+  if (data.numeroDocumento !== undefined)
+    trackingData.numeroDocumento = data.numeroDocumento;
+  if (data.telefono !== undefined) trackingData.telefono = data.telefono;
+  if (data.fecha !== undefined) trackingData.fecha = data.fecha;
+  if (montoRedondeado !== undefined) trackingData.monto = montoRedondeado;
+  if (data.tipoOfrendaId !== undefined)
+    trackingData.tipoOfrendaId = data.tipoOfrendaId;
+  if (data.monedaId !== undefined) trackingData.monedaId = data.monedaId;
+  if (data.comentario !== undefined) trackingData.comentario = data.comentario;
+
+  if (Object.keys(trackingData).length > 0) {
+    await prisma.donacionTracking.updateMany({
+      where: { donacionId: id },
+      data: trackingData,
+    });
+  }
+
+  return donacion;
 }
 
 export async function eliminarDonacion(id: string) {

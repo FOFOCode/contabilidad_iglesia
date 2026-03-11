@@ -138,7 +138,7 @@ export function FilialesClient({
   // Estados locales
   const [filialesData, setFilialesData] = useState(resumen.filiales);
   const [totalesGenerales, setTotalesGenerales] = useState(
-    resumen.totalesGenerales
+    resumen.totalesGenerales,
   );
   const [diezmosData, setDiezmosData] = useState(diezmos);
   const [egresosData, setEgresosData] = useState(egresos);
@@ -147,7 +147,7 @@ export function FilialesClient({
   const [filtroFilial, setFiltroFilial] = useState("");
   const [filtroMoneda, setFiltroMoneda] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(
-    obtenerFechaElSalvador().getFullYear().toString()
+    obtenerFechaElSalvador().getFullYear().toString(),
   );
 
   // Filtros y paginación para egresos
@@ -194,7 +194,7 @@ export function FilialesClient({
 
   // Estado para vista de detalle de filial
   const [filialSeleccionada, setFilialSeleccionada] = useState<string | null>(
-    null
+    null,
   );
 
   // Estado para filtro por país en resumen
@@ -297,10 +297,16 @@ export function FilialesClient({
       setFilialesData(nuevoResumen.filiales);
       setTotalesGenerales(nuevoResumen.totalesGenerales);
       setDiezmosData(
-        nuevosDiezmos.map((d) => ({ ...d, monto: Number(d.monto) })) as Diezmo[]
+        nuevosDiezmos.map((d) => ({
+          ...d,
+          monto: Number(d.monto),
+        })) as Diezmo[],
       );
       setEgresosData(
-        nuevosEgresos.map((e) => ({ ...e, monto: Number(e.monto) })) as Egreso[]
+        nuevosEgresos.map((e) => ({
+          ...e,
+          monto: Number(e.monto),
+        })) as Egreso[],
       );
     });
   };
@@ -355,7 +361,7 @@ export function FilialesClient({
       .filter(([_, monto]) => monto && parseFloat(monto) > 0)
       .map(([filialId, monto]) => ({
         filialId,
-        monto: parseFloat(monto),
+        monto: Math.round(parseFloat(monto) * 100) / 100,
         monedaId: formDiezmoMultiple.monedaId,
         mes: parseInt(formDiezmoMultiple.mes),
         anio: parseInt(formDiezmoMultiple.anio),
@@ -373,7 +379,7 @@ export function FilialesClient({
         await refreshData();
         setShowModal(null);
         setSuccessMessage(
-          `${diezmosACrear.length} diezmo(s) registrado(s) correctamente`
+          `${diezmosACrear.length} diezmo(s) registrado(s) correctamente`,
         );
         setFormDiezmoMultiple({
           monedaId: resumen.monedas[0]?.id || "",
@@ -504,7 +510,7 @@ export function FilialesClient({
 
   // Paginación de egresos
   const totalPaginasEgresos = Math.ceil(
-    egresosFiltrados.length / registrosPorPagina
+    egresosFiltrados.length / registrosPorPagina,
   );
   const egresosPaginados = useMemo(() => {
     const inicio = (paginaEgreso - 1) * registrosPorPagina;
@@ -1299,14 +1305,14 @@ export function FilialesClient({
               </div>
 
               {Object.values(formDiezmoMultiple.montos).filter(
-                (m) => m && parseFloat(m) > 0
+                (m) => m && parseFloat(m) > 0,
               ).length > 0 && (
                 <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
                   📊 Se registrarán{" "}
                   <strong>
                     {
                       Object.values(formDiezmoMultiple.montos).filter(
-                        (m) => m && parseFloat(m) > 0
+                        (m) => m && parseFloat(m) > 0,
                       ).length
                     }
                   </strong>{" "}

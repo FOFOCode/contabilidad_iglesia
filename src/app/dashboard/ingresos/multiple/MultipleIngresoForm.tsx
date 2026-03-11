@@ -103,22 +103,22 @@ export function MultipleIngresoForm({
   // Memoizar opciones para selects
   const sociedadOptions = useMemo(
     () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    [sociedades]
+    [sociedades],
   );
 
   const servicioOptions = useMemo(
     () => servicios.map((s) => ({ value: s.id, label: s.nombre })),
-    [servicios]
+    [servicios],
   );
 
   const tipoIngresoOptions = useMemo(
     () => tiposIngreso.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposIngreso]
+    [tiposIngreso],
   );
 
   const cajaOptions = useMemo(
     () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    [cajas]
+    [cajas],
   );
 
   const monedaOptions = useMemo(
@@ -127,75 +127,56 @@ export function MultipleIngresoForm({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   // Función para encontrar cajas (principal y secundaria)
+  // Regla: el checkbox "esGeneral" de la caja matcheada decide el routing:
+  //   - esGeneral=true  → el dinero va a la Caja General principal + tracking en esta caja
+  //   - esGeneral=false → el dinero va directo y solo a esta caja
   const findSuggestedCajas = (
     sociedadId: string,
-    tipoIngresoId: string
+    tipoIngresoId: string,
   ): { principal: Caja | null; secundaria: Caja | null } => {
     if (!sociedadId || !tipoIngresoId) {
       return { principal: null, secundaria: null };
     }
 
-    // Buscar Caja General
-    const cajaGeneral = cajas.find((c) => c.esGeneral);
+    // Caja General principal: la única sin sociedad ni tipo asignados
+    const mainCajaGeneral = cajas.find(
+      (c) => c.esGeneral && !c.sociedadId && !c.tipoIngresoId,
+    );
 
-    // Buscar caja específica: Sociedad + Tipo de Ingreso
+    // Buscar la caja que mejor coincida con sociedad + tipo
     const cajaEspecifica = cajas.find(
-      (c) => c.sociedadId === sociedadId && c.tipoIngresoId === tipoIngresoId
+      (c) => c.sociedadId === sociedadId && c.tipoIngresoId === tipoIngresoId,
     );
-
-    // Buscar caja solo por sociedad
-    const cajaPorSociedad = cajas.find(
-      (c) => c.sociedadId === sociedadId && !c.tipoIngresoId
-    );
-
-    // Buscar caja solo por tipo de ingreso
     const cajaPorTipo = cajas.find(
-      (c) => c.tipoIngresoId === tipoIngresoId && !c.sociedadId
+      (c) => c.tipoIngresoId === tipoIngresoId && !c.sociedadId && !c.esGeneral,
+    );
+    const cajaPorSociedad = cajas.find(
+      (c) => c.sociedadId === sociedadId && !c.tipoIngresoId && !c.esGeneral,
     );
 
-    // Lógica de asignación dual:
-    // Si existe Caja General Y una caja específica → Principal=General, Secundaria=Específica
-    if (cajaGeneral && cajaEspecifica) {
-      return { principal: cajaGeneral, secundaria: cajaEspecifica };
+    const cajaMatchada = cajaEspecifica || cajaPorTipo || cajaPorSociedad;
+
+    if (cajaMatchada) {
+      if (
+        cajaMatchada.esGeneral &&
+        mainCajaGeneral &&
+        mainCajaGeneral.id !== cajaMatchada.id
+      ) {
+        // El checkbox está marcado → el dinero pasa por Caja General, esta caja es tracking
+        return { principal: mainCajaGeneral, secundaria: cajaMatchada };
+      } else {
+        // El checkbox NO está marcado → el dinero va directo a esta caja únicamente
+        return { principal: cajaMatchada, secundaria: null };
+      }
     }
 
-    // Si existe Caja General Y caja por tipo (todas las sociedades) → Principal=General, Secundaria=Tipo
-    if (cajaGeneral && cajaPorTipo) {
-      return { principal: cajaGeneral, secundaria: cajaPorTipo };
-    }
-
-    // Si existe Caja General Y caja por sociedad → Principal=General, Secundaria=Sociedad
-    if (cajaGeneral && cajaPorSociedad) {
-      return { principal: cajaGeneral, secundaria: cajaPorSociedad };
-    }
-
-    // Si solo existe General → Principal=General
-    if (cajaGeneral) {
-      return { principal: cajaGeneral, secundaria: null };
-    }
-
-    // Si solo existe específica → Principal=Específica
-    if (cajaEspecifica) {
-      return { principal: cajaEspecifica, secundaria: null };
-    }
-
-    // Si solo existe por tipo (todas las sociedades) → Principal=Tipo
-    if (cajaPorTipo) {
-      return { principal: cajaPorTipo, secundaria: null };
-    }
-
-    // Si solo existe por sociedad → Principal=Sociedad
-    if (cajaPorSociedad) {
-      return { principal: cajaPorSociedad, secundaria: null };
-    }
-
-    // Si solo existe por tipo → Principal=Tipo
-    if (cajaPorTipo) {
-      return { principal: cajaPorTipo, secundaria: null };
+    // Fallback: usar Caja General si no hay ninguna coincidencia
+    if (mainCajaGeneral) {
+      return { principal: mainCajaGeneral, secundaria: null };
     }
 
     return { principal: null, secundaria: null };
@@ -215,7 +196,7 @@ export function MultipleIngresoForm({
   const updateRow = (
     id: number,
     field: keyof IngresoRow,
-    value: string | Record<string, string>
+    value: string | Record<string, string>,
   ) => {
     setRows(
       rows.map((row) => {
@@ -231,7 +212,7 @@ export function MultipleIngresoForm({
             field === "tipoIngresoId" ? (value as string) : row.tipoIngresoId;
           const { principal, secundaria } = findSuggestedCajas(
             sociedadId,
-            tipoIngresoId
+            tipoIngresoId,
           );
           if (principal) {
             updatedRow.cajaId = principal.id;
@@ -247,7 +228,7 @@ export function MultipleIngresoForm({
         }
 
         return updatedRow;
-      })
+      }),
     );
   };
 
@@ -301,7 +282,7 @@ export function MultipleIngresoForm({
 
     if (filasValidas.length === 0) {
       setError(
-        "Complete al menos una fila con todos los campos requeridos y un monto válido"
+        "Complete al menos una fila con todos los campos requeridos y un monto válido",
       );
       return;
     }
@@ -325,7 +306,7 @@ export function MultipleIngresoForm({
             montos: [
               {
                 monedaId: row.monedaId,
-                monto: parseFloat(parseFloat(row.monto).toFixed(2)),
+                monto: Math.round(parseFloat(row.monto) * 100) / 100,
               },
             ],
           };
