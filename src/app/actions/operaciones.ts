@@ -1338,6 +1338,286 @@ interface FiltrosReporte {
   sociedadId?: string;
 }
 
+const CIERRE_DIEZMO_COMENTARIO = "[CIERRE_DIEZMO_10]";
+
+type EstadoCierreDiezmo = "NO_REALIZADO" | "REALIZADO";
+
+interface ResumenDiezmoUSD {
+  anio: number;
+  mes: number;
+  monedaId: string;
+  monedaCodigo: string;
+  monedaSimbolo: string;
+  cajaOrigenId: string;
+  cajaOrigenNombre: string;
+  totalOfrendas: number;
+  totalEgresos: number;
+  baseLiquida: number;
+  porcentaje: number;
+  montoDiezmo: number;
+  estado: EstadoCierreDiezmo;
+  transferido: number;
+  cajaDestinoId: string | null;
+  cajaDestinoNombre: string | null;
+  realizadoEn: Date | null;
+  puedeAplicar: boolean;
+  nota: string | null;
+}
+
+function redondear2(valor: number): number {
+  return valor >= 0
+    ? Math.floor(valor * 100) / 100
+    : Math.ceil(valor * 100) / 100;
+}
+
+function obtenerPartesFechaElSalvador(fecha: Date) {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/El_Salvador",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(fecha);
+
+  const anio = Number(partes.find((p) => p.type === "year")?.value || 0);
+  const mes = Number(partes.find((p) => p.type === "month")?.value || 0);
+  const dia = Number(partes.find((p) => p.type === "day")?.value || 0);
+
+  return { anio, mes, dia };
+}
+
+async function calcularBaseDiezmoUSDConCliente(
+  db: typeof prisma | Prisma.TransactionClient,
+  params: {
+    monedaUsdId: string;
+    cajaGeneralId: string;
+    fechaInicio: Date;
+    fechaFin: Date;
+  },
+) {
+  const [ingresosOfrendaUsd, donacionesOfrendaUsd, egresosUsd] =
+    await Promise.all([
+      db.ingresoMonto.aggregate({
+        _sum: { monto: true },
+        where: {
+          monedaId: params.monedaUsdId,
+          ingreso: {
+            cajaId: params.cajaGeneralId,
+            fechaRecaudacion: {
+              gte: params.fechaInicio,
+              lte: params.fechaFin,
+            },
+            tipoIngreso: {
+              nombre: {
+                contains: "ofrenda",
+                mode: "insensitive",
+              },
+            },
+            OR: [
+              { comentario: null },
+              {
+                comentario: {
+                  not: {
+                    contains: CIERRE_DIEZMO_COMENTARIO,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      }),
+      db.donacion.aggregate({
+        _sum: { monto: true },
+        where: {
+          cajaId: params.cajaGeneralId,
+          monedaId: params.monedaUsdId,
+          fecha: {
+            gte: params.fechaInicio,
+            lte: params.fechaFin,
+          },
+          tipoOfrenda: {
+            nombre: {
+              contains: "ofrenda",
+              mode: "insensitive",
+            },
+          },
+          OR: [
+            { comentario: null },
+            {
+              comentario: {
+                not: {
+                  contains: CIERRE_DIEZMO_COMENTARIO,
+                },
+              },
+            },
+          ],
+        },
+      }),
+      db.egreso.aggregate({
+        _sum: { monto: true },
+        where: {
+          cajaId: params.cajaGeneralId,
+          monedaId: params.monedaUsdId,
+          fechaSalida: {
+            gte: params.fechaInicio,
+            lte: params.fechaFin,
+          },
+          OR: [
+            { comentario: null },
+            {
+              comentario: {
+                not: {
+                  contains: CIERRE_DIEZMO_COMENTARIO,
+                },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+  const totalOfrendas = redondear2(
+    Number(ingresosOfrendaUsd._sum.monto || 0) +
+      Number(donacionesOfrendaUsd._sum.monto || 0),
+  );
+  const totalEgresos = redondear2(Number(egresosUsd._sum.monto || 0));
+  const baseLiquida = redondear2(totalOfrendas - totalEgresos);
+  const montoCalculado = baseLiquida > 0 ? redondear2(baseLiquida * 0.1) : 0;
+
+  return {
+    totalOfrendas,
+    totalEgresos,
+    baseLiquida,
+    montoCalculado,
+  };
+}
+
+function obtenerPeriodoMensual(fechaInicio: Date, fechaFin: Date) {
+  const inicioSV = obtenerPartesFechaElSalvador(fechaInicio);
+  const finSV = obtenerPartesFechaElSalvador(fechaFin);
+
+  if (inicioSV.anio !== finSV.anio || inicioSV.mes !== finSV.mes) {
+    return null;
+  }
+
+  const anio = inicioSV.anio;
+  const mes = inicioSV.mes;
+
+  const inicioMes = new Date(anio, mes - 1, 1, 0, 0, 0, 0);
+  const finMes = new Date(anio, mes, 0, 23, 59, 59, 999);
+  const ultimoDiaMes = new Date(anio, mes, 0).getDate();
+
+  const esMesCompleto = inicioSV.dia === 1 && finSV.dia === ultimoDiaMes;
+
+  return {
+    anio,
+    mes,
+    inicioMes,
+    finMes,
+    esMesCompleto,
+  };
+}
+
+async function calcularResumenDiezmoUSD(
+  fechaInicio: Date,
+  fechaFin: Date,
+): Promise<ResumenDiezmoUSD | null> {
+  const periodo = obtenerPeriodoMensual(fechaInicio, fechaFin);
+  if (!periodo) return null;
+
+  const [monedaUsd, cajaGeneral] = await Promise.all([
+    prisma.moneda.findFirst({
+      where: { codigo: "USD", activa: true },
+      select: { id: true, codigo: true, simbolo: true },
+    }),
+    prisma.caja.findFirst({
+      where: { esGeneral: true, activa: true },
+      select: { id: true, nombre: true },
+    }),
+  ]);
+
+  if (!monedaUsd || !cajaGeneral) {
+    return null;
+  }
+
+  const base = await calcularBaseDiezmoUSDConCliente(prisma, {
+    monedaUsdId: monedaUsd.id,
+    cajaGeneralId: cajaGeneral.id,
+    fechaInicio: periodo.inicioMes,
+    fechaFin: periodo.finMes,
+  });
+
+  let cierreActual: {
+    estado: string;
+    montoDiezmo: Prisma.Decimal;
+    cajaDestinoId: string | null;
+    realizadoEn: Date | null;
+    nota: string | null;
+    cajaDestino: { nombre: string } | null;
+  } | null = null;
+
+  try {
+    cierreActual = await prisma.cierreDiezmoMensual.findUnique({
+      where: {
+        anio_mes_monedaId: {
+          anio: periodo.anio,
+          mes: periodo.mes,
+          monedaId: monedaUsd.id,
+        },
+      },
+      select: {
+        estado: true,
+        montoDiezmo: true,
+        cajaDestinoId: true,
+        realizadoEn: true,
+        nota: true,
+        cajaDestino: { select: { nombre: true } },
+      },
+    });
+  } catch (error) {
+    const prismaError = error as { code?: string; message?: string };
+    const mensaje = prismaError?.message || "";
+    // Si la migracion no se aplico aun, evitamos romper reportes.
+    const tablaCierreNoDisponible =
+      prismaError?.code === "P2021" ||
+      mensaje.includes("cierres_diezmo_mensual") ||
+      mensaje.includes("cierreDiezmoMensual");
+
+    if (!tablaCierreNoDisponible) {
+      throw error;
+    }
+  }
+
+  const estado =
+    (cierreActual?.estado as EstadoCierreDiezmo | undefined) || "NO_REALIZADO";
+  const transferido =
+    estado === "REALIZADO" ? Number(cierreActual?.montoDiezmo || 0) : 0;
+
+  return {
+    anio: periodo.anio,
+    mes: periodo.mes,
+    monedaId: monedaUsd.id,
+    monedaCodigo: monedaUsd.codigo,
+    monedaSimbolo: monedaUsd.simbolo,
+    cajaOrigenId: cajaGeneral.id,
+    cajaOrigenNombre: cajaGeneral.nombre,
+    totalOfrendas: base.totalOfrendas,
+    totalEgresos: base.totalEgresos,
+    baseLiquida: base.baseLiquida,
+    porcentaje: 10,
+    montoDiezmo: base.montoCalculado,
+    estado,
+    transferido,
+    cajaDestinoId: cierreActual?.cajaDestinoId || null,
+    cajaDestinoNombre: cierreActual?.cajaDestino?.nombre || null,
+    realizadoEn: cierreActual?.realizadoEn || null,
+    puedeAplicar:
+      periodo.esMesCompleto &&
+      base.montoCalculado > 0 &&
+      estado !== "REALIZADO",
+    nota: cierreActual?.nota || null,
+  };
+}
+
 export async function obtenerDatosReporte(filtros: FiltrosReporte) {
   const whereIngresos: any = {};
   const whereEgresos: any = {};
@@ -1628,6 +1908,11 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     ],
   }));
 
+  const cierreDiezmo =
+    fechaInicio && fechaFin
+      ? await calcularResumenDiezmoUSD(fechaInicio, fechaFin)
+      : null;
+
   return {
     ingresos: [
       ...ingresosSerializados,
@@ -1638,6 +1923,7 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     sociedades,
     cajas,
     monedas: monedasRaw.map(serializarMoneda),
+    cierreDiezmo,
   };
 }
 
@@ -2236,4 +2522,304 @@ export async function obtenerEstadisticasAuditoria() {
     })),
     usuariosActivos: usuariosActivos.length,
   };
+}
+
+// =====================
+// CIERRE MENSUAL DIEZMO 10% (USD)
+// =====================
+
+async function obtenerCatalogosTransferencia(
+  tx: Prisma.TransactionClient,
+  usuarioId: string,
+) {
+  const [tipoGasto, tipoIngreso, sociedad, servicio] = await Promise.all([
+    tx.tipoGasto.upsert({
+      where: { nombre: "Transferencia Diezmo 10%" },
+      update: {},
+      create: {
+        nombre: "Transferencia Diezmo 10%",
+        descripcion: "Salida por cierre mensual de diezmo (10%)",
+        orden: 997,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+    tx.tipoIngreso.upsert({
+      where: { nombre: "Transferencia Diezmo 10%" },
+      update: {},
+      create: {
+        nombre: "Transferencia Diezmo 10%",
+        descripcion: "Ingreso por transferencia interna de cierre mensual",
+        orden: 997,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+    tx.sociedad.upsert({
+      where: { nombre: "Sistema" },
+      update: {},
+      create: {
+        nombre: "Sistema",
+        descripcion: "Entidad técnica para operaciones automáticas",
+        orden: 998,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+    tx.tipoServicio.upsert({
+      where: { nombre: "Sistema" },
+      update: {},
+      create: {
+        nombre: "Sistema",
+        descripcion: "Servicio técnico para operaciones automáticas",
+        orden: 998,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    tipoGastoId: tipoGasto.id,
+    tipoIngresoId: tipoIngreso.id,
+    sociedadId: sociedad.id,
+    servicioId: servicio.id,
+  };
+}
+
+export async function obtenerEstadoCierreDiezmoMensual(
+  anio: number,
+  mes: number,
+) {
+  const inicio = new Date(anio, mes - 1, 1, 0, 0, 0, 0);
+  const fin = new Date(anio, mes, 0, 23, 59, 59, 999);
+  return calcularResumenDiezmoUSD(inicio, fin);
+}
+
+export async function aplicarTransferenciaDiezmoMensual(params: {
+  anio: number;
+  mes: number;
+  cajaDestinoId: string;
+  nota?: string;
+}) {
+  await validarPermisoActual("reportes", "editar");
+  const usuario = await getUsuarioActual();
+  if (!usuario) {
+    return { success: false, error: "No autenticado" };
+  }
+
+  const inicioMes = new Date(params.anio, params.mes - 1, 1, 0, 0, 0, 0);
+  const finMes = new Date(params.anio, params.mes, 0, 23, 59, 59, 999);
+
+  try {
+    const resultado = await withRetry(async () =>
+      prisma.$transaction(
+        async (tx) => {
+          const [monedaUsd, cajaGeneral, cajaDestino] = await Promise.all([
+            tx.moneda.findFirst({
+              where: { codigo: "USD", activa: true },
+              select: { id: true, simbolo: true, codigo: true },
+            }),
+            tx.caja.findFirst({
+              where: { esGeneral: true, activa: true },
+              select: { id: true, nombre: true },
+            }),
+            tx.caja.findFirst({
+              where: { id: params.cajaDestinoId, activa: true },
+              select: { id: true, nombre: true },
+            }),
+          ]);
+
+          if (!monedaUsd) throw new Error("No existe moneda USD activa");
+          if (!cajaGeneral) throw new Error("No existe Caja General activa");
+          if (!cajaDestino) throw new Error("Caja destino inválida o inactiva");
+          if (cajaDestino.id === cajaGeneral.id) {
+            throw new Error("La caja destino debe ser distinta a Caja General");
+          }
+
+          const resumen = await calcularBaseDiezmoUSDConCliente(tx, {
+            monedaUsdId: monedaUsd.id,
+            cajaGeneralId: cajaGeneral.id,
+            fechaInicio: inicioMes,
+            fechaFin: finMes,
+          });
+
+          if (resumen.montoCalculado <= 0) {
+            throw new Error(
+              "No aplica transferencia: la base líquida es menor o igual a 0",
+            );
+          }
+
+          const cierreExistente = await tx.cierreDiezmoMensual.findUnique({
+            where: {
+              anio_mes_monedaId: {
+                anio: params.anio,
+                mes: params.mes,
+                monedaId: monedaUsd.id,
+              },
+            },
+          });
+
+          if (cierreExistente?.estado === "REALIZADO") {
+            throw new Error("Este mes ya fue cerrado y transferido");
+          }
+
+          const catalogos = await obtenerCatalogosTransferencia(tx, usuario.id);
+
+          const comentarioTransferencia = `${CIERRE_DIEZMO_COMENTARIO} ${params.anio}-${String(params.mes).padStart(2, "0")}`;
+
+          const egreso = await tx.egreso.create({
+            data: {
+              fechaSalida: new Date(),
+              solicitante: "Sistema - Cierre Mensual",
+              monto: resumen.montoCalculado,
+              descripcionGasto: "Transferencia diezmo mensual 10%",
+              comentario: comentarioTransferencia,
+              tipoGastoId: catalogos.tipoGastoId,
+              monedaId: monedaUsd.id,
+              cajaId: cajaGeneral.id,
+              usuarioId: usuario.id,
+              creadoPorId: usuario.id,
+            },
+            select: { id: true },
+          });
+
+          const ingreso = await tx.ingreso.create({
+            data: {
+              fechaRecaudacion: new Date(),
+              comentario: comentarioTransferencia,
+              sociedadId: catalogos.sociedadId,
+              servicioId: catalogos.servicioId,
+              tipoIngresoId: catalogos.tipoIngresoId,
+              cajaId: cajaDestino.id,
+              cajaSecundariaId: null,
+              usuarioId: usuario.id,
+              creadoPorId: usuario.id,
+              montos: {
+                create: {
+                  monedaId: monedaUsd.id,
+                  monto: resumen.montoCalculado,
+                },
+              },
+            },
+            select: { id: true },
+          });
+
+          const cierre = await tx.cierreDiezmoMensual.upsert({
+            where: {
+              anio_mes_monedaId: {
+                anio: params.anio,
+                mes: params.mes,
+                monedaId: monedaUsd.id,
+              },
+            },
+            update: {
+              fechaInicio: inicioMes,
+              fechaFin: finMes,
+              totalOfrendas: resumen.totalOfrendas,
+              totalEgresos: resumen.totalEgresos,
+              baseLiquida: resumen.baseLiquida,
+              porcentaje: 0.1,
+              montoDiezmo: resumen.montoCalculado,
+              estado: "REALIZADO",
+              cajaOrigenId: cajaGeneral.id,
+              cajaDestinoId: cajaDestino.id,
+              transferenciaEgresoId: egreso.id,
+              transferenciaIngresoId: ingreso.id,
+              nota: params.nota || null,
+              realizadoEn: new Date(),
+              realizadoPorId: usuario.id,
+            },
+            create: {
+              anio: params.anio,
+              mes: params.mes,
+              monedaId: monedaUsd.id,
+              fechaInicio: inicioMes,
+              fechaFin: finMes,
+              totalOfrendas: resumen.totalOfrendas,
+              totalEgresos: resumen.totalEgresos,
+              baseLiquida: resumen.baseLiquida,
+              porcentaje: 0.1,
+              montoDiezmo: resumen.montoCalculado,
+              estado: "REALIZADO",
+              cajaOrigenId: cajaGeneral.id,
+              cajaDestinoId: cajaDestino.id,
+              transferenciaEgresoId: egreso.id,
+              transferenciaIngresoId: ingreso.id,
+              nota: params.nota || null,
+              realizadoEn: new Date(),
+              creadoPorId: usuario.id,
+              realizadoPorId: usuario.id,
+            },
+          });
+
+          return {
+            success: true,
+            cierreId: cierre.id,
+            montoTransferido: resumen.montoCalculado,
+            moneda: monedaUsd.codigo,
+            cajaOrigen: cajaGeneral.nombre,
+            cajaDestino: cajaDestino.nombre,
+            cajaOrigenId: cajaGeneral.id,
+            cajaDestinoId: cajaDestino.id,
+            transferenciaEgresoId: egreso.id,
+            transferenciaIngresoId: ingreso.id,
+          };
+        },
+        {
+          maxWait: 10000,
+          timeout: 20000,
+        },
+      ),
+    );
+
+    if (resultado.success) {
+      await registrarAuditoria({
+        tabla: "CierreDiezmoMensual",
+        registroId: resultado.cierreId,
+        operacion: "UPDATE",
+        usuarioId: usuario.id,
+        datoNuevo: {
+          anio: params.anio,
+          mes: params.mes,
+          montoDiezmo: resultado.montoTransferido,
+          cajaOrigenId: resultado.cajaOrigenId,
+          cajaDestinoId: resultado.cajaDestinoId,
+          transferenciaEgresoId: resultado.transferenciaEgresoId,
+          transferenciaIngresoId: resultado.transferenciaIngresoId,
+          estado: "REALIZADO",
+        },
+        descripcion: `Cierre mensual ${params.mes}/${params.anio} aplicado con transferencia de 10%`,
+      });
+    }
+
+    return resultado;
+  } catch (error) {
+    const prismaError = error as { code?: string; message?: string };
+    const mensaje = prismaError?.message || "Error al aplicar transferencia";
+    const tablaCierreNoDisponible =
+      prismaError?.code === "P2021" ||
+      mensaje.includes("cierres_diezmo_mensual") ||
+      mensaje.includes("cierreDiezmoMensual");
+
+    if (tablaCierreNoDisponible) {
+      return {
+        success: false,
+        error:
+          "No se puede aplicar transferencia porque la base de datos no tiene la tabla de cierre mensual. Ejecuta migraciones pendientes.",
+      };
+    }
+
+    return {
+      success: false,
+      error: mensaje,
+    };
+  }
+}
+
+export async function obtenerCierreDiezmoPendienteAnterior() {
+  const hoy = new Date();
+  const anio = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+  const mes = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+  return obtenerEstadoCierreDiezmoMensual(anio, mes);
 }
