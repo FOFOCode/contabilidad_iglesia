@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma, withRetry } from "@/lib/prisma";
+import { dbResumenDashboard } from "@/lib/db-functions";
 
 // Verificar si el sistema tiene configuración inicial
 export async function verificarConfiguracionInicial() {
@@ -253,408 +254,90 @@ export async function sembrarDatosIniciales() {
 }
 
 // Obtener resumen del dashboard
+// Delega a la función PL/pgSQL fn_resumen_dashboard() — 1 round-trip en lugar de ~20.
 export async function obtenerResumenDashboard() {
   return withRetry(async () => {
-    // Calcular fechas en zona horaria de El Salvador (UTC-6)
-    // Obtenemos la hora actual en UTC y le restamos 6 horas para obtener la hora de El Salvador
-    const ahoraUTC = new Date();
-    const horaElSalvador = new Date(ahoraUTC.getTime() - 6 * 60 * 60 * 1000);
+    const db = await dbResumenDashboard();
 
-    // Extraer año y mes según la hora de El Salvador
-    const anio = horaElSalvador.getUTCFullYear();
-    const mes = horaElSalvador.getUTCMonth(); // 0-11
+    // Adaptar la salida de la DB al contrato que espera dashboard/page.tsx
+    const toGroupBy = (items: { monedaId: string; total: number }[]) =>
+      items.map((i) => ({ monedaId: i.monedaId, _sum: { monto: i.total } }));
 
-    // Inicio del mes actual: día 1 a las 00:00:00 de El Salvador = 06:00:00 UTC
-    const inicioMes = new Date(Date.UTC(anio, mes, 1, 6, 0, 0, 0));
-
-    // Calcular mes y año anterior de forma explícita para mayor claridad
-    // (JavaScript maneja mes=-1 automáticamente, pero esto es más legible)
-    const mesAnterior = mes === 0 ? 11 : mes - 1;
-    const anioMesAnterior = mes === 0 ? anio - 1 : anio;
-
-    // Inicio del mes anterior
-    const inicioMesAnterior = new Date(
-      Date.UTC(anioMesAnterior, mesAnterior, 1, 6, 0, 0, 0)
-    );
-
-    // Fin del mes anterior: día 1 del mes actual a las 05:59:59 UTC (23:59:59 El Salvador del día anterior)
-    const finMesAnterior = new Date(Date.UTC(anio, mes, 1, 5, 59, 59, 999));
-
-    // Inicio del año actual (siempre 1 de enero del año actual según El Salvador)
-    const inicioAnio = new Date(Date.UTC(anio, 0, 1, 6, 0, 0, 0));
-
-    // Obtener moneda principal
-    const monedaPrincipal = await prisma.moneda.findFirst({
-      where: { esPrincipal: true },
-    });
-
-    // Ingresos del mes (agrupados por moneda)
-    const ingresosMes = await prisma.ingresoMonto.groupBy({
-      by: ["monedaId"],
-      where: {
-        ingreso: {
-          fechaRecaudacion: { gte: inicioMes },
-        },
-      },
-      _sum: { monto: true },
-    });
-
-    // Egresos del mes
-    const egresosMes = await prisma.egreso.groupBy({
-      by: ["monedaId"],
-      where: {
-        fechaSalida: { gte: inicioMes },
-      },
-      _sum: { monto: true },
-    });
-
-    // Ingresos mes anterior (para comparativa)
-    const ingresosMesAnterior = await prisma.ingresoMonto.groupBy({
-      by: ["monedaId"],
-      where: {
-        ingreso: {
-          fechaRecaudacion: { gte: inicioMesAnterior, lte: finMesAnterior },
-        },
-      },
-      _sum: { monto: true },
-    });
-
-    // Egresos mes anterior
-    const egresosMesAnterior = await prisma.egreso.groupBy({
-      by: ["monedaId"],
-      where: {
-        fechaSalida: { gte: inicioMesAnterior, lte: finMesAnterior },
-      },
-      _sum: { monto: true },
-    });
-
-    // Ingresos del año (acumulado)
-    const ingresosAnio = await prisma.ingresoMonto.groupBy({
-      by: ["monedaId"],
-      where: {
-        ingreso: {
-          fechaRecaudacion: { gte: inicioAnio },
-        },
-      },
-      _sum: { monto: true },
-    });
-
-    // Egresos del año
-    const egresosAnio = await prisma.egreso.groupBy({
-      by: ["monedaId"],
-      where: {
-        fechaSalida: { gte: inicioAnio },
-      },
-      _sum: { monto: true },
-    });
-
-    // Ingresos por sociedad del mes
-    const ingresosPorSociedad = await prisma.ingreso.findMany({
-      where: { fechaRecaudacion: { gte: inicioMes } },
-      select: {
-        sociedad: { select: { id: true, nombre: true } },
-        montos: {
-          select: {
-            monto: true,
-            moneda: { select: { id: true, simbolo: true, codigo: true } },
-          },
-        },
-      },
-    });
-
-    // Egresos por tipo de gasto del mes
-    const egresosPorTipo = await prisma.egreso.groupBy({
-      by: ["tipoGastoId", "monedaId"],
-      where: { fechaSalida: { gte: inicioMes } },
-      _sum: { monto: true },
-    });
-
-    // Obtener nombres de tipos de gasto
-    const tiposGasto = await prisma.tipoGasto.findMany({
-      where: { activo: true },
-      select: { id: true, nombre: true },
-    });
-
-    // Top 5 cajas por movimiento (con saldos calculados)
-    const cajasActivas = await prisma.caja.findMany({
-      where: { activa: true },
-      select: { id: true, nombre: true, esGeneral: true },
-      orderBy: { orden: "asc" },
-      take: 6,
-    });
-
-    // Obtener IDs de cajas para filtrar
-    const cajaIds = cajasActivas.map((c) => c.id);
-
-    // Consultas optimizadas: obtener ingresos principales, secundarios, egresos y donaciones
-    const [
-      ingresosPrincipalesAgrupados,
-      ingresosSecundariosAgrupados,
-      egresosAgrupados,
-      donacionesAgrupadas,
-    ] = await Promise.all([
-      // Ingresos principales (cajas generales)
-      prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
-        SELECT i."cajaId", im."monedaId", SUM(im.monto)::float as total
-        FROM ingreso_montos im
-        INNER JOIN ingresos i ON im."ingresoId" = i.id
-        WHERE i."cajaId" = ANY(${cajaIds}::text[])
-        GROUP BY i."cajaId", im."monedaId"
-      `,
-      // Ingresos secundarios (cajas de tracking)
-      prisma.$queryRaw<{ cajaId: string; monedaId: string; total: number }[]>`
-        SELECT i."cajaSecundariaId" as "cajaId", im."monedaId", SUM(im.monto)::float as total
-        FROM ingreso_montos im
-        INNER JOIN ingresos i ON im."ingresoId" = i.id
-        WHERE i."cajaSecundariaId" = ANY(${cajaIds}::text[])
-        GROUP BY i."cajaSecundariaId", im."monedaId"
-      `,
-      // Egresos
-      prisma.egreso.groupBy({
-        by: ["cajaId", "monedaId"],
-        where: { cajaId: { in: cajaIds } },
-        _sum: { monto: true },
-      }),
-      // Donaciones (solo se suman a cajas generales)
-      prisma.donacion.groupBy({
-        by: ["cajaId", "monedaId"],
-        where: { cajaId: { in: cajaIds } },
-        _sum: { monto: true },
-      }),
-    ]);
-
-    // Mapas para acceso rápido
-    const ingresosPrincipalesMap = new Map<string, number>();
-    ingresosPrincipalesAgrupados.forEach((ing) => {
-      ingresosPrincipalesMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
-    });
-
-    const ingresosSecundariosMap = new Map<string, number>();
-    ingresosSecundariosAgrupados.forEach((ing) => {
-      ingresosSecundariosMap.set(`${ing.cajaId}-${ing.monedaId}`, ing.total);
-    });
-
-    const donacionesMap = new Map<string, number>();
-    donacionesAgrupadas.forEach((don) => {
-      donacionesMap.set(
-        `${don.cajaId}-${don.monedaId}`,
-        Number(don._sum.monto || 0)
-      );
-    });
-
-    const egresosMap = new Map<string, number>();
-    egresosAgrupados.forEach((egr) => {
-      egresosMap.set(
-        `${egr.cajaId}-${egr.monedaId}`,
-        Number(egr._sum.monto || 0)
-      );
-    });
-
-    // Monedas para referencia (necesitamos esto antes de construir cajasConSaldos)
-    const monedas = await prisma.moneda.findMany({ where: { activa: true } });
-
-    // Construir cajas con saldos
-    const cajasConSaldos = cajasActivas.map((caja) => ({
-      ...caja,
-      saldos: monedas.map((moneda) => {
-        const key = `${caja.id}-${moneda.id}`;
-
-        // Para cajas generales: usar ingresos principales + donaciones
-        // Para cajas de tracking (no generales): usar ingresos secundarios
-        const ingresosBase = caja.esGeneral
-          ? ingresosPrincipalesMap.get(key) || 0
-          : ingresosSecundariosMap.get(key) || 0;
-
-        const donaciones = caja.esGeneral ? donacionesMap.get(key) || 0 : 0;
-        const ingresos = ingresosBase + donaciones;
-        const egresos = egresosMap.get(key) || 0;
-
-        return {
-          monedaId: moneda.id,
-          saldo: ingresos - egresos,
-        };
-      }),
+    const monedas = (db.monedas ?? []).map((m) => ({
+      id: m.id,
+      codigo: m.codigo,
+      simbolo: m.simbolo,
+      esPrincipal: m.esPrincipal,
+      activa: m.activa,
+      orden: m.orden,
     }));
 
-    // Contadores y últimos movimientos en paralelo
-    const [
-      totalIngresos,
-      totalEgresos,
-      totalCajas,
-      ultimosIngresos,
-      ultimosEgresos,
-      sociedades,
-      tiposIngreso,
-    ] = await Promise.all([
-      prisma.ingreso.count({ where: { fechaRecaudacion: { gte: inicioMes } } }),
-      prisma.egreso.count({ where: { fechaSalida: { gte: inicioMes } } }),
-      prisma.caja.count({ where: { activa: true } }),
-      prisma.ingreso.findMany({
-        take: 5,
-        orderBy: { creadoEn: "desc" },
-        include: {
-          sociedad: true,
-          tipoIngreso: true,
-          caja: true,
-          montos: { include: { moneda: true } },
-        },
-      }),
-      prisma.egreso.findMany({
-        take: 5,
-        orderBy: { creadoEn: "desc" },
-        include: {
-          tipoGasto: true,
-          caja: true,
-          moneda: true,
-        },
-      }),
-      prisma.sociedad.findMany({ where: { activa: true } }),
-      prisma.tipoIngreso.findMany({
-        where: { activo: true },
-        orderBy: { orden: "asc" },
-      }),
-    ]);
-
-    // =====================
-    // CAJAS VIRTUALES POR TIPO DE INGRESO
-    // =====================
-    // Agrupa todos los ingresos del mes por tipo de ingreso + sociedad
-    // Esto permite ver "cuánto hay en ofrendas" independiente de la caja física
-    const ingresosPorTipoIngreso = await prisma.ingreso.findMany({
-      where: { fechaRecaudacion: { gte: inicioMes } },
-      select: {
-        tipoIngreso: { select: { id: true, nombre: true } },
-        sociedad: { select: { id: true, nombre: true } },
-        montos: {
-          select: {
-            monto: true,
-            moneda: { select: { id: true, simbolo: true, codigo: true } },
-          },
-        },
-      },
-    });
-
-    // Procesar datos para cajas virtuales
-    // Estructura: { tipoIngresoId: { nombre, totalPorMoneda: {...}, porSociedad: {...} } }
-    const cajasVirtualesMap: Record<
-      string,
-      {
-        id: string;
-        nombre: string;
-        totalPorMoneda: Record<
-          string,
-          { monto: number; simbolo: string; codigo: string }
-        >;
-        porSociedad: Record<
-          string,
-          {
-            id: string;
-            nombre: string;
-            montos: Record<
-              string,
-              { monto: number; simbolo: string; codigo: string }
-            >;
-          }
-        >;
-      }
-    > = {};
-
-    ingresosPorTipoIngreso.forEach((ingreso) => {
-      const tipoId = ingreso.tipoIngreso.id;
-      const tipoNombre = ingreso.tipoIngreso.nombre;
-      const socId = ingreso.sociedad.id;
-      const socNombre = ingreso.sociedad.nombre;
-
-      if (!cajasVirtualesMap[tipoId]) {
-        cajasVirtualesMap[tipoId] = {
-          id: tipoId,
-          nombre: tipoNombre,
-          totalPorMoneda: {},
-          porSociedad: {},
-        };
-      }
-
-      // Acumular por sociedad
-      if (!cajasVirtualesMap[tipoId].porSociedad[socId]) {
-        cajasVirtualesMap[tipoId].porSociedad[socId] = {
-          id: socId,
-          nombre: socNombre,
-          montos: {},
-        };
-      }
-
-      ingreso.montos.forEach((m) => {
-        const monedaId = m.moneda.id;
-        const monto = Number(m.monto);
-
-        // Acumular total del tipo de ingreso
-        if (!cajasVirtualesMap[tipoId].totalPorMoneda[monedaId]) {
-          cajasVirtualesMap[tipoId].totalPorMoneda[monedaId] = {
-            monto: 0,
-            simbolo: m.moneda.simbolo,
-            codigo: m.moneda.codigo,
-          };
-        }
-        cajasVirtualesMap[tipoId].totalPorMoneda[monedaId].monto += monto;
-
-        // Acumular por sociedad dentro del tipo
-        if (!cajasVirtualesMap[tipoId].porSociedad[socId].montos[monedaId]) {
-          cajasVirtualesMap[tipoId].porSociedad[socId].montos[monedaId] = {
-            monto: 0,
-            simbolo: m.moneda.simbolo,
-            codigo: m.moneda.codigo,
-          };
-        }
-        cajasVirtualesMap[tipoId].porSociedad[socId].montos[monedaId].monto +=
-          monto;
-      });
-    });
-
-    // Convertir a array para enviar al cliente
-    const cajasVirtuales = Object.values(cajasVirtualesMap).map((cv) => ({
-      id: cv.id,
-      nombre: cv.nombre,
-      totalPorMoneda: Object.entries(cv.totalPorMoneda).map(
-        ([monedaId, datos]) => ({
-          monedaId,
-          monto: datos.monto,
-          simbolo: datos.simbolo,
-          codigo: datos.codigo,
-        })
-      ),
-      porSociedad: Object.values(cv.porSociedad).map((soc) => ({
-        id: soc.id,
-        nombre: soc.nombre,
-        montos: Object.entries(soc.montos).map(([monedaId, datos]) => ({
-          monedaId,
-          monto: datos.monto,
-          simbolo: datos.simbolo,
-          codigo: datos.codigo,
-        })),
+    const cajasConSaldos = (db.cajasConSaldos ?? []).map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+      esGeneral: c.esGeneral,
+      saldos: (c.saldos ?? []).map((s) => ({
+        monedaId: s.monedaId,
+        saldo: s.saldo,
       })),
     }));
 
+    const ultimosIngresos = (db.ultimosIngresos ?? []).map((i) => ({
+      id: i.id,
+      fechaRecaudacion: new Date(i.fechaRecaudacion),
+      sociedad: { nombre: i.sociedad?.nombre ?? "" },
+      tipoIngreso: { nombre: i.tipoIngreso?.nombre ?? "" },
+      caja: { nombre: i.caja?.nombre ?? "" },
+      montos: (i.montos ?? []).map((m) => ({
+        monto: m.monto,
+        moneda: {
+          simbolo: m.moneda?.simbolo ?? "",
+          codigo: m.moneda?.codigo ?? "",
+        },
+      })),
+    }));
+
+    const ultimosEgresos = (db.ultimosEgresos ?? []).map((e) => ({
+      id: e.id,
+      fechaSalida: new Date(e.fechaSalida),
+      solicitante: e.solicitante,
+      monto: e.monto,
+      tipoGasto: { nombre: e.tipoGasto?.nombre ?? "" },
+      caja: { nombre: e.caja?.nombre ?? "" },
+      moneda: {
+        simbolo: e.moneda?.simbolo ?? "",
+        codigo: e.moneda?.codigo ?? "",
+      },
+    }));
+
+    const contadores = db.contadores ?? {
+      totalIngresos: 0,
+      totalEgresos: 0,
+      totalCajas: 0,
+    };
+
     return {
-      monedaPrincipal,
-      ingresosMes,
-      egresosMes,
-      ingresosMesAnterior,
-      egresosMesAnterior,
-      ingresosAnio,
-      egresosAnio,
-      ingresosPorSociedad,
-      egresosPorTipo,
-      tiposGasto,
-      tiposIngreso,
+      monedaPrincipal: monedas.find((m) => m.esPrincipal) ?? monedas[0],
+      ingresosMes: toGroupBy(db.ingresosMes ?? []),
+      egresosMes: toGroupBy(db.egresosMes ?? []),
+      ingresosMesAnterior: toGroupBy(db.ingresosMesAnterior ?? []),
+      egresosMesAnterior: toGroupBy(db.egresosMesAnterior ?? []),
+      ingresosAnio: toGroupBy(db.ingresosAnio ?? []),
+      egresosAnio: toGroupBy(db.egresosAnio ?? []),
+      // Estos ya no se usan en el dashboard simplificado
+      ingresosPorSociedad: [] as never[],
+      egresosPorTipo: [] as never[],
+      tiposGasto: [] as never[],
+      tiposIngreso: [] as never[],
+      cajasVirtuales: [] as never[],
       cajasConSaldos,
-      cajasVirtuales, // NUEVO: Cajas virtuales por tipo de ingreso
-      totalIngresos,
-      totalEgresos,
-      totalCajas,
+      totalIngresos: Number(contadores.totalIngresos),
+      totalEgresos: Number(contadores.totalEgresos),
+      totalCajas: Number(contadores.totalCajas),
       ultimosIngresos,
       ultimosEgresos,
       monedas,
-      sociedades,
+      sociedades: [] as never[],
     };
   });
 }

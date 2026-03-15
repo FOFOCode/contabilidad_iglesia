@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import {
+  useState,
+  useTransition,
+  useMemo,
+  useCallback,
+  useRef,
+  memo,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Card, Input, Combobox, Button } from "@/components/ui";
 import { crearEgresosMultiples } from "@/app/actions/operaciones";
@@ -43,6 +50,156 @@ interface EgresoRow {
   numeroFactura: string;
 }
 
+interface EgresoRowCardProps {
+  row: EgresoRow;
+  index: number;
+  canRemove: boolean;
+  tipoGastoOptions: { value: string; label: string }[];
+  cajaOptions: { value: string; label: string }[];
+  monedaOptions: { value: string; label: string }[];
+  onUpdate: (id: number, field: keyof EgresoRow, value: string) => void;
+  onRemove: (id: number) => void;
+  onDuplicate: (id: number) => void;
+}
+
+const EgresoRowCard = memo(function EgresoRowCard({
+  row,
+  index,
+  canRemove,
+  tipoGastoOptions,
+  cajaOptions,
+  monedaOptions,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+}: EgresoRowCardProps) {
+  return (
+    <Card className="relative">
+      {/* Número de fila */}
+      <div className="absolute -left-3 -top-3 w-8 h-8 bg-[#e0451f] text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">
+        {index + 1}
+      </div>
+
+      {/* Botones de acción */}
+      <div className="absolute right-4 top-4 flex gap-2">
+        <button
+          type="button"
+          onClick={() => onDuplicate(row.id)}
+          className="p-1.5 text-[#73a9bf] hover:text-[#40768c] hover:bg-gray-100 rounded transition-colors"
+          title="Duplicar fila"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+            />
+          </svg>
+        </button>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={() => onRemove(row.id)}
+            className="p-1.5 text-gray-400 hover:text-[#e0451f] hover:bg-red-50 rounded transition-colors"
+            title="Eliminar fila"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Campos del formulario */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
+        <Input
+          label="Fecha"
+          type="date"
+          value={row.fecha}
+          onChange={(e) => onUpdate(row.id, "fecha", e.target.value)}
+          required
+        />
+        <Input
+          label="Solicitante"
+          placeholder="Nombre del solicitante"
+          value={row.solicitante}
+          onChange={(e) => onUpdate(row.id, "solicitante", e.target.value)}
+          required
+        />
+        <Combobox
+          label="Tipo de Gasto"
+          options={tipoGastoOptions}
+          value={row.tipoGastoId}
+          onChange={(value) => onUpdate(row.id, "tipoGastoId", value)}
+          placeholder="Seleccionar..."
+          searchable={false}
+          required
+        />
+        <Combobox
+          label="Caja"
+          options={cajaOptions}
+          value={row.cajaId}
+          onChange={(value) => onUpdate(row.id, "cajaId", value)}
+          placeholder="Seleccionar..."
+          searchable={false}
+          required
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            label="Monto"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            value={row.monto}
+            onChange={(e) => onUpdate(row.id, "monto", e.target.value)}
+            required
+          />
+          <Combobox
+            label="Moneda"
+            options={monedaOptions}
+            value={row.monedaId}
+            onChange={(value) => onUpdate(row.id, "monedaId", value)}
+            placeholder="Seleccionar..."
+            searchable={false}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 mt-4">
+        <Input
+          label="Descripción del gasto"
+          placeholder="Descripción detallada..."
+          value={row.descripcion}
+          onChange={(e) => onUpdate(row.id, "descripcion", e.target.value)}
+        />
+        <Input
+          label="Número de Factura (opcional)"
+          placeholder="Ej: FAC-001234"
+          value={row.numeroFactura}
+          onChange={(e) => onUpdate(row.id, "numeroFactura", e.target.value)}
+        />
+      </div>
+    </Card>
+  );
+});
+
 export function MultipleEgresoForm({
   tiposGasto,
   cajas,
@@ -54,32 +211,40 @@ export function MultipleEgresoForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Moneda por defecto (la principal o la primera)
-  const monedaPrincipal = monedas.find((m) => m.esPrincipal) || monedas[0];
+  // Moneda por defecto (la principal o la primera) — props nunca cambian después del mount
+  const monedaPrincipalId = useMemo(
+    () => (monedas.find((m) => m.esPrincipal) || monedas[0])?.id || "",
+    [monedas],
+  );
+  const cajaDefaultId = useMemo(() => cajas[0]?.id || "", [cajas]);
 
-  const createEmptyRow = (id: number): EgresoRow => ({
-    id,
-    fecha: obtenerFechaHoyElSalvador(),
-    solicitante: "",
-    tipoGastoId: "",
-    monto: "",
-    monedaId: monedaPrincipal?.id || "",
-    cajaId: cajas[0]?.id || "",
-    descripcion: "",
-    numeroFactura: "",
-  });
+  const createEmptyRow = useCallback(
+    (id: number): EgresoRow => ({
+      id,
+      fecha: obtenerFechaHoyElSalvador(),
+      solicitante: "",
+      tipoGastoId: "",
+      monto: "",
+      monedaId: monedaPrincipalId,
+      cajaId: cajaDefaultId,
+      descripcion: "",
+      numeroFactura: "",
+    }),
+    [monedaPrincipalId, cajaDefaultId],
+  );
 
-  const [rows, setRows] = useState<EgresoRow[]>([
+  const [rows, setRows] = useState<EgresoRow[]>(() => [
     createEmptyRow(1),
     createEmptyRow(2),
     createEmptyRow(3),
   ]);
-  const [nextId, setNextId] = useState(4);
+  // useRef keeps nextId stable so addRow/duplicateRow don't need rows in deps
+  const nextIdRef = useRef(4);
 
   // Memoizar opciones para selects
   const tipoGastoOptions = useMemo(
     () => tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposGasto]
+    [tiposGasto],
   );
 
   const monedaOptions = useMemo(
@@ -88,39 +253,46 @@ export function MultipleEgresoForm({
         value: m.id,
         label: `${m.nombre} (${m.codigo})`,
       })),
-    [monedas]
+    [monedas],
   );
 
   const cajaOptions = useMemo(
     () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    [cajas]
+    [cajas],
   );
 
-  const addRow = () => {
-    setRows([...rows, createEmptyRow(nextId)]);
-    setNextId(nextId + 1);
-  };
+  // Handlers with stable references — functional setRows removes need for rows in deps
+  const addRow = useCallback(() => {
+    setRows((prev) => {
+      if (prev.length >= 100) return prev;
+      const id = nextIdRef.current++;
+      return [...prev, createEmptyRow(id)];
+    });
+  }, [createEmptyRow]);
 
-  const removeRow = (id: number) => {
-    if (rows.length > 1) {
-      setRows(rows.filter((row) => row.id !== id));
-    }
-  };
-
-  const updateRow = (id: number, field: keyof EgresoRow, value: string) => {
-    setRows(
-      rows.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+  const removeRow = useCallback((id: number) => {
+    setRows((prev) =>
+      prev.length > 1 ? prev.filter((r) => r.id !== id) : prev,
     );
-  };
+  }, []);
 
-  const duplicateRow = (id: number) => {
-    const rowToDuplicate = rows.find((row) => row.id === id);
-    if (rowToDuplicate) {
-      const newRow = { ...rowToDuplicate, id: nextId };
-      setRows([...rows, newRow]);
-      setNextId(nextId + 1);
-    }
-  };
+  const updateRow = useCallback(
+    (id: number, field: keyof EgresoRow, value: string) => {
+      setRows((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      );
+    },
+    [],
+  );
+
+  const duplicateRow = useCallback((id: number) => {
+    setRows((prev) => {
+      const found = prev.find((r) => r.id === id);
+      if (!found) return prev;
+      const newId = nextIdRef.current++;
+      return [...prev, { ...found, id: newId }];
+    });
+  }, []);
 
   // Calcular totales por moneda
   const totales = useMemo(() => {
@@ -200,9 +372,9 @@ export function MultipleEgresoForm({
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
         <Card className="text-center p-8 max-w-md">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-[#fcece9] rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
-              className="w-8 h-8 text-green-600"
+              className="w-8 h-8 text-[#e0451f]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -215,10 +387,10 @@ export function MultipleEgresoForm({
               />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-800 mb-2">
+          <h3 className="text-xl font-semibold text-[#5a1c0c] mb-2">
             ¡Egresos Guardados!
           </h3>
-          <p className="text-gray-600">Redirigiendo al listado...</p>
+          <p className="text-[#e0451f]">Redirigiendo al listado...</p>
         </Card>
       </div>
     );
@@ -227,8 +399,28 @@ export function MultipleEgresoForm({
   return (
     <form onSubmit={handleSubmit} className="p-4 md:p-6">
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+        <div className="mb-4 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -272,138 +464,21 @@ export function MultipleEgresoForm({
         </div>
       </Card>
 
-      {/* Filas de egresos */}
+      {/* Filas de egresos — cada fila es memo: solo re-renderiza si cambió SU row */}
       <div className="space-y-4">
         {rows.map((row, index) => (
-          <Card key={row.id} className="relative">
-            {/* Número de fila */}
-            <div className="absolute -left-3 -top-3 w-8 h-8 bg-[#e0451f] text-white rounded-full flex items-center justify-center text-sm font-bold shadow-lg">
-              {index + 1}
-            </div>
-
-            {/* Botones de acción */}
-            <div className="absolute right-4 top-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => duplicateRow(row.id)}
-                className="p-1.5 text-[#73a9bf] hover:text-[#40768c] hover:bg-gray-100 rounded transition-colors"
-                title="Duplicar fila"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-              </button>
-              {rows.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeRow(row.id)}
-                  className="p-1.5 text-gray-400 hover:text-[#e0451f] hover:bg-red-50 rounded transition-colors"
-                  title="Eliminar fila"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            {/* Campos del formulario */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
-              <Input
-                label="Fecha"
-                type="date"
-                value={row.fecha}
-                onChange={(e) => updateRow(row.id, "fecha", e.target.value)}
-                required
-              />
-              <Input
-                label="Solicitante"
-                placeholder="Nombre del solicitante"
-                value={row.solicitante}
-                onChange={(e) =>
-                  updateRow(row.id, "solicitante", e.target.value)
-                }
-                required
-              />
-              <Combobox
-                label="Tipo de Gasto"
-                options={tipoGastoOptions}
-                value={row.tipoGastoId}
-                onChange={(value) => updateRow(row.id, "tipoGastoId", value)}
-                placeholder="Seleccionar..."
-                searchable={false}
-                required
-              />
-              <Combobox
-                label="Caja"
-                options={cajaOptions}
-                value={row.cajaId}
-                onChange={(value) => updateRow(row.id, "cajaId", value)}
-                placeholder="Seleccionar..."
-                searchable={false}
-                required
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  label="Monto"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={row.monto}
-                  onChange={(e) => updateRow(row.id, "monto", e.target.value)}
-                  required
-                />
-                <Combobox
-                  label="Moneda"
-                  options={monedaOptions}
-                  value={row.monedaId}
-                  onChange={(value) => updateRow(row.id, "monedaId", value)}
-                  placeholder="Seleccionar..."
-                  searchable={false}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 mt-4">
-              <Input
-                label="Descripción del gasto"
-                placeholder="Descripción detallada..."
-                value={row.descripcion}
-                onChange={(e) =>
-                  updateRow(row.id, "descripcion", e.target.value)
-                }
-              />
-              <Input
-                label="Número de Factura (opcional)"
-                placeholder="Ej: FAC-001234"
-                value={row.numeroFactura}
-                onChange={(e) =>
-                  updateRow(row.id, "numeroFactura", e.target.value)
-                }
-              />
-            </div>
-          </Card>
+          <EgresoRowCard
+            key={row.id}
+            row={row}
+            index={index}
+            canRemove={rows.length > 1}
+            tipoGastoOptions={tipoGastoOptions}
+            cajaOptions={cajaOptions}
+            monedaOptions={monedaOptions}
+            onUpdate={updateRow}
+            onRemove={removeRow}
+            onDuplicate={duplicateRow}
+          />
         ))}
       </div>
 

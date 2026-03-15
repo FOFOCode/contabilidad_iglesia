@@ -12,6 +12,8 @@ import {
   obtenerDatosReporte,
   obtenerDatosReporteAnalitico,
   obtenerReporteSaldosActuales,
+  aplicarTransferenciaDiezmoMensual,
+  obtenerCierreDiezmoPendienteAnterior,
   obtenerLogAuditoria,
   obtenerEstadisticasAuditoria,
   type FiltrosAuditoria,
@@ -164,6 +166,28 @@ interface DatosAnaliticos {
   monedas: { id: string; codigo: string; simbolo: string; nombre: string }[];
 }
 
+interface CierreDiezmoResumen {
+  anio: number;
+  mes: number;
+  monedaId: string;
+  monedaCodigo: string;
+  monedaSimbolo: string;
+  cajaOrigenId: string;
+  cajaOrigenNombre: string;
+  totalOfrendas: number;
+  totalEgresos: number;
+  baseLiquida: number;
+  porcentaje: number;
+  montoDiezmo: number;
+  estado: "NO_REALIZADO" | "REALIZADO";
+  transferido: number;
+  cajaDestinoId: string | null;
+  cajaDestinoNombre: string | null;
+  realizadoEn: Date | null;
+  puedeAplicar: boolean;
+  nota: string | null;
+}
+
 function calcularFechas(periodo: string): { inicio: Date; fin: Date } {
   // Usar hora de El Salvador para calcular períodos
   const ahora = obtenerFechaElSalvador();
@@ -227,14 +251,21 @@ export function ReportesClient({
   const [isPending, startTransition] = useTransition();
   const [vistaActiva, setVistaActiva] = useState<TipoVista>("movimientos");
   const [paises, setPaises] = useState<Pais[]>([]);
-  const [filtros, setFiltros] = useState({
-    tipoReporte: "todos",
-    periodo: "mes",
-    fechaInicio: "",
-    fechaFin: "",
-    cajaId: "",
-    sociedadId: "",
-    monedaId: "",
+  const [filtros, setFiltros] = useState(() => {
+    const _fmt = (d: Date) => {
+      const p = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    const { inicio, fin } = calcularFechas("mes");
+    return {
+      tipoReporte: "todos",
+      periodo: "mes",
+      fechaInicio: _fmt(inicio),
+      fechaFin: _fmt(fin),
+      cajaId: "",
+      sociedadId: "",
+      monedaId: "",
+    };
   });
   const [filtrosAnaliticos, setFiltrosAnaliticos] = useState({
     anio: obtenerFechaElSalvador().getFullYear(),
@@ -254,11 +285,20 @@ export function ReportesClient({
     monedaId: "",
   });
   const [resultados, setResultados] = useState<MovimientoReporte[]>([]);
+  const POR_PAGINA = 10;
+  const [paginaActual, setPaginaActual] = useState(1);
   const [datosAnaliticos, setDatosAnaliticos] =
     useState<DatosAnaliticos | null>(null);
   const [datosSaldosActuales, setDatosSaldosActuales] = useState<any>(null);
   const [datosDiezmosFiliales, setDatosDiezmosFiliales] = useState<any>(null);
   const [datosCajaFiliales, setDatosCajaFiliales] = useState<any>(null);
+  const [cierreDiezmo, setCierreDiezmo] = useState<CierreDiezmoResumen | null>(
+    null,
+  );
+  const [cajaDestinoDiezmoId, setCajaDestinoDiezmoId] = useState("");
+  const [mensajeDiezmo, setMensajeDiezmo] = useState<string | null>(null);
+  const [cierrePendienteAnterior, setCierrePendienteAnterior] =
+    useState<CierreDiezmoResumen | null>(null);
   const [mostrarResultados, setMostrarResultados] = useState(false);
   const [detalleSeleccionado, setDetalleSeleccionado] =
     useState<MovimientoReporte | null>(null);
@@ -266,12 +306,12 @@ export function ReportesClient({
   // Memoizar opciones de select para evitar recalcular en cada render
   const sociedadOptions = useMemo(
     () => sociedades.map((s) => ({ value: s.id, label: s.nombre })),
-    [sociedades]
+    [sociedades],
   );
 
   const cajaOptions = useMemo(
     () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    [cajas]
+    [cajas],
   );
 
   const monedaOptions = useMemo(
@@ -280,7 +320,7 @@ export function ReportesClient({
         value: m.id,
         label: `${m.simbolo} ${m.codigo}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   const paisOptions = useMemo(
@@ -289,7 +329,7 @@ export function ReportesClient({
         value: p.id,
         label: p.nombre,
       })),
-    [paises]
+    [paises],
   );
 
   const handleComboboxChange = useCallback((name: string, value: string) => {
@@ -299,9 +339,17 @@ export function ReportesClient({
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
       const { name, value } = e.target;
-      setFiltros((prev) => ({ ...prev, [name]: value }));
+      if (name === "fechaInicio" || name === "fechaFin") {
+        setFiltros((prev) => ({
+          ...prev,
+          [name]: value,
+          periodo: "personalizado",
+        }));
+      } else {
+        setFiltros((prev) => ({ ...prev, [name]: value }));
+      }
     },
-    []
+    [],
   );
 
   // Años disponibles para el reporte analítico
@@ -312,6 +360,11 @@ export function ReportesClient({
       label: (anioActual - i).toString(),
     }));
   }, []);
+
+  const cajaOptionsDiezmo = useMemo(() => {
+    if (!cierreDiezmo) return cajaOptions;
+    return cajaOptions.filter((opt) => opt.value !== cierreDiezmo.cajaOrigenId);
+  }, [cajaOptions, cierreDiezmo]);
 
   // Helper para mostrar el período en los títulos de reportes
   const obtenerLabelPeriodo = useCallback(() => {
@@ -333,63 +386,117 @@ export function ReportesClient({
     });
   };
 
+  const recargarReporteMovimientos = useCallback(async () => {
+    let fechaInicio: Date | undefined;
+    let fechaFin: Date | undefined;
+
+    if (filtros.fechaInicio) {
+      const [y, m, d] = filtros.fechaInicio.split("-").map(Number);
+      fechaInicio = new Date(y, m - 1, d, 0, 0, 0);
+    }
+    if (filtros.fechaFin) {
+      const [y, m, d] = filtros.fechaFin.split("-").map(Number);
+      fechaFin = new Date(y, m - 1, d, 23, 59, 59);
+    }
+    if (!fechaInicio || !fechaFin) {
+      const fechas = calcularFechas(filtros.periodo);
+      fechaInicio = fechaInicio || fechas.inicio;
+      fechaFin = fechaFin || fechas.fin;
+    }
+
+    const datos = await obtenerDatosReporte({
+      fechaInicio: fechaInicio?.toISOString(),
+      fechaFin: fechaFin?.toISOString(),
+      cajaId: filtros.cajaId || undefined,
+      sociedadId: filtros.sociedadId || undefined,
+    });
+
+    let movimientos: MovimientoReporte[] = [];
+
+    if (filtros.tipoReporte === "ingresos" || filtros.tipoReporte === "todos") {
+      movimientos = [...movimientos, ...datos.ingresos];
+    }
+    if (filtros.tipoReporte === "egresos" || filtros.tipoReporte === "todos") {
+      movimientos = [...movimientos, ...datos.egresos];
+    }
+
+    if (filtros.monedaId) {
+      movimientos = movimientos.filter((mov) =>
+        mov.montos.some((m) => m.monedaId === filtros.monedaId),
+      );
+    }
+
+    movimientos.sort(
+      (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
+    );
+
+    const cierreActualizado =
+      (datos as { cierreDiezmo?: CierreDiezmoResumen }).cierreDiezmo || null;
+
+    setResultados(movimientos);
+    setCierreDiezmo(cierreActualizado);
+    setCajaDestinoDiezmoId(cierreActualizado?.cajaDestinoId || "");
+    setMensajeDiezmo(null);
+    setPaginaActual(1);
+    setMostrarResultados(true);
+
+    return cierreActualizado;
+  }, [filtros]);
+
   const handleGenerarReporte = () => {
     startTransition(async () => {
-      let fechaInicio: Date | undefined;
-      let fechaFin: Date | undefined;
+      await recargarReporteMovimientos();
+    });
+  };
 
-      if (filtros.periodo === "personalizado") {
-        if (filtros.fechaInicio) {
-          const [y, m, d] = filtros.fechaInicio.split("-").map(Number);
-          fechaInicio = new Date(y, m - 1, d, 0, 0, 0);
+  const handleAplicarTransferenciaDiezmo = () => {
+    if (!cierreDiezmo) return;
+    if (cajaDestinoDiezmoId === cierreDiezmo.cajaOrigenId) {
+      setMensajeDiezmo("La caja destino debe ser distinta a Caja General.");
+      return;
+    }
+    if (!cajaDestinoDiezmoId) {
+      setMensajeDiezmo("Selecciona la caja destino para continuar.");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const result = await aplicarTransferenciaDiezmoMensual({
+          anio: cierreDiezmo.anio,
+          mes: cierreDiezmo.mes,
+          cajaDestinoId: cajaDestinoDiezmoId,
+        });
+
+        if (!result.success || !("montoTransferido" in result)) {
+          setMensajeDiezmo(
+            "error" in result
+              ? result.error
+              : "No se pudo aplicar la transferencia mensual",
+          );
+          return;
         }
-        if (filtros.fechaFin) {
-          const [y, m, d] = filtros.fechaFin.split("-").map(Number);
-          fechaFin = new Date(y, m - 1, d, 23, 59, 59);
-        }
-      } else {
-        const fechas = calcularFechas(filtros.periodo);
-        fechaInicio = fechas.inicio;
-        fechaFin = fechas.fin;
-      }
 
-      // Enviar fechas como ISO strings para evitar problemas de serialización
-      const datos = await obtenerDatosReporte({
-        fechaInicio: fechaInicio?.toISOString(),
-        fechaFin: fechaFin?.toISOString(),
-        cajaId: filtros.cajaId || undefined,
-        sociedadId: filtros.sociedadId || undefined,
-      });
-
-      let movimientos: MovimientoReporte[] = [];
-
-      if (
-        filtros.tipoReporte === "ingresos" ||
-        filtros.tipoReporte === "todos"
-      ) {
-        movimientos = [...movimientos, ...datos.ingresos];
-      }
-      if (
-        filtros.tipoReporte === "egresos" ||
-        filtros.tipoReporte === "todos"
-      ) {
-        movimientos = [...movimientos, ...datos.egresos];
-      }
-
-      // Filtrar por moneda si se seleccionó una
-      if (filtros.monedaId) {
-        movimientos = movimientos.filter((mov) =>
-          mov.montos.some((m) => m.monedaId === filtros.monedaId)
+        const estadoActualizado = await recargarReporteMovimientos();
+        const simboloMensaje =
+          estadoActualizado?.monedaSimbolo || cierreDiezmo.monedaSimbolo;
+        setMensajeDiezmo(
+          `Transferencia aplicada: ${simboloMensaje}${result.montoTransferido.toLocaleString("es-GT", { minimumFractionDigits: 2 })}`,
         );
+
+        const pendiente = await obtenerCierreDiezmoPendienteAnterior();
+        if (pendiente && pendiente.estado !== "REALIZADO") {
+          setCierrePendienteAnterior(pendiente as CierreDiezmoResumen);
+        } else {
+          setCierrePendienteAnterior(null);
+        }
+      } catch (error) {
+        const mensaje =
+          error instanceof Error
+            ? error.message
+            : "No se pudo aplicar la transferencia mensual";
+        setMensajeDiezmo(mensaje);
       }
-
-      // Ordenar por fecha descendente
-      movimientos.sort(
-        (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-      );
-
-      setResultados(movimientos);
-      setMostrarResultados(true);
     });
   };
 
@@ -424,6 +531,21 @@ export function ReportesClient({
     });
   };
 
+  // Sincronizar fechas cuando cambia el período preset
+  useEffect(() => {
+    if (filtros.periodo !== "personalizado") {
+      const { inicio, fin } = calcularFechas(filtros.periodo);
+      const p = (n: number) => String(n).padStart(2, "0");
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      setFiltros((prev) => ({
+        ...prev,
+        fechaInicio: fmt(inicio),
+        fechaFin: fmt(fin),
+      }));
+    }
+  }, [filtros.periodo]);
+
   // Cargar países al montar
   useEffect(() => {
     const cargarPaises = async () => {
@@ -432,6 +554,24 @@ export function ReportesClient({
     };
     cargarPaises();
   }, []);
+
+  useEffect(() => {
+    const cargarPendienteDiezmo = async () => {
+      const pendiente = await obtenerCierreDiezmoPendienteAnterior();
+      if (pendiente && pendiente.estado !== "REALIZADO") {
+        setCierrePendienteAnterior(pendiente as CierreDiezmoResumen);
+      } else {
+        setCierrePendienteAnterior(null);
+      }
+    };
+    cargarPendienteDiezmo();
+  }, []);
+
+  useEffect(() => {
+    if (cierreDiezmo && cajaDestinoDiezmoId === cierreDiezmo.cajaOrigenId) {
+      setCajaDestinoDiezmoId("");
+    }
+  }, [cierreDiezmo, cajaDestinoDiezmoId]);
 
   // Calcular totales por moneda - memoizado
   const calcularTotales = useCallback(() => {
@@ -472,9 +612,87 @@ export function ReportesClient({
 
   const totales = useMemo(() => calcularTotales(), [calcularTotales]);
 
+  const monedasPorPrioridad = useMemo(
+    () =>
+      Object.entries(totales)
+        .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
+        .sort(([, a], [, b]) => {
+          const totalA = a.ingresos + a.egresos;
+          const totalB = b.ingresos + b.egresos;
+          return totalB - totalA;
+        }),
+    [totales],
+  );
+
+  // Agrupar ingresos por tipoIngreso y moneda para el bloque ledger
+  const ingresosPorTipo = useMemo(() => {
+    // { monedaId -> { tipoIngreso -> { total, simbolo, codigo } } }
+    const result: Record<
+      string,
+      { simbolo: string; codigo: string; tipos: Record<string, number> }
+    > = {};
+
+    resultados.forEach((mov) => {
+      if (mov.tipo !== "Ingreso") return;
+      const label = mov.tipoIngreso || "Ingreso";
+      mov.montos.forEach((m) => {
+        if (!result[m.monedaId]) {
+          result[m.monedaId] = {
+            simbolo: m.monedaSimbolo,
+            codigo: m.monedaCodigo,
+            tipos: {},
+          };
+        }
+        result[m.monedaId].tipos[label] =
+          (result[m.monedaId].tipos[label] || 0) + m.monto;
+      });
+    });
+
+    return result;
+  }, [resultados]);
+
+  // Agrupar egresos por tipoGasto y moneda para mostrar desglose informativo
+  const egresosPorTipo = useMemo(() => {
+    const result: Record<
+      string,
+      { simbolo: string; codigo: string; tipos: Record<string, number> }
+    > = {};
+
+    resultados.forEach((mov) => {
+      if (mov.tipo !== "Egreso") return;
+      const label = mov.tipoGasto || "Egreso";
+      mov.montos.forEach((m) => {
+        if (!result[m.monedaId]) {
+          result[m.monedaId] = {
+            simbolo: m.monedaSimbolo,
+            codigo: m.monedaCodigo,
+            tipos: {},
+          };
+        }
+        result[m.monedaId].tipos[label] =
+          (result[m.monedaId].tipos[label] || 0) + m.monto;
+      });
+    });
+
+    return result;
+  }, [resultados]);
+
+  const disponibleDiezmo = useMemo(() => {
+    if (!cierreDiezmo) return null;
+    return cierreDiezmo.baseLiquida - cierreDiezmo.montoDiezmo;
+  }, [cierreDiezmo]);
+
   // Función para exportar a Excel (CSV)
   const exportarExcel = () => {
-    const headers = ["Fecha", "Tipo", "Concepto", "Caja", "Sociedad", "Moneda", "Monto"];
+    const detalleHeaders = [
+      "Fecha",
+      "Tipo",
+      "Concepto",
+      "Caja",
+      "Sociedad",
+      "Moneda",
+      "Monto",
+    ];
     const rows = resultados.flatMap((mov) =>
       mov.montos.map((m) => [
         new Date(mov.fecha).toLocaleDateString("es-GT"),
@@ -484,43 +702,180 @@ export function ReportesClient({
         mov.sociedad || "",
         m.monedaCodigo,
         (mov.tipo === "Ingreso" ? "" : "-") + m.monto.toFixed(2),
-      ])
+      ]),
     );
 
-    // Agregar filas vacías y totales
-    const totalesRows: string[][] = [];
-    totalesRows.push(["", "", "", "", "", "", ""]); // Fila vacía
-    totalesRows.push(["", "", "", "", "", "RESUMEN POR MONEDA", ""]); // Título
-    totalesRows.push([
-      "",
-      "",
-      "",
-      "",
-      "Moneda",
-      "Ingresos",
-      "Egresos",
-      "Balance",
-    ]); // Headers de totales
+    const exportRows: string[][] = [];
 
-    Object.entries(totales)
-      .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
-      .forEach(([, data]) => {
-        totalesRows.push([
+    // 1) Total por moneda
+    exportRows.push(["TOTAL POR MONEDA", "", "", "", "", "", ""]);
+    exportRows.push(["Moneda", "Ingresos", "Egresos", "Balance", "", "", ""]);
+    monedasPorPrioridad.forEach(([, data]) => {
+      exportRows.push([
+        data.codigo,
+        data.simbolo + data.ingresos.toFixed(2),
+        data.simbolo + data.egresos.toFixed(2),
+        data.simbolo + (data.ingresos - data.egresos).toFixed(2),
+        "",
+        "",
+        "",
+      ]);
+    });
+
+    // 2) Desglose por tipo
+    exportRows.push(["", "", "", "", "", "", ""]);
+    exportRows.push(["DESGLOSE POR TIPO", "", "", "", "", "", ""]);
+    monedasPorPrioridad.forEach(([monedaId, data]) => {
+      exportRows.push([`${data.codigo}`, "", "", "", "", "", ""]);
+
+      const ingresosTipos = Object.entries(
+        ingresosPorTipo[monedaId]?.tipos || {},
+      ).sort((a, b) => b[1] - a[1]);
+      const egresosTipos = Object.entries(
+        egresosPorTipo[monedaId]?.tipos || {},
+      ).sort((a, b) => b[1] - a[1]);
+
+      exportRows.push([
+        "Ingresos por tipo",
+        "",
+        "Egresos por tipo",
+        "",
+        "",
+        "",
+        "",
+      ]);
+
+      const maxFilas = Math.max(ingresosTipos.length, egresosTipos.length, 1);
+      for (let i = 0; i < maxFilas; i++) {
+        const ing = ingresosTipos[i];
+        const egr = egresosTipos[i];
+        exportRows.push([
+          ing ? ing[0] : "",
+          ing ? `${data.simbolo}${ing[1].toFixed(2)}` : "",
+          egr ? egr[0] : "",
+          egr ? `${data.simbolo}${egr[1].toFixed(2)}` : "",
           "",
           "",
           "",
-          data.codigo,
-          data.simbolo + data.ingresos.toFixed(2),
-          data.simbolo + data.egresos.toFixed(2),
-          data.simbolo + (data.ingresos - data.egresos).toFixed(2),
         ]);
-      });
+      }
 
-    // Agregar totales generales
-    totalesRows.push(["", "", "", "", "", "", ""]); // Fila vacía
-    totalesRows.push(["", "", "", "", "", "Total Registros:", resultados.length.toString()]);
+      exportRows.push(["", "", "", "", "", "", ""]);
+    });
 
-    const csvContent = [headers, ...rows, ...totalesRows]
+    // 3) Resumen contable
+    exportRows.push(["RESUMEN CONTABLE", "", "", "", "", "", ""]);
+    monedasPorPrioridad.forEach(([monedaId, data]) => {
+      const tiposMoneda = ingresosPorTipo[monedaId];
+      const totalOfrendas = tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
+      const balance = totalOfrendas - data.egresos;
+      const aplicaDiezmoMoneda = cierreDiezmo?.monedaId === monedaId;
+      const montoDiezmoMoneda = aplicaDiezmoMoneda
+        ? cierreDiezmo.montoDiezmo
+        : 0;
+      const disponibleMoneda = balance - montoDiezmoMoneda;
+      exportRows.push([`${data.codigo} — Resumen`, "", "", "", "", "", ""]);
+      exportRows.push([
+        "  Ofrendas",
+        `${data.simbolo}${totalOfrendas.toFixed(2)}`,
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      exportRows.push([
+        "  (-) Egresos",
+        `${data.simbolo}${data.egresos.toFixed(2)}`,
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      exportRows.push([
+        aplicaDiezmoMoneda ? "  (-) Diezmo 10%" : "  BALANCE",
+        `${data.simbolo}${(aplicaDiezmoMoneda ? montoDiezmoMoneda : balance).toFixed(2)}`,
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      if (aplicaDiezmoMoneda) {
+        exportRows.push([
+          "  DISPONIBLE",
+          `${data.simbolo}${disponibleMoneda.toFixed(2)}`,
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
+      }
+      exportRows.push(["", "", "", "", "", "", ""]);
+    });
+
+    // 4) Transferencia
+    if (cierreDiezmo) {
+      exportRows.push([
+        "TRANSFERENCIA DIEZMO MENSUAL 10%",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      exportRows.push([
+        `Estado: ${cierreDiezmo.estado === "REALIZADO" ? "Realizado" : "No realizado"}`,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      exportRows.push([
+        `Ofrendas USD: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.totalOfrendas.toFixed(2)}`,
+        `Egresos USD: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.totalEgresos.toFixed(2)}`,
+        `Base líquida: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.baseLiquida.toFixed(2)}`,
+        `10% mensual: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.montoDiezmo.toFixed(2)}`,
+        `Disponible: ${cierreDiezmo.monedaSimbolo}${(cierreDiezmo.baseLiquida - cierreDiezmo.montoDiezmo).toFixed(2)}`,
+        "",
+        "",
+      ]);
+      exportRows.push([
+        `Transferido: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.transferido.toFixed(2)}`,
+        cierreDiezmo.cajaDestinoNombre
+          ? `Caja destino: ${cierreDiezmo.cajaDestinoNombre}`
+          : "Caja destino: Pendiente",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      exportRows.push(["", "", "", "", "", "", ""]);
+    }
+
+    // 5) Tabla detalle
+    exportRows.push(["DETALLE DE MOVIMIENTOS", "", "", "", "", "", ""]);
+    exportRows.push(detalleHeaders);
+    exportRows.push(...rows);
+
+    exportRows.push(["", "", "", "", "", "", ""]);
+    exportRows.push([
+      "Total Registros:",
+      resultados.length.toString(),
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    const csvContent = exportRows
       .map((row) => row.map((cell) => `"${cell}"`).join(","))
       .join("\n");
 
@@ -539,205 +894,402 @@ export function ReportesClient({
 
   // Función para exportar a PDF
   const exportarPDF = () => {
-    // Crear contenido HTML para impresión
+    const n = resultados.length;
+    // Tamaño de fuente y padding adaptativos según cantidad de registros
+    const bodyFontSize = n > 60 ? 9 : n > 40 ? 10 : n > 20 ? 11 : 12;
+    const tdPad =
+      n > 60 ? "3px 6px" : n > 40 ? "4px 7px" : n > 20 ? "5px 8px" : "6px 10px";
+    const thPad =
+      n > 60 ? "5px 6px" : n > 40 ? "6px 7px" : n > 20 ? "7px 8px" : "8px 10px";
+
+    // 3) Resumen contable
+    const ledgerHTML = monedasPorPrioridad
+      .map(([monedaId, data]) => {
+        const tiposMoneda = ingresosPorTipo[monedaId];
+        const totalOfrendas = tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
+        const balance = totalOfrendas - data.egresos;
+        const aplicaDiezmoMoneda = cierreDiezmo?.monedaId === monedaId;
+        const montoDiezmoMoneda = aplicaDiezmoMoneda
+          ? cierreDiezmo.montoDiezmo
+          : 0;
+        const disponibleMoneda = balance - montoDiezmoMoneda;
+        return `
+          <table style="width:100%;border-collapse:collapse;border:1px solid #dceaef;border-left:4px solid #40768c;margin-bottom:10px;font-size:${bodyFontSize}px;">
+            <tr>
+              <td colspan="2" style="padding:5px 10px;font-size:9px;font-weight:bold;color:#73a9bf;text-transform:uppercase;letter-spacing:0.06em;background:#f7fbfc;border-bottom:1px solid #dceaef;">
+                ${data.codigo} — Resumen
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:${tdPad};color:#305969;">Ofrendas</td>
+              <td style="padding:${tdPad};text-align:right;color:#2ba193;font-weight:bold;">${data.simbolo}${totalOfrendas.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr style="border-top:1px solid #dceaef;">
+              <td style="padding:${tdPad};color:#305969;">(-) Egresos</td>
+              <td style="padding:${tdPad};text-align:right;color:#e0451f;font-weight:bold;">${data.simbolo}${data.egresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>
+            ${
+              aplicaDiezmoMoneda
+                ? `<tr style="border-top:1px solid #dceaef;">
+              <td style="padding:${tdPad};color:#305969;">(-) Diezmo 10%</td>
+              <td style="padding:${tdPad};text-align:right;color:#305969;font-weight:bold;">${data.simbolo}${montoDiezmoMoneda.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>`
+                : ""
+            }
+            <tr style="border-top:2px solid #203b46;background:#eef4f7;">
+              <td style="padding:${tdPad};font-size:9px;font-weight:bold;color:#203b46;text-transform:uppercase;letter-spacing:0.06em;">${aplicaDiezmoMoneda ? "Disponible" : "Balance"}</td>
+              <td style="padding:${tdPad};text-align:right;font-weight:bold;font-size:${bodyFontSize + 2}px;color:${(aplicaDiezmoMoneda ? disponibleMoneda : balance) >= 0 ? "#2ba193" : "#e0451f"};">${data.simbolo}${(aplicaDiezmoMoneda ? disponibleMoneda : balance).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </table>
+        `;
+      })
+      .join("");
+
+    // 1) Total por moneda
+    const monedaActivas = monedasPorPrioridad;
+    const resumenCols =
+      monedaActivas.length > 0
+        ? monedaActivas
+            .map(
+              ([, data]) => `
+            <td style="padding:0 8px 0 0;vertical-align:top;width:${Math.floor(100 / monedaActivas.length)}%;">
+              <div style="background:#eef4f7;padding:10px 14px;border-left:4px solid #203b46;">
+                <strong style="font-size:${bodyFontSize + 1}px;">${data.codigo}</strong><br>
+                <span style="color:#2ba193;font-weight:bold;">Ingresos: ${data.simbolo}${data.ingresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span><br>
+                <span style="color:#e0451f;font-weight:bold;">Egresos: ${data.simbolo}${data.egresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</span><br>
+                <strong>Balance: ${data.simbolo}${(data.ingresos - data.egresos).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
+              </div>
+            </td>
+          `,
+            )
+            .join("")
+        : `<td><em>Sin datos</em></td>`;
+
+    // 2) Desglose por tipo
+    const desgloseHTML = monedasPorPrioridad
+      .map(([monedaId, data]) => {
+        const ingresosTipos = Object.entries(
+          ingresosPorTipo[monedaId]?.tipos || {},
+        ).sort((a, b) => b[1] - a[1]);
+        const egresosTipos = Object.entries(
+          egresosPorTipo[monedaId]?.tipos || {},
+        ).sort((a, b) => b[1] - a[1]);
+
+        const maxFilas = Math.max(ingresosTipos.length, egresosTipos.length, 1);
+        let filas = "";
+        for (let i = 0; i < maxFilas; i++) {
+          const ing = ingresosTipos[i];
+          const egr = egresosTipos[i];
+          filas += `
+            <tr>
+              <td style="padding:${tdPad};color:#305969;">${ing ? ing[0] : ""}</td>
+              <td style="padding:${tdPad};text-align:right;color:#2ba193;font-weight:bold;">${ing ? `${data.simbolo}${ing[1].toLocaleString("es-GT", { minimumFractionDigits: 2 })}` : ""}</td>
+              <td style="padding:${tdPad};color:#305969;">${egr ? egr[0] : ""}</td>
+              <td style="padding:${tdPad};text-align:right;color:#e0451f;font-weight:bold;">${egr ? `${data.simbolo}${egr[1].toLocaleString("es-GT", { minimumFractionDigits: 2 })}` : ""}</td>
+            </tr>
+          `;
+        }
+
+        return `
+          <table style="width:100%;border-collapse:collapse;border:1px solid #dceaef;margin-bottom:10px;font-size:${bodyFontSize}px;">
+            <tr>
+              <td colspan="4" style="padding:5px 10px;font-size:9px;font-weight:bold;color:#73a9bf;text-transform:uppercase;letter-spacing:0.06em;background:#f7fbfc;border-bottom:1px solid #dceaef;">
+                ${data.codigo}
+              </td>
+            </tr>
+            <tr style="background:#eef4f7;">
+              <td style="padding:${tdPad};font-weight:bold;color:#2ba193;">Ingresos por tipo</td>
+              <td></td>
+              <td style="padding:${tdPad};font-weight:bold;color:#e0451f;">Egresos por tipo</td>
+              <td></td>
+            </tr>
+            ${filas}
+          </table>
+        `;
+      })
+      .join("");
+
+    // 4) Transferencia
+    const transferenciaHTML = cierreDiezmo
+      ? `
+        <table style="width:100%;border-collapse:collapse;border:1px solid #dceaef;border-left:4px solid #2ba193;margin-bottom:10px;font-size:${bodyFontSize}px;">
+          <tr>
+            <td colspan="2" style="padding:5px 10px;font-size:9px;font-weight:bold;color:#73a9bf;text-transform:uppercase;letter-spacing:0.06em;background:#f7fbfc;border-bottom:1px solid #dceaef;">
+              Transferencia Diezmo Mensual 10% (${cierreDiezmo.monedaCodigo})
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:${tdPad};color:#305969;">Estado</td>
+            <td style="padding:${tdPad};text-align:right;font-weight:bold;color:${cierreDiezmo.estado === "REALIZADO" ? "#2ba193" : "#d18a00"};">${cierreDiezmo.estado === "REALIZADO" ? "Realizado" : "No realizado"}</td>
+          </tr>
+          <tr>
+            <td style="padding:${tdPad};color:#305969;">Ofrendas / Egresos / Base / 10%</td>
+            <td style="padding:${tdPad};text-align:right;color:#203b46;">${cierreDiezmo.monedaSimbolo}${cierreDiezmo.totalOfrendas.toLocaleString("es-GT", { minimumFractionDigits: 2 })} / ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.totalEgresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })} / ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.baseLiquida.toLocaleString("es-GT", { minimumFractionDigits: 2 })} / ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.montoDiezmo.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+          </tr>
+          <tr>
+            <td style="padding:${tdPad};color:#305969;">Transferido</td>
+            <td style="padding:${tdPad};text-align:right;color:#203b46;">${cierreDiezmo.monedaSimbolo}${cierreDiezmo.transferido.toLocaleString("es-GT", { minimumFractionDigits: 2 })}${cierreDiezmo.cajaDestinoNombre ? ` a ${cierreDiezmo.cajaDestinoNombre}` : ""}</td>
+          </tr>
+          <tr>
+            <td style="padding:${tdPad};color:#305969;">Disponible</td>
+            <td style="padding:${tdPad};text-align:right;color:#203b46;">${cierreDiezmo.monedaSimbolo}${(cierreDiezmo.baseLiquida - cierreDiezmo.montoDiezmo).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+          </tr>
+        </table>
+      `
+      : "";
+
+    const periodoTexto =
+      filtros.fechaInicio && filtros.fechaFin
+        ? `${filtros.fechaInicio} al ${filtros.fechaFin}`
+        : "Período seleccionado";
+    const tipoReporteTexto =
+      tipoReporteOptions.find((o) => o.value === filtros.tipoReporte)?.label ||
+      "Todos los Movimientos";
+    const monedaFiltroTexto =
+      monedaOptions.find((o) => o.value === filtros.monedaId)?.label ||
+      "Todas las monedas";
+
     const printContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Reporte de Movimientos</title>
+        <meta charset="utf-8">
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px; 
+          * { box-sizing: border-box; }
+          body {
+            font-family: "Times New Roman", Georgia, serif;
+            padding: 0;
             margin: 0;
-            line-height: 1.6;
-            color: #333;
+            line-height: 1.45;
+            color: #1f2937;
+            font-size: ${bodyFontSize}px;
           }
-          .header { 
-            text-align: center; 
-            border-bottom: 2px solid #203b46; 
-            padding-bottom: 10px; 
-            margin-bottom: 20px;
+          .document {
+            padding: 0;
           }
-          h1 { 
-            color: #203b46; 
-            font-size: 24px; 
-            margin: 5px 0;
-          }
-          .fecha-generacion {
-            text-align: right;
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 15px;
-          }
-          h2 { 
-            color: #40768c; 
-            font-size: 16px; 
-            margin-top: 20px; 
-            border-bottom: 1px solid #40768c;
-            padding-bottom: 5px;
-          }
-          table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-top: 10px; 
-          }
-          th { 
-            background: #203b46; 
-            color: white; 
-            padding: 12px; 
-            text-align: left; 
-            font-weight: bold;
-            border: 1px solid #203b46;
-          }
-          td { 
-            padding: 8px; 
-            border-bottom: 1px solid #dceaef; 
-            border-right: 1px solid #dceaef;
-          }
-          tr:nth-child(even) {
-            background-color: #f9f9f9;
-          }
-          .ingreso { 
-            color: #2ba193; 
-            font-weight: bold;
-          }
-          .egreso { 
-            color: #e0451f; 
-            font-weight: bold;
-          }
-          .resumen { 
-            display: flex; 
-            gap: 20px; 
-            margin: 20px 0; 
-            flex-wrap: wrap;
-          }
-          .resumen-card { 
-            background: #eef4f7; 
-            padding: 15px; 
-            border-left: 4px solid #203b46;
-            flex: 1;
-            min-width: 150px;
-          }
-          .firmas {
-            margin-top: 80px;
-            display: flex;
-            justify-content: space-between;
-            gap: 40px;
-          }
-          .firma-bloque {
-            flex: 1;
+          .header {
             text-align: center;
+            border-bottom: 2px solid #111827;
+            padding-bottom: 12px;
+            margin-bottom: 10px;
+          }
+          .header-subtitle {
+            margin: 0;
+            font-size: ${bodyFontSize}px;
+            color: #4b5563;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+          }
+          .header-title {
+            margin: 4px 0;
+            font-size: ${bodyFontSize + 11}px;
+            color: #111827;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+          }
+          .header-meta {
+            margin: 0;
+            font-size: ${bodyFontSize - 1}px;
+            color: #374151;
+          }
+          .meta-box {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 14px;
+          }
+          .meta-box td {
+            border: 1px solid #d1d5db;
+            padding: 6px 8px;
+            font-size: ${bodyFontSize - 1}px;
+          }
+          .meta-box .label {
+            background: #f3f4f6;
+            font-weight: bold;
+            width: 22%;
+          }
+          .section-title {
+            color: #111827;
+            font-size: ${bodyFontSize + 2}px;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #111827;
+            padding-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          /* Tabla de movimientos con layout fijo */
+          table.movimientos {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            table-layout: fixed;
+            font-size: ${bodyFontSize}px;
+            border: 1px solid #9ca3af;
+          }
+          table.movimientos thead { display: table-header-group; }
+          table.movimientos th {
+            background: #e5e7eb;
+            color: #111827;
+            padding: ${thPad};
+            text-align: left;
+            font-weight: bold;
+            overflow: hidden;
+            word-break: break-word;
+            border: 1px solid #9ca3af;
+            text-transform: uppercase;
+            font-size: ${bodyFontSize - 1}px;
+          }
+          table.movimientos td {
+            padding: ${tdPad};
+            border: 1px solid #d1d5db;
+            word-break: break-word;
+            overflow-wrap: break-word;
+          }
+          table.movimientos tr:nth-child(even) { background-color: #f9fafb; }
+          .ingreso { color: #2ba193; font-weight: bold; }
+          .egreso { color: #e0451f; font-weight: bold; }
+          .seccion-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+            border: 1px solid #d1d5db;
+          }
+          .seccion-table td {
+            border: 1px solid #d1d5db;
+            padding: ${tdPad};
+          }
+          .firma-caption {
+            text-align: center;
+            font-size: ${bodyFontSize - 1}px;
+            color: #4b5563;
+            margin-top: 2px;
+          }
+          /* Firmas usando tabla */
+          table.firmas {
+            width: 100%;
+            margin-top: 50px;
+            border-collapse: collapse;
+            page-break-inside: avoid;
+          }
+          table.firmas td {
+            text-align: center;
+            padding: 0 18px;
+            width: 50%;
+            vertical-align: top;
           }
           .firma-linea {
-            border-top: 2px solid #000;
-            margin-bottom: 5px;
-            padding-top: 10px;
-            min-height: 50px;
+            border-top: 1px solid #111827;
+            padding-top: 8px;
+            min-height: 40px;
           }
-          .firma-titulo {
-            font-weight: bold;
-            font-size: 12px;
-          }
-          .firma-subtitulo {
-            font-size: 10px;
-            color: #666;
-            margin-top: 3px;
-          }
-          @media print { 
+          .firma-titulo { font-weight: bold; font-size: ${bodyFontSize}px; text-transform: uppercase; }
+          .firma-subtitulo { font-size: ${bodyFontSize - 1}px; color: #4b5563; margin-top: 2px; }
+          @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            @page { margin: 10mm; }
+            @page { size: A4; margin: 10mm 12mm; }
+            .section-title { page-break-after: avoid; }
           }
         </style>
       </head>
       <body>
+        <div class="document">
         <div class="header">
-          <h1>Reporte de Movimientos Contables</h1>
-        </div>
-        <div class="fecha-generacion">
-          <strong>Fecha de Generación:</strong> ${obtenerFechaElSalvador().toLocaleString(
-            "es-GT"
-          )}
-        </div>
-        
-        <h2>Resumen por Moneda</h2>
-        <div class="resumen">
-          ${Object.entries(totales)
-            .filter(([, data]) => data.ingresos > 0 || data.egresos > 0)
-            .map(
-              ([, data]) => `
-                <div class="resumen-card">
-                  <strong>${data.codigo}</strong><br>
-                  <span class="ingreso">Ingresos: ${
-                    data.simbolo
-                  }${data.ingresos.toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
-                  <span class="egreso">Egresos: ${
-                    data.simbolo
-                  }${data.egresos.toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
-                  <strong>Balance: ${data.simbolo}${(
-                data.ingresos - data.egresos
-              ).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
-                </div>
-              `
-            )
-            .join("")}
+          <p class="header-subtitle">Contabilidad Iglesia - Sistema Interno</p>
+          <h1 class="header-title">Informe de Movimientos Contables</h1>
+          <p class="header-meta">Documento para control y declaración administrativa</p>
         </div>
 
-        <h2>Detalle de Movimientos (${resultados.length})</h2>
-        <table>
+        <table class="meta-box">
+          <tr>
+            <td class="label">Fecha de emisión</td>
+            <td>${obtenerFechaElSalvador().toLocaleString("es-GT")}</td>
+            <td class="label">Período</td>
+            <td>${periodoTexto}</td>
+          </tr>
+          <tr>
+            <td class="label">Tipo de reporte</td>
+            <td>${tipoReporteTexto}</td>
+            <td class="label">Filtro de moneda</td>
+            <td>${monedaFiltroTexto}</td>
+          </tr>
+        </table>
+
+        <h2 class="section-title">1. Total por Moneda</h2>
+        <table style="width:100%;border-collapse:collapse;margin:8px 0 14px 0;">
+          <tr>${resumenCols}</tr>
+        </table>
+
+        <h2 class="section-title">2. Desglose por Tipo</h2>
+        ${desgloseHTML}
+
+        <h2 class="section-title">3. Resumen Contable</h2>
+        ${ledgerHTML}
+
+        ${cierreDiezmo ? `<h2 class="section-title">4. Transferencia Diezmo 10%</h2>${transferenciaHTML}` : ""}
+
+        <h2 class="section-title">5. Detalle de Movimientos (${resultados.length})</h2>
+        <table class="movimientos">
+          <colgroup>
+            <col style="width:10%;">
+            <col style="width:8%;">
+            <col style="width:40%;">
+            <col style="width:27%;">
+            <col style="width:15%;">
+          </colgroup>
           <thead>
             <tr>
               <th>Fecha</th>
               <th>Tipo</th>
               <th>Concepto</th>
               <th>Caja</th>
-              <th style="text-align: right;">Monto</th>
+              <th style="text-align:right;">Monto</th>
             </tr>
           </thead>
           <tbody>
             ${resultados
               .map(
                 (mov) => `
-                  <tr>
-                    <td>${new Date(mov.fecha).toLocaleDateString("es-GT")}</td>
-                    <td class="${mov.tipo.toLowerCase()}">${mov.tipo}</td>
-                    <td>${mov.concepto}</td>
-                    <td>${mov.caja}</td>
-                    <td style="text-align: right;">
-                      ${mov.montos
-                        .map(
-                          (m) =>
-                            `<span class="${mov.tipo.toLowerCase()}">${
-                              mov.tipo === "Ingreso" ? "+" : "-"
-                            }${m.monedaSimbolo}${m.monto.toLocaleString(
-                              "es-GT",
-                              { minimumFractionDigits: 2 }
-                            )}</span>`
-                        )
-                        .join("<br>")}
-                    </td>
-                  </tr>
-                `
+                <tr>
+                  <td>${new Date(mov.fecha).toLocaleDateString("es-GT")}</td>
+                  <td class="${mov.tipo.toLowerCase()}">${mov.tipo}</td>
+                  <td>${mov.concepto}</td>
+                  <td>${mov.caja}</td>
+                  <td style="text-align:right;white-space:nowrap;">
+                    ${mov.montos
+                      .map(
+                        (m) =>
+                          `<span class="${mov.tipo.toLowerCase()}">${
+                            mov.tipo === "Ingreso" ? "+" : "-"
+                          }${m.monedaSimbolo}${m.monto.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}</span>`,
+                      )
+                      .join("<br>")}
+                  </td>
+                </tr>
+              `,
               )
               .join("")}
           </tbody>
         </table>
 
-        <div class="firmas">
-          <div class="firma-bloque">
-            <div class="firma-linea"></div>
-            <div class="firma-titulo">Presidente/Representante</div>
-            <div class="firma-subtitulo">Firma y Sello</div>
-          </div>
-          <div class="firma-bloque">
-            <div class="firma-linea"></div>
-            <div class="firma-titulo">Tesorero</div>
-            <div class="firma-subtitulo">Firma y Sello</div>
-          </div>
+        <table class="firmas">
+          <tr>
+            <td>
+              <div class="firma-linea"></div>
+              <div class="firma-titulo">Elaborado por</div>
+              <div class="firma-subtitulo">Tesorería</div>
+            </td>
+            <td>
+              <div class="firma-linea"></div>
+              <div class="firma-titulo">Revisado por</div>
+              <div class="firma-subtitulo">Administración</div>
+            </td>
+          </tr>
+        </table>
+
+        <p class="firma-caption">Este informe refleja los datos del sistema al momento de su emisión.</p>
         </div>
       </body>
       </html>
@@ -826,7 +1378,7 @@ export function ReportesClient({
     Object.entries(datosSaldosActuales.totalesPorMoneda || {}).forEach(
       ([monedaId, datos]: [string, any]) => {
         const moneda = datosSaldosActuales.monedas?.find(
-          (m: any) => m.id === monedaId
+          (m: any) => m.id === monedaId,
         );
         rows.push([
           "",
@@ -836,7 +1388,7 @@ export function ReportesClient({
           datos.egresos.toFixed(2),
           datos.saldo.toFixed(2),
         ]);
-      }
+      },
     );
 
     const csvContent = [headers, ...rows]
@@ -885,7 +1437,7 @@ export function ReportesClient({
       <body>
         <h1>Reporte de Saldos Actuales de Cajas</h1>
         <p class="fecha">Generado: ${obtenerFechaElSalvador().toLocaleString(
-          "es-GT"
+          "es-GT",
         )}</p>
         
         <h2>Resumen por Moneda</h2>
@@ -893,24 +1445,26 @@ export function ReportesClient({
           ${Object.entries(datosSaldosActuales.totalesPorMoneda || {})
             .map(([monedaId, datos]: [string, any]) => {
               const moneda = datosSaldosActuales.monedas?.find(
-                (m: any) => m.id === monedaId
+                (m: any) => m.id === monedaId,
               );
               return `
                 <div class="resumen-card">
                   <strong>${moneda?.codigo || monedaId}</strong><br>
                   <span class="positivo">Ingresos: ${moneda?.simbolo || "$"}${(
-                datos.ingresos || 0
-              ).toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
+                    datos.ingresos || 0
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</span><br>
                   <span class="negativo">Egresos: ${moneda?.simbolo || "$"}${(
-                datos.egresos || 0
-              ).toLocaleString("es-GT", {
-                minimumFractionDigits: 2,
-              })}</span><br>
+                    datos.egresos || 0
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</span><br>
                   <strong>Saldo: ${moneda?.simbolo || "$"}${(
-                datos.saldo || 0
-              ).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</strong>
+                    datos.saldo || 0
+                  ).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}</strong>
                 </div>
               `;
             })
@@ -959,13 +1513,13 @@ export function ReportesClient({
                           saldo.saldo >= 0 ? "positivo" : "negativo"
                         }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
                           "es-GT",
-                          { minimumFractionDigits: 2 }
+                          { minimumFractionDigits: 2 },
                         )}</td>
                       </tr>
-                    `
+                    `,
                       )
                       .join("")}
-                  `
+                  `,
                     )
                     .join("")}
                 `
@@ -1003,13 +1557,13 @@ export function ReportesClient({
                           saldo.saldo >= 0 ? "positivo" : "negativo"
                         }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
                           "es-GT",
-                          { minimumFractionDigits: 2 }
+                          { minimumFractionDigits: 2 },
                         )}</td>
                       </tr>
-                    `
+                    `,
                       )
                       .join("")}
-                  `
+                  `,
                     )
                     .join("")}
                 `
@@ -1045,13 +1599,13 @@ export function ReportesClient({
                           saldo.saldo >= 0 ? "positivo" : "negativo"
                         }">${saldo.monedaSimbolo}${saldo.saldo.toLocaleString(
                           "es-GT",
-                          { minimumFractionDigits: 2 }
+                          { minimumFractionDigits: 2 },
                         )}</td>
                       </tr>
-                    `
+                    `,
                       )
                       .join("")}
-                  `
+                  `,
                     )
                     .join("")}
                 `
@@ -1171,8 +1725,8 @@ export function ReportesClient({
     if (!datosAnaliticos) return 0;
     return Math.max(
       ...datosAnaliticos.datosMensuales.map((d) =>
-        Math.max(d.ingresos, d.egresos)
-      )
+        Math.max(d.ingresos, d.egresos),
+      ),
     );
   }, [datosAnaliticos]);
 
@@ -1560,6 +2114,39 @@ export function ReportesClient({
         </div>
       )}
 
+      {cierrePendienteAnterior && (
+        <Card className="mb-4 border border-amber-200 bg-amber-50">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                Cierre mensual pendiente
+              </p>
+              <p className="text-sm text-amber-800">
+                Falta aplicar el diezmo 10% de {cierrePendienteAnterior.mes}/
+                {cierrePendienteAnterior.anio}. Puedes seguir monitoreando
+                reportes y aplicarlo cuando corresponda.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setVistaActiva("movimientos");
+                setFiltros((prev) => ({
+                  ...prev,
+                  periodo: "personalizado",
+                  fechaInicio: `${cierrePendienteAnterior.anio}-${String(cierrePendienteAnterior.mes).padStart(2, "0")}-01`,
+                  fechaFin: `${cierrePendienteAnterior.anio}-${String(cierrePendienteAnterior.mes).padStart(2, "0")}-${new Date(cierrePendienteAnterior.anio, cierrePendienteAnterior.mes, 0).getDate().toString().padStart(2, "0")}`,
+                }));
+                setMostrarResultados(false);
+              }}
+            >
+              Revisar mes pendiente
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Panel de Filtros - Movimientos */}
       {vistaActiva === "movimientos" && !mostrarResultados && (
         <Card className="mb-4 md:mb-5">
@@ -1595,6 +2182,22 @@ export function ReportesClient({
               onChange={(value) => handleComboboxChange("periodo", value)}
               searchable={false}
             />
+            <Input
+              label="Fecha Inicio"
+              name="fechaInicio"
+              type="date"
+              value={filtros.fechaInicio}
+              onChange={handleChange}
+            />
+            <Input
+              label="Fecha Fin"
+              name="fechaFin"
+              type="date"
+              value={filtros.fechaFin}
+              onChange={handleChange}
+            />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-5">
             <Combobox
               label="Caja"
               options={cajaOptions}
@@ -1614,25 +2217,6 @@ export function ReportesClient({
               searchable={false}
             />
           </div>
-
-          {filtros.periodo === "personalizado" && (
-            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
-              <Input
-                label="Fecha Inicio"
-                name="fechaInicio"
-                type="date"
-                value={filtros.fechaInicio}
-                onChange={handleChange}
-              />
-              <Input
-                label="Fecha Fin"
-                name="fechaFin"
-                type="date"
-                value={filtros.fechaFin}
-                onChange={handleChange}
-              />
-            </div>
-          )}
 
           {filtros.tipoReporte !== "egresos" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-5">
@@ -1890,8 +2474,7 @@ export function ReportesClient({
         <>
           {/* Resumen */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-5">
-            {Object.entries(totales).map(([monedaId, data]) => {
-              if (data.ingresos === 0 && data.egresos === 0) return null;
+            {monedasPorPrioridad.map(([monedaId, data]) => {
               const balance = data.ingresos - data.egresos;
               return (
                 <Card key={monedaId}>
@@ -1937,6 +2520,325 @@ export function ReportesClient({
               );
             })}
           </div>
+
+          {/* Desglose por prioridad */}
+          {monedasPorPrioridad.length > 0 && (
+            <Card className="mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-[#40768c] uppercase tracking-wide">
+                  Desglose por Tipo
+                </h3>
+                <span className="text-xs text-[#73a9bf]">
+                  Totales por ingreso y egreso
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {monedasPorPrioridad.map(([monedaId, data]) => {
+                  const ingresosTipos = Object.entries(
+                    ingresosPorTipo[monedaId]?.tipos || {},
+                  ).sort((a, b) => b[1] - a[1]);
+
+                  const egresosTipos = Object.entries(
+                    egresosPorTipo[monedaId]?.tipos || {},
+                  ).sort((a, b) => b[1] - a[1]);
+
+                  return (
+                    <div
+                      key={`desglose-${monedaId}`}
+                      className="rounded-lg border border-[#dceaef] p-4 bg-white"
+                    >
+                      <p className="text-xs font-semibold text-[#73a9bf] uppercase tracking-wider mb-3">
+                        {data.codigo}
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs font-semibold text-[#2ba193] mb-2">
+                            Ingresos por tipo
+                          </p>
+                          {ingresosTipos.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {ingresosTipos.map(([tipo, monto]) => (
+                                <div
+                                  key={`ing-${monedaId}-${tipo}`}
+                                  className="flex items-center justify-between text-sm"
+                                >
+                                  <span className="text-[#305969]">{tipo}</span>
+                                  <span className="font-semibold text-[#2ba193]">
+                                    {data.simbolo}
+                                    {monto.toLocaleString("es-GT", {
+                                      minimumFractionDigits: 2,
+                                    })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-[#73a9bf]">
+                              Sin ingresos en este rango.
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-semibold text-[#e0451f] mb-2">
+                            Egresos por tipo
+                          </p>
+                          {egresosTipos.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {egresosTipos.map(([tipo, monto]) => (
+                                <div
+                                  key={`egr-${monedaId}-${tipo}`}
+                                  className="flex items-center justify-between text-sm"
+                                >
+                                  <span className="text-[#305969]">{tipo}</span>
+                                  <span className="font-semibold text-[#e0451f]">
+                                    {data.simbolo}
+                                    {monto.toLocaleString("es-GT", {
+                                      minimumFractionDigits: 2,
+                                    })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-[#73a9bf]">
+                              Sin egresos en este rango.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* Resumen contable */}
+          {monedasPorPrioridad.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4 md:mb-5">
+              {monedasPorPrioridad.map(([monedaId, data]) => {
+                const tiposMoneda = ingresosPorTipo[monedaId];
+                const totalOfrendas =
+                  tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
+                const balance = totalOfrendas - data.egresos;
+                const aplicaDiezmoMoneda = cierreDiezmo?.monedaId === monedaId;
+                const montoDiezmoMoneda = aplicaDiezmoMoneda
+                  ? cierreDiezmo.montoDiezmo
+                  : 0;
+                const disponibleMoneda = balance - montoDiezmoMoneda;
+                return (
+                  <div
+                    key={monedaId}
+                    className="bg-white border border-[#dceaef] rounded-xl px-5 py-4 font-mono text-sm shadow-sm"
+                  >
+                    <p className="text-xs font-sans font-semibold text-[#73a9bf] uppercase tracking-wider mb-3">
+                      {data.codigo} — Resumen
+                    </p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#305969]">Ofrendas</span>
+                        <span className="text-[#2ba193] font-semibold">
+                          {data.simbolo}
+                          {totalOfrendas.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#305969]">(-) Egresos</span>
+                        <span className="text-[#e0451f] font-semibold">
+                          {data.simbolo}
+                          {data.egresos.toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      {aplicaDiezmoMoneda && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-[#305969]">(-) Diezmo 10%</span>
+                          <span className="text-[#305969] font-semibold">
+                            {data.simbolo}
+                            {montoDiezmoMoneda.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      <div className="border-t border-[#305969]/30 pt-1 mt-1 flex justify-between items-center">
+                        <span className="text-[#203b46] font-bold font-sans text-xs uppercase tracking-wide">
+                          {aplicaDiezmoMoneda ? "Disponible" : "Balance"}
+                        </span>
+                        <span
+                          className={`font-bold text-base ${
+                            (aplicaDiezmoMoneda ? disponibleMoneda : balance) >=
+                            0
+                              ? "text-[#2ba193]"
+                              : "text-[#e0451f]"
+                          }`}
+                        >
+                          {data.simbolo}
+                          {(aplicaDiezmoMoneda
+                            ? disponibleMoneda
+                            : balance
+                          ).toLocaleString("es-GT", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Transferencia */}
+          {cierreDiezmo && (
+            <Card className="mb-4 border border-[#dceaef] bg-gradient-to-r from-white to-[#f7fbfd]">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#203b46]">
+                    Diezmo Mensual 10% ({cierreDiezmo.monedaCodigo})
+                  </h3>
+                  <p className="text-xs text-[#73a9bf]">
+                    Base = Ofrendas USD - Egresos USD (Caja General)
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    cierreDiezmo.estado === "REALIZADO" ? "success" : "warning"
+                  }
+                >
+                  {cierreDiezmo.estado === "REALIZADO"
+                    ? "Realizado"
+                    : "No realizado"}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
+                <div className="bg-white rounded-lg border border-[#dceaef] p-3">
+                  <p className="text-xs text-[#73a9bf]">Ofrendas USD</p>
+                  <p className="text-sm font-bold text-[#2ba193]">
+                    {cierreDiezmo.monedaSimbolo}
+                    {cierreDiezmo.totalOfrendas.toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg border border-[#dceaef] p-3">
+                  <p className="text-xs text-[#73a9bf]">Egresos USD</p>
+                  <p className="text-sm font-bold text-[#e0451f]">
+                    {cierreDiezmo.monedaSimbolo}
+                    {cierreDiezmo.totalEgresos.toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg border border-[#dceaef] p-3">
+                  <p className="text-xs text-[#73a9bf]">Base líquida</p>
+                  <p
+                    className={`text-sm font-bold ${
+                      cierreDiezmo.baseLiquida >= 0
+                        ? "text-[#2ba193]"
+                        : "text-[#e0451f]"
+                    }`}
+                  >
+                    {cierreDiezmo.monedaSimbolo}
+                    {cierreDiezmo.baseLiquida.toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg border border-[#dceaef] p-3">
+                  <p className="text-xs text-[#73a9bf]">10% mensual</p>
+                  <p className="text-sm font-bold text-[#305969]">
+                    {cierreDiezmo.monedaSimbolo}
+                    {cierreDiezmo.montoDiezmo.toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg border border-[#dceaef] p-3">
+                  <p className="text-xs text-[#73a9bf]">Disponible</p>
+                  <p
+                    className={`text-sm font-bold ${
+                      (disponibleDiezmo || 0) >= 0
+                        ? "text-[#2ba193]"
+                        : "text-[#e0451f]"
+                    }`}
+                  >
+                    {cierreDiezmo.monedaSimbolo}
+                    {(disponibleDiezmo || 0).toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div className="md:col-span-2">
+                  <Combobox
+                    label="Caja destino de transferencia"
+                    options={cajaOptionsDiezmo}
+                    value={cajaDestinoDiezmoId}
+                    onChange={setCajaDestinoDiezmoId}
+                    placeholder="Selecciona caja destino"
+                    clearable={false}
+                    searchable={false}
+                    disabled={cierreDiezmo.estado === "REALIZADO"}
+                  />
+                </div>
+                <div>
+                  <Button
+                    className="w-full"
+                    onClick={handleAplicarTransferenciaDiezmo}
+                    disabled={
+                      isPending ||
+                      cierreDiezmo.estado === "REALIZADO" ||
+                      !cierreDiezmo.puedeAplicar
+                    }
+                  >
+                    {cierreDiezmo.estado === "REALIZADO"
+                      ? "Transferencia realizada"
+                      : "Aplicar transferencia"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-3 text-xs text-[#73a9bf]">
+                <p>
+                  Disponible: {cierreDiezmo.monedaSimbolo}
+                  {(disponibleDiezmo || 0).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
+                <p>
+                  Transferido: {cierreDiezmo.monedaSimbolo}
+                  {cierreDiezmo.transferido.toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}
+                  {cierreDiezmo.cajaDestinoNombre
+                    ? ` a ${cierreDiezmo.cajaDestinoNombre}`
+                    : ""}
+                </p>
+                {cierreDiezmo.estado !== "REALIZADO" &&
+                  !cierreDiezmo.puedeAplicar && (
+                    <p className="text-amber-700 mt-1">
+                      Para aplicar transferencia debes consultar el mes completo
+                      y tener base líquida positiva.
+                    </p>
+                  )}
+                {mensajeDiezmo && (
+                  <p className="mt-1 text-[#305969] font-medium">
+                    {mensajeDiezmo}
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* Tabla de resultados */}
           <Card>
@@ -2002,7 +2904,52 @@ export function ReportesClient({
                 </p>
               </div>
             ) : (
-              <Table data={resultados} columns={columns} />
+              <>
+                <Table
+                  data={resultados.slice(
+                    (paginaActual - 1) * POR_PAGINA,
+                    paginaActual * POR_PAGINA,
+                  )}
+                  columns={columns}
+                />
+                <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#cce0e8]">
+                  <span className="text-xs text-[#73a9bf]">
+                    Mostrando {(paginaActual - 1) * POR_PAGINA + 1}–
+                    {Math.min(paginaActual * POR_PAGINA, resultados.length)} de{" "}
+                    {resultados.length} registros
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                      disabled={paginaActual === 1}
+                      className="px-3 py-1 text-xs rounded border border-[#cce0e8] text-[#40768c] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#e8f4f8] transition-colors"
+                    >
+                      ← Anterior
+                    </button>
+                    <span className="text-xs text-[#40768c] font-medium">
+                      Página {paginaActual} de{" "}
+                      {Math.ceil(resultados.length / POR_PAGINA)}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setPaginaActual((p) =>
+                          Math.min(
+                            Math.ceil(resultados.length / POR_PAGINA),
+                            p + 1,
+                          ),
+                        )
+                      }
+                      disabled={
+                        paginaActual ===
+                        Math.ceil(resultados.length / POR_PAGINA)
+                      }
+                      className="px-3 py-1 text-xs rounded border border-[#cce0e8] text-[#40768c] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#e8f4f8] transition-colors"
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </Card>
         </>
@@ -2142,7 +3089,7 @@ export function ReportesClient({
                 .sort((a, b) => b.total - a.total)
                 .map((soc, idx) => {
                   const maxTotal = Math.max(
-                    ...datosAnaliticos.porSociedad.map((s) => s.total)
+                    ...datosAnaliticos.porSociedad.map((s) => s.total),
                   );
                   return (
                     <div
@@ -2452,7 +3399,7 @@ export function ReportesClient({
                         year: "numeric",
                         month: "long",
                         day: "numeric",
-                      }
+                      },
                     )}
                   </p>
                 </div>
@@ -2883,7 +3830,7 @@ export function ReportesClient({
                       </tr>
                     ))}
                   {datosDiezmosFiliales.porMes.filter(
-                    (m: any) => m.cantidad > 0
+                    (m: any) => m.cantidad > 0,
                   ).length === 0 && (
                     <tr>
                       <td
@@ -3158,7 +4105,7 @@ export function ReportesClient({
               {Object.entries(datosSaldosActuales.totalesPorMoneda).map(
                 ([monedaId, datos]: [string, any]) => {
                   const moneda = datosSaldosActuales.monedas.find(
-                    (m: any) => m.id === monedaId
+                    (m: any) => m.id === monedaId,
                   );
                   return (
                     <Card key={monedaId}>
@@ -3210,7 +4157,7 @@ export function ReportesClient({
                       </div>
                     </Card>
                   );
-                }
+                },
               )}
             </div>
           </div>
@@ -3331,7 +4278,7 @@ export function ReportesClient({
                             })}
                           </td>
                         </tr>
-                      ))
+                      )),
                     )}
                   </tbody>
                 </table>
@@ -3404,7 +4351,7 @@ export function ReportesClient({
                             })}
                           </td>
                         </tr>
-                      ))
+                      )),
                     )}
                   </tbody>
                 </table>

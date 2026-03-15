@@ -5,6 +5,12 @@ import { Prisma } from "@/generated/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
 import { registrarAuditoria } from "@/lib/auditoria";
+import { dbSaldoCaja, dbCajasConSaldos } from "@/lib/db-functions";
+import {
+  crearIngresoSchema,
+  crearEgresoSchema,
+  validarSchema,
+} from "@/lib/schemas";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -38,68 +44,93 @@ interface CrearIngresoData {
 }
 
 export async function crearIngreso(data: CrearIngresoData) {
+  // Validar schema antes de cualquier query a BD (evita hits innecesarios)
+  validarSchema(crearIngresoSchema, data);
   await validarPermisoActual("ingresos", "crear");
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
 
-  console.log("=== CREAR INGRESO DEBUG ===");
-  console.log("monto recibido:", data.montos[0].monto);
-  console.log("cajaId:", data.cajaId);
-  console.log("cajaSecundariaId:", data.cajaSecundariaId);
-
   return withRetry(() =>
-    prisma.ingreso
-      .create({
-        data: {
-          fechaRecaudacion: data.fechaRecaudacion,
-          sociedadId: data.sociedadId,
-          servicioId: data.servicioId,
-          tipoIngresoId: data.tipoIngresoId,
-          cajaId: data.cajaId,
-          cajaSecundariaId: data.cajaSecundariaId || null,
-          usuarioId: data.usuarioId,
-          creadoPorId: usuario.id, // Quién creó el registro
-          comentario: data.comentario,
-          montos: {
-            create: data.montos.map((m) => ({
-              monedaId: m.monedaId,
-              monto: Math.round(m.monto * 100) / 100,
-            })),
-          },
+    prisma.ingreso.create({
+      data: {
+        fechaRecaudacion: data.fechaRecaudacion,
+        sociedadId: data.sociedadId,
+        servicioId: data.servicioId,
+        tipoIngresoId: data.tipoIngresoId,
+        cajaId: data.cajaId,
+        cajaSecundariaId: data.cajaSecundariaId || null,
+        usuarioId: data.usuarioId,
+        creadoPorId: usuario.id,
+        comentario: data.comentario,
+        montos: {
+          create: data.montos.map((m) => ({
+            monedaId: m.monedaId,
+            monto: Math.round(m.monto * 100) / 100,
+          })),
         },
-        include: {
-          montos: { include: { moneda: true } },
-          sociedad: true,
-          servicio: true,
-          tipoIngreso: true,
-          caja: true,
-          cajaSecundaria: true,
-        },
-      })
-      .then((result) => {
-        console.log("ingreso creado, montos:");
-        result.montos.forEach((m) => {
-          console.log(
-            "  - monedaId:",
-            m.monedaId,
-            "monto:",
-            m.monto,
-            "tipo:",
-            typeof m.monto,
-          );
-        });
-        return result;
-      }),
+      },
+      include: {
+        montos: { include: { moneda: true } },
+        sociedad: true,
+        servicio: true,
+        tipoIngreso: true,
+        caja: true,
+        cajaSecundaria: true,
+      },
+    }),
   );
 }
 
 export async function crearIngresosMultiples(ingresos: CrearIngresoData[]) {
-  const resultados = [];
-  for (const ingreso of ingresos) {
-    const resultado = await crearIngreso(ingreso);
-    resultados.push(resultado);
+  const MAX_BATCH = 200;
+  if (ingresos.length > MAX_BATCH)
+    throw new Error(
+      `No se pueden guardar más de ${MAX_BATCH} ingresos a la vez.`,
+    );
+
+  // Validar permisos y obtener usuario UNA sola vez (no por cada fila)
+  await validarPermisoActual("ingresos", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
+  // Pre-generar IDs para vincular ingresos con montos sin nested creates
+  const ingresosConId = ingresos.map((data) => ({
+    ...data,
+    id: crypto.randomUUID(),
+  }));
+
+  // Procesar en lotes de 100 para no saturar la transacción
+  const LOTE = 100;
+  for (let i = 0; i < ingresosConId.length; i += LOTE) {
+    const lote = ingresosConId.slice(i, i + LOTE);
+    await withRetry(() =>
+      prisma.$transaction([
+        prisma.ingreso.createMany({
+          data: lote.map((data) => ({
+            id: data.id,
+            fechaRecaudacion: data.fechaRecaudacion,
+            sociedadId: data.sociedadId,
+            servicioId: data.servicioId,
+            tipoIngresoId: data.tipoIngresoId,
+            cajaId: data.cajaId,
+            cajaSecundariaId: data.cajaSecundariaId || null,
+            usuarioId: data.usuarioId,
+            creadoPorId: usuario.id,
+            comentario: data.comentario,
+          })),
+        }),
+        prisma.ingresoMonto.createMany({
+          data: lote.flatMap((data) =>
+            data.montos.map((m) => ({
+              ingresoId: data.id,
+              monedaId: m.monedaId,
+              monto: Math.round(m.monto * 100) / 100,
+            })),
+          ),
+        }),
+      ]),
+    );
   }
-  return resultados;
 }
 
 interface FiltrosIngreso {
@@ -246,6 +277,8 @@ interface CrearEgresoData {
 }
 
 export async function crearEgreso(data: CrearEgresoData) {
+  // Validar schema antes de cualquier query a BD
+  validarSchema(crearEgresoSchema, data);
   await validarPermisoActual("egresos", "crear");
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");
@@ -290,12 +323,75 @@ export async function crearEgreso(data: CrearEgresoData) {
 }
 
 export async function crearEgresosMultiples(egresos: CrearEgresoData[]) {
-  const resultados = [];
+  const MAX_BATCH = 200;
+  if (egresos.length > MAX_BATCH)
+    throw new Error(
+      `No se pueden guardar más de ${MAX_BATCH} egresos a la vez.`,
+    );
+
+  // Validar permisos y obtener usuario UNA sola vez
+  await validarPermisoActual("egresos", "crear");
+  const usuario = await getUsuarioActual();
+  if (!usuario) throw new Error("No autenticado");
+
+  // Agrupar montos por (cajaId, monedaId) para validar saldo UNA vez por combinación
+  const totalesPorCajaMoneda = new Map<string, number>();
   for (const egreso of egresos) {
-    const resultado = await crearEgreso(egreso);
-    resultados.push(resultado);
+    const key = `${egreso.cajaId}:${egreso.monedaId}`;
+    totalesPorCajaMoneda.set(
+      key,
+      (totalesPorCajaMoneda.get(key) ?? 0) + egreso.monto,
+    );
   }
-  return resultados;
+
+  // Validar saldo para cada combinación (en paralelo)
+  await Promise.all(
+    Array.from(totalesPorCajaMoneda.entries()).map(
+      async ([key, totalMonto]) => {
+        const [cajaId, monedaId] = key.split(":");
+        const saldos = await obtenerSaldoCaja(cajaId, monedaId);
+        const saldoMoneda = saldos.find((s) => s.monedaId === monedaId);
+        if (!saldoMoneda || saldoMoneda.saldo < totalMonto) {
+          const disponible = saldoMoneda?.saldo ?? 0;
+          const simbolo = saldoMoneda?.monedaSimbolo ?? "";
+          throw new Error(
+            `Saldo insuficiente en la caja. Disponible: ${simbolo}${disponible.toLocaleString(
+              "es-GT",
+              { minimumFractionDigits: 2 },
+            )}. Total a egresar: ${simbolo}${totalMonto.toLocaleString(
+              "es-GT",
+              {
+                minimumFractionDigits: 2,
+              },
+            )}`,
+          );
+        }
+      },
+    ),
+  );
+
+  // Procesar en lotes de 100 para no saturar la transacción
+  const LOTE = 100;
+  for (let i = 0; i < egresos.length; i += LOTE) {
+    const lote = egresos.slice(i, i + LOTE);
+    await withRetry(() =>
+      prisma.egreso.createMany({
+        data: lote.map((data) => ({
+          fechaSalida: data.fechaSalida,
+          solicitante: data.solicitante,
+          monto: Math.round(data.monto * 100) / 100,
+          descripcionGasto: data.descripcionGasto,
+          comentario: data.comentario,
+          numeroFactura: data.numeroFactura || null,
+          tipoGastoId: data.tipoGastoId,
+          monedaId: data.monedaId,
+          cajaId: data.cajaId,
+          usuarioId: data.usuarioId,
+          creadoPorId: usuario.id,
+        })),
+      }),
+    );
+  }
 }
 
 interface FiltrosEgreso {
@@ -425,90 +521,15 @@ export async function actualizarEgreso(id: string, data: ActualizarEgresoData) {
 }
 
 // Obtener saldo de una caja por moneda
+// Delega a fn_saldo_caja() — 1 round-trip en lugar de 4 queries secuenciales.
 export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
   return withRetry(async () => {
-    // Obtener datos de la caja (necesario para saber si es general o subcaja)
-    const caja = await prisma.caja.findUnique({
-      where: { id: cajaId },
-      include: { sociedad: true, tipoIngreso: true },
-    });
-
-    if (!caja) {
-      throw new Error(`Caja no encontrada: ${cajaId}`);
+    const saldos = await dbSaldoCaja(cajaId, monedaId);
+    if (saldos.length === 0) {
+      // Caja no encontrada o sin monedas activas → verificar que exista
+      const caja = await prisma.caja.findUnique({ where: { id: cajaId } });
+      if (!caja) throw new Error(`Caja no encontrada: ${cajaId}`);
     }
-
-    const monedas = await prisma.moneda.findMany({
-      where: monedaId ? { id: monedaId, activa: true } : { activa: true },
-      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
-    });
-
-    // Determinar si esta es una subcaja de sociedad (no general, con sociedadId o tipoIngresoId)
-    const esSubcaja =
-      !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
-
-    // Para cajas de sociedades: buscar ingresos SECUNDARIOS (tracking)
-    // Para cajas generales: buscar ingresos PRINCIPALES (dinero real)
-    const ingresosPorMoneda = await prisma.ingresoMonto.groupBy({
-      by: ["monedaId"],
-      where: {
-        ...(esSubcaja
-          ? {
-              // Ingresos donde esta caja es SECUNDARIA (tracking)
-              ingreso: { cajaSecundariaId: cajaId },
-            }
-          : {
-              // Ingresos donde esta caja es PRINCIPAL (dinero real)
-              ingreso: { cajaId },
-            }),
-        ...(monedaId ? { monedaId } : {}),
-      },
-      _sum: { monto: true },
-    });
-
-    // Donaciones solo se suman a cajas generales
-    const donacionesPorMoneda = await prisma.donacion.groupBy({
-      by: ["monedaId"],
-      where: {
-        ...(caja.esGeneral ? { cajaId } : { cajaId: "never" }), // Nunca buscar si no es general
-        ...(monedaId ? { monedaId } : {}),
-      },
-      _sum: { monto: true },
-    });
-
-    // Egresos siempre se asocian a la caja principal
-    const egresosPorMoneda = await prisma.egreso.groupBy({
-      by: ["monedaId"],
-      where: {
-        cajaId,
-        ...(monedaId ? { monedaId } : {}),
-      },
-      _sum: { monto: true },
-    });
-
-    const saldos = monedas.map((moneda) => {
-      const ingresos =
-        ingresosPorMoneda.find((i) => i.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0);
-      const donaciones =
-        donacionesPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0);
-      const egresos =
-        egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0);
-      const totalIngresos = Number(ingresos) + Number(donaciones);
-      const totalEgresos = Number(egresos);
-      const saldo = totalIngresos - totalEgresos;
-
-      return {
-        monedaId: moneda.id,
-        monedaCodigo: moneda.codigo,
-        monedaSimbolo: moneda.simbolo,
-        ingresos: Math.round(totalIngresos * 100) / 100,
-        egresos: Math.round(totalEgresos * 100) / 100,
-        saldo: Math.round(saldo * 100) / 100,
-      };
-    });
-
     return saldos;
   });
 }
@@ -517,7 +538,17 @@ export async function obtenerSaldoCaja(cajaId: string, monedaId?: string) {
 // CAJAS - SALDOS
 // =====================
 
-export async function obtenerCajasConSaldos(filtros?: {
+// Delega a fn_cajas_con_saldos() — 1 round-trip en lugar de 8+ queries.
+export async function obtenerCajasConSaldos(_filtros?: {
+  anio?: number;
+  fechaInicio?: string;
+  fechaFin?: string;
+}) {
+  return withRetry(() => dbCajasConSaldos());
+}
+
+// LEGACY KEPT BELOW — referenciado solo internamente para la vista detalle
+async function _obtenerCajasConSaldosLegacy(filtros?: {
   anio?: number;
   fechaInicio?: string;
   fechaFin?: string;
@@ -788,7 +819,7 @@ export async function obtenerCajasConSaldos(filtros?: {
 }
 
 // =====================
-// CAJAS VIRTUALES - DETALLE
+// CAJAS VIRTUALES - DETALLE (usa legacy directamente)
 // =====================
 
 async function obtenerDetalleCajaDonaciones() {
@@ -981,271 +1012,181 @@ export async function obtenerDetalleCaja(cajaId: string) {
 
   if (!caja) return null;
 
-  // Determinar si es una subcaja (para tracking)
   const esSubcaja = !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
+  const esCajaFiliales = caja.nombre === "Filiales" && !caja.esGeneral;
 
-  // Ajustar límites: subcajas necesitan más movimientos de seguimiento
   const limiteIngresosPrincipales = esSubcaja ? 200 : 500;
   const limiteIngresosSecundarios = esSubcaja ? 500 : 200;
   const limiteEgresos = esSubcaja ? 200 : 500;
   const limiteDonaciones = esSubcaja ? 200 : 500;
 
-  // Ingresos donde esta caja es la principal
-  const ingresos = await prisma.ingreso.findMany({
-    where: { cajaId },
-    include: {
-      sociedad: true,
-      tipoIngreso: true,
-      servicio: true,
-      montos: { include: { moneda: true } },
-      cajaSecundaria: true,
-    },
-    orderBy: { fechaRecaudacion: "desc" },
-    take: limiteIngresosPrincipales,
-  });
-
-  // Ingresos donde esta caja es la secundaria (para tracking)
-  const ingresosSecundarios = await prisma.ingreso.findMany({
-    where: { cajaSecundariaId: cajaId },
-    include: {
-      sociedad: true,
-      tipoIngreso: true,
-      servicio: true,
-      montos: { include: { moneda: true } },
-      caja: true,
-    },
-    orderBy: { fechaRecaudacion: "desc" },
-    take: limiteIngresosSecundarios,
-  });
-
-  const egresos = await prisma.egreso.findMany({
-    where: { cajaId },
-    include: {
-      tipoGasto: true,
-      moneda: true,
-    },
-    orderBy: { fechaSalida: "desc" },
-    take: limiteEgresos,
-  });
-
-  // Si es caja general, obtener también donaciones
-  const donaciones = caja.esGeneral
-    ? await prisma.donacion.findMany({
-        where: { cajaId },
-        include: {
-          tipoOfrenda: true,
-          moneda: true,
-          usuario: {
-            select: {
-              id: true,
-              nombre: true,
-            },
+  // Todas las queries en paralelo — 1 roundtrip en lugar de 8+ secuenciales
+  const [
+    ingresos,
+    ingresosSecundarios,
+    egresos,
+    donaciones,
+    diezmosFiliales,
+    egresosFiliales,
+    monedas,
+    ingresosSumPorMoneda,
+    egresosSumPorMoneda,
+    donacionesSumPorMoneda,
+    diezmosFilialesSumPorMoneda,
+    egresosFilialesSumPorMoneda,
+  ] = await Promise.all([
+    prisma.ingreso.findMany({
+      where: { cajaId },
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+        servicio: true,
+        montos: { include: { moneda: true } },
+        cajaSecundaria: true,
+      },
+      orderBy: { fechaRecaudacion: "desc" },
+      take: limiteIngresosPrincipales,
+    }),
+    prisma.ingreso.findMany({
+      where: { cajaSecundariaId: cajaId },
+      include: {
+        sociedad: true,
+        tipoIngreso: true,
+        servicio: true,
+        montos: { include: { moneda: true } },
+        caja: true,
+      },
+      orderBy: { fechaRecaudacion: "desc" },
+      take: limiteIngresosSecundarios,
+    }),
+    prisma.egreso.findMany({
+      where: { cajaId },
+      include: { tipoGasto: true, moneda: true },
+      orderBy: { fechaSalida: "desc" },
+      take: limiteEgresos,
+    }),
+    caja.esGeneral
+      ? prisma.donacion.findMany({
+          where: { cajaId },
+          include: {
+            tipoOfrenda: true,
+            moneda: true,
+            usuario: { select: { id: true, nombre: true } },
           },
-        },
-        orderBy: { fecha: "desc" },
-        take: limiteDonaciones,
-      })
-    : [];
-
-  // Obtener movimientos de filiales (conceptualmente asociados a "Caja Filiales" pero mostramos aquí para info)
-  const diezmosFiliales = await prisma.diezmoFilial.findMany({
-    include: {
-      filial: true,
-      moneda: true,
-      usuario: {
-        select: {
-          id: true,
-          nombre: true,
-        },
+          orderBy: { fecha: "desc" },
+          take: limiteDonaciones,
+        })
+      : Promise.resolve(
+          [] as Awaited<ReturnType<typeof prisma.donacion.findMany>>,
+        ),
+    prisma.diezmoFilial.findMany({
+      include: {
+        filial: true,
+        moneda: true,
+        usuario: { select: { id: true, nombre: true } },
       },
-    },
-    orderBy: [{ anio: "desc" }, { mes: "desc" }],
-    take: 30,
-  });
-
-  const egresosFiliales = await prisma.egresoFilial.findMany({
-    include: {
-      tipoGasto: true,
-      moneda: true,
-      usuario: {
-        select: {
-          id: true,
-          nombre: true,
-        },
+      orderBy: [{ anio: "desc" }, { mes: "desc" }],
+      take: 30,
+    }),
+    prisma.egresoFilial.findMany({
+      include: {
+        tipoGasto: true,
+        moneda: true,
+        usuario: { select: { id: true, nombre: true } },
       },
-    },
-    orderBy: { fechaSalida: "desc" },
-    take: 30,
-  });
-
-  const monedas = await prisma.moneda.findMany({
-    where: { activa: true },
-    orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
-  });
-
-  // Determinar si es subcaja para calcular saldos correctamente
-  const esSubcajaDetalle =
-    !caja.esGeneral && (caja.sociedadId || caja.tipoIngresoId);
-
-  // Calcular totales: para subcajas usar ingresos secundarios
-  // Si es la caja "Filiales" real, agregar también los diezmos de filiales
-  const ingresosPorMonedaData = esSubcajaDetalle
-    ? await prisma.ingresoMonto.findMany({
-        where: { ingreso: { cajaSecundariaId: cajaId } },
-        include: { moneda: { select: { id: true } } },
-      })
-    : await prisma.ingresoMonto.findMany({
-        where: { ingreso: { cajaId } },
-        include: { moneda: { select: { id: true } } },
-      });
-
-  // Si es la caja "Filiales" real, agregar los diezmos de filiales
-  if (caja.nombre === "Filiales" && !caja.esGeneral) {
-    const diezmosFilialesPorMoneda = await prisma.diezmoFilial.groupBy({
+      orderBy: { fechaSalida: "desc" },
+      take: 30,
+    }),
+    prisma.moneda.findMany({
+      where: { activa: true },
+      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+    }),
+    // groupBy: el motor SQL hace el SUM, no JS iterando cada fila
+    esSubcaja
+      ? prisma.ingresoMonto.groupBy({
+          by: ["monedaId"],
+          where: { ingreso: { cajaSecundariaId: cajaId } },
+          _sum: { monto: true },
+        })
+      : prisma.ingresoMonto.groupBy({
+          by: ["monedaId"],
+          where: { ingreso: { cajaId } },
+          _sum: { monto: true },
+        }),
+    prisma.egreso.groupBy({
       by: ["monedaId"],
+      where: { cajaId },
       _sum: { monto: true },
-    });
+    }),
+    caja.esGeneral
+      ? prisma.donacion.groupBy({
+          by: ["monedaId"],
+          where: { cajaId },
+          _sum: { monto: true },
+        })
+      : Promise.resolve(
+          [] as { monedaId: string; _sum: { monto: Prisma.Decimal | null } }[],
+        ),
+    esCajaFiliales
+      ? prisma.diezmoFilial.groupBy({ by: ["monedaId"], _sum: { monto: true } })
+      : Promise.resolve(
+          [] as { monedaId: string; _sum: { monto: Prisma.Decimal | null } }[],
+        ),
+    esCajaFiliales
+      ? prisma.egresoFilial.groupBy({ by: ["monedaId"], _sum: { monto: true } })
+      : Promise.resolve(
+          [] as { monedaId: string; _sum: { monto: Prisma.Decimal | null } }[],
+        ),
+  ]);
 
-    // Agregar los diezmos al mapa de ingresos por moneda
-    const ingresosMap = new Map<string, number>();
-    ingresosPorMonedaData.forEach((item) => {
-      const numMonto = item.monto.toNumber();
+  // Construir mapas de saldos a partir de los groupBy (O(1) lookup vs O(n) Array.find)
+  const ingresosMap = new Map<string, number>();
+  ingresosSumPorMoneda.forEach((item) => {
+    ingresosMap.set(item.monedaId, Number(item._sum.monto ?? 0));
+  });
+  if (esCajaFiliales) {
+    diezmosFilialesSumPorMoneda.forEach((item) => {
       ingresosMap.set(
         item.monedaId,
-        (ingresosMap.get(item.monedaId) || 0) + numMonto,
+        (ingresosMap.get(item.monedaId) ?? 0) + Number(item._sum.monto ?? 0),
       );
-    });
-
-    diezmosFilialesPorMoneda.forEach((item) => {
-      const numMonto = Number(item._sum.monto || 0);
-      ingresosMap.set(
-        item.monedaId,
-        (ingresosMap.get(item.monedaId) || 0) + numMonto,
-      );
-    });
-
-    // Convertir el mapa de vuelta a array
-    ingresosPorMonedaData.length = 0; // Limpiar el array original
-    ingresosMap.forEach((monto, monedaId) => {
-      ingresosPorMonedaData.push({
-        monedaId,
-        monto: new Prisma.Decimal(monto),
-      } as any);
     });
   }
 
-  console.log("=== OBTENER DETALLE CAJA DEBUG ===");
-  console.log("cajaId:", cajaId, "esSubcajaDetalle:", esSubcajaDetalle);
-  console.log("ingresosPorMonedaData.length:", ingresosPorMonedaData.length);
-  if (ingresosPorMonedaData.length > 0) {
-    console.log(
-      "primero:",
-      ingresosPorMonedaData[0].monto.toString(),
-      "tipo:",
-      typeof ingresosPorMonedaData[0].monto,
-    );
-    console.log("en number:", Number(ingresosPorMonedaData[0].monto));
-  }
-
-  const ingresosPorMoneda: { monedaId: string; monto: number }[] = [];
-  const map = new Map<string, number>();
-  ingresosPorMonedaData.forEach((item) => {
-    // Usar toNumber() de Prisma.Decimal para conversión precisa
-    const numMonto = item.monto.toNumber();
-    console.log("  Procesando: monedaId=", item.monedaId, "monto=", numMonto);
-    map.set(item.monedaId, (map.get(item.monedaId) || 0) + numMonto);
+  const egresosMap = new Map<string, number>();
+  egresosSumPorMoneda.forEach((item) => {
+    egresosMap.set(item.monedaId, Number(item._sum.monto ?? 0));
   });
-  map.forEach((monto, monedaId) => {
-    console.log("  Total por moneda:", monedaId, "=", monto);
-    ingresosPorMoneda.push({ monedaId, monto });
-  });
-
-  const egresosPorMoneda = await prisma.egreso.groupBy({
-    by: ["monedaId"],
-    where: { cajaId },
-    _sum: { monto: true },
-  });
-
-  // Si es la caja "Filiales" real, agregar los egresos de filiales
-  if (caja.nombre === "Filiales" && !caja.esGeneral) {
-    const egresosFilialesPorMoneda = await prisma.egresoFilial.groupBy({
-      by: ["monedaId"],
-      _sum: { monto: true },
-    });
-
-    // Agregar los egresos de filiales a los egresos existentes
-    const egresosMap = new Map<string, number>();
-    egresosPorMoneda.forEach((item) => {
-      const numMonto = Number(item._sum.monto || 0);
+  if (esCajaFiliales) {
+    egresosFilialesSumPorMoneda.forEach((item) => {
       egresosMap.set(
         item.monedaId,
-        (egresosMap.get(item.monedaId) || 0) + numMonto,
+        (egresosMap.get(item.monedaId) ?? 0) + Number(item._sum.monto ?? 0),
       );
-    });
-
-    egresosFilialesPorMoneda.forEach((item) => {
-      const numMonto = Number(item._sum.monto || 0);
-      egresosMap.set(
-        item.monedaId,
-        (egresosMap.get(item.monedaId) || 0) + numMonto,
-      );
-    });
-
-    // Convertir el mapa de vuelta al formato esperado
-    egresosPorMoneda.length = 0; // Limpiar el array original
-    egresosMap.forEach((monto, monedaId) => {
-      egresosPorMoneda.push({
-        monedaId,
-        _sum: { monto: new Prisma.Decimal(monto) },
-      });
     });
   }
 
-  // Si es caja general, agregar donaciones a los totales
-  const donacionesPorMoneda = caja.esGeneral
-    ? await prisma.donacion.groupBy({
-        by: ["monedaId"],
-        where: { cajaId },
-        _sum: { monto: true },
-      })
-    : [];
+  const donacionesMap = new Map<string, number>();
+  donacionesSumPorMoneda.forEach((item) => {
+    donacionesMap.set(item.monedaId, Number(item._sum.monto ?? 0));
+  });
 
   const saldos = monedas.map((moneda) => {
-    // Handle both raw query and groupBy results
-    const ingresoItem = (ingresosPorMoneda as any[]).find(
-      (i: any) => i.monedaId === moneda.id,
-    );
-    const totalIngresos = ingresoItem
-      ? new Prisma.Decimal(
-          ingresoItem.monto !== undefined
-            ? ingresoItem.monto
-            : ingresoItem._sum?.monto || 0,
-        )
-      : new Prisma.Decimal(0);
-
-    const totalEgresos =
-      egresosPorMoneda.find((e) => e.monedaId === moneda.id)?._sum.monto ||
-      new Prisma.Decimal(0);
-    const totalDonaciones = caja.esGeneral
-      ? donacionesPorMoneda.find((d) => d.monedaId === moneda.id)?._sum.monto ||
-        new Prisma.Decimal(0)
-      : new Prisma.Decimal(0);
-
-    const totalIngresosConDonaciones = totalIngresos.add(totalDonaciones);
+    const totalIngresos = ingresosMap.get(moneda.id) ?? 0;
+    const totalEgresos = egresosMap.get(moneda.id) ?? 0;
+    const totalDonaciones = donacionesMap.get(moneda.id) ?? 0;
+    const totalIngresosConDonaciones = totalIngresos + totalDonaciones;
 
     return {
       moneda: serializarMoneda(moneda),
-      ingresos: Math.round(Number(totalIngresos) * 100) / 100,
-      donaciones: Math.round(Number(totalDonaciones) * 100) / 100,
-      egresos: Math.round(Number(totalEgresos) * 100) / 100,
+      ingresos: Math.round(totalIngresos * 100) / 100,
+      donaciones: Math.round(totalDonaciones * 100) / 100,
+      egresos: Math.round(totalEgresos * 100) / 100,
       saldo:
-        Math.round(
-          (Number(totalIngresosConDonaciones) - Number(totalEgresos)) * 100,
-        ) / 100,
+        Math.round((totalIngresosConDonaciones - totalEgresos) * 100) / 100,
     };
   });
 
-  // Serializar ingresos para evitar Decimal en montos
   const ingresosSerializados = ingresos.map((ing) => ({
     ...ing,
     esSecundario: false,
@@ -1257,7 +1198,6 @@ export async function obtenerDetalleCaja(cajaId: string) {
     })),
   }));
 
-  // Serializar ingresos secundarios (donde esta caja es para tracking)
   const ingresosSecundariosSerializados = ingresosSecundarios.map((ing) => ({
     ...ing,
     esSecundario: true,
@@ -1271,7 +1211,6 @@ export async function obtenerDetalleCaja(cajaId: string) {
     })),
   }));
 
-  // Serializar egresos para evitar Decimal
   const egresosSerializados = egresos.map((eg) => ({
     ...eg,
     monto: Number(eg.monto),
@@ -1279,14 +1218,12 @@ export async function obtenerDetalleCaja(cajaId: string) {
     moneda: serializarMoneda(eg.moneda),
   }));
 
-  // Serializar donaciones
-  const donacionesSerializadas = donaciones.map((don) => ({
+  const donacionesSerializadas = (donaciones as any[]).map((don) => ({
     ...don,
     monto: Number(don.monto),
     moneda: serializarMoneda(don.moneda),
   }));
 
-  // Serializar movimientos de filiales
   const diezmosFilialesSerializados = diezmosFiliales.map((dz) => ({
     ...dz,
     monto: Number(dz.monto),
@@ -1399,6 +1336,286 @@ interface FiltrosReporte {
   fechaFin?: string | Date;
   cajaId?: string;
   sociedadId?: string;
+}
+
+const CIERRE_DIEZMO_COMENTARIO = "[CIERRE_DIEZMO_10]";
+
+type EstadoCierreDiezmo = "NO_REALIZADO" | "REALIZADO";
+
+interface ResumenDiezmoUSD {
+  anio: number;
+  mes: number;
+  monedaId: string;
+  monedaCodigo: string;
+  monedaSimbolo: string;
+  cajaOrigenId: string;
+  cajaOrigenNombre: string;
+  totalOfrendas: number;
+  totalEgresos: number;
+  baseLiquida: number;
+  porcentaje: number;
+  montoDiezmo: number;
+  estado: EstadoCierreDiezmo;
+  transferido: number;
+  cajaDestinoId: string | null;
+  cajaDestinoNombre: string | null;
+  realizadoEn: Date | null;
+  puedeAplicar: boolean;
+  nota: string | null;
+}
+
+function redondear2(valor: number): number {
+  return valor >= 0
+    ? Math.floor(valor * 100) / 100
+    : Math.ceil(valor * 100) / 100;
+}
+
+function obtenerPartesFechaElSalvador(fecha: Date) {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/El_Salvador",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(fecha);
+
+  const anio = Number(partes.find((p) => p.type === "year")?.value || 0);
+  const mes = Number(partes.find((p) => p.type === "month")?.value || 0);
+  const dia = Number(partes.find((p) => p.type === "day")?.value || 0);
+
+  return { anio, mes, dia };
+}
+
+async function calcularBaseDiezmoUSDConCliente(
+  db: typeof prisma | Prisma.TransactionClient,
+  params: {
+    monedaUsdId: string;
+    cajaGeneralId: string;
+    fechaInicio: Date;
+    fechaFin: Date;
+  },
+) {
+  const [ingresosOfrendaUsd, donacionesOfrendaUsd, egresosUsd] =
+    await Promise.all([
+      db.ingresoMonto.aggregate({
+        _sum: { monto: true },
+        where: {
+          monedaId: params.monedaUsdId,
+          ingreso: {
+            cajaId: params.cajaGeneralId,
+            fechaRecaudacion: {
+              gte: params.fechaInicio,
+              lte: params.fechaFin,
+            },
+            tipoIngreso: {
+              nombre: {
+                contains: "ofrenda",
+                mode: "insensitive",
+              },
+            },
+            OR: [
+              { comentario: null },
+              {
+                comentario: {
+                  not: {
+                    contains: CIERRE_DIEZMO_COMENTARIO,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      }),
+      db.donacion.aggregate({
+        _sum: { monto: true },
+        where: {
+          cajaId: params.cajaGeneralId,
+          monedaId: params.monedaUsdId,
+          fecha: {
+            gte: params.fechaInicio,
+            lte: params.fechaFin,
+          },
+          tipoOfrenda: {
+            nombre: {
+              contains: "ofrenda",
+              mode: "insensitive",
+            },
+          },
+          OR: [
+            { comentario: null },
+            {
+              comentario: {
+                not: {
+                  contains: CIERRE_DIEZMO_COMENTARIO,
+                },
+              },
+            },
+          ],
+        },
+      }),
+      db.egreso.aggregate({
+        _sum: { monto: true },
+        where: {
+          cajaId: params.cajaGeneralId,
+          monedaId: params.monedaUsdId,
+          fechaSalida: {
+            gte: params.fechaInicio,
+            lte: params.fechaFin,
+          },
+          OR: [
+            { comentario: null },
+            {
+              comentario: {
+                not: {
+                  contains: CIERRE_DIEZMO_COMENTARIO,
+                },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+  const totalOfrendas = redondear2(
+    Number(ingresosOfrendaUsd._sum.monto || 0) +
+      Number(donacionesOfrendaUsd._sum.monto || 0),
+  );
+  const totalEgresos = redondear2(Number(egresosUsd._sum.monto || 0));
+  const baseLiquida = redondear2(totalOfrendas - totalEgresos);
+  const montoCalculado = baseLiquida > 0 ? redondear2(baseLiquida * 0.1) : 0;
+
+  return {
+    totalOfrendas,
+    totalEgresos,
+    baseLiquida,
+    montoCalculado,
+  };
+}
+
+function obtenerPeriodoMensual(fechaInicio: Date, fechaFin: Date) {
+  const inicioSV = obtenerPartesFechaElSalvador(fechaInicio);
+  const finSV = obtenerPartesFechaElSalvador(fechaFin);
+
+  if (inicioSV.anio !== finSV.anio || inicioSV.mes !== finSV.mes) {
+    return null;
+  }
+
+  const anio = inicioSV.anio;
+  const mes = inicioSV.mes;
+
+  const inicioMes = new Date(anio, mes - 1, 1, 0, 0, 0, 0);
+  const finMes = new Date(anio, mes, 0, 23, 59, 59, 999);
+  const ultimoDiaMes = new Date(anio, mes, 0).getDate();
+
+  const esMesCompleto = inicioSV.dia === 1 && finSV.dia === ultimoDiaMes;
+
+  return {
+    anio,
+    mes,
+    inicioMes,
+    finMes,
+    esMesCompleto,
+  };
+}
+
+async function calcularResumenDiezmoUSD(
+  fechaInicio: Date,
+  fechaFin: Date,
+): Promise<ResumenDiezmoUSD | null> {
+  const periodo = obtenerPeriodoMensual(fechaInicio, fechaFin);
+  if (!periodo) return null;
+
+  const [monedaUsd, cajaGeneral] = await Promise.all([
+    prisma.moneda.findFirst({
+      where: { codigo: "USD", activa: true },
+      select: { id: true, codigo: true, simbolo: true },
+    }),
+    prisma.caja.findFirst({
+      where: { esGeneral: true, activa: true },
+      select: { id: true, nombre: true },
+    }),
+  ]);
+
+  if (!monedaUsd || !cajaGeneral) {
+    return null;
+  }
+
+  const base = await calcularBaseDiezmoUSDConCliente(prisma, {
+    monedaUsdId: monedaUsd.id,
+    cajaGeneralId: cajaGeneral.id,
+    fechaInicio: periodo.inicioMes,
+    fechaFin: periodo.finMes,
+  });
+
+  let cierreActual: {
+    estado: string;
+    montoDiezmo: Prisma.Decimal;
+    cajaDestinoId: string | null;
+    realizadoEn: Date | null;
+    nota: string | null;
+    cajaDestino: { nombre: string } | null;
+  } | null = null;
+
+  try {
+    cierreActual = await prisma.cierreDiezmoMensual.findUnique({
+      where: {
+        anio_mes_monedaId: {
+          anio: periodo.anio,
+          mes: periodo.mes,
+          monedaId: monedaUsd.id,
+        },
+      },
+      select: {
+        estado: true,
+        montoDiezmo: true,
+        cajaDestinoId: true,
+        realizadoEn: true,
+        nota: true,
+        cajaDestino: { select: { nombre: true } },
+      },
+    });
+  } catch (error) {
+    const prismaError = error as { code?: string; message?: string };
+    const mensaje = prismaError?.message || "";
+    // Si la migracion no se aplico aun, evitamos romper reportes.
+    const tablaCierreNoDisponible =
+      prismaError?.code === "P2021" ||
+      mensaje.includes("cierres_diezmo_mensual") ||
+      mensaje.includes("cierreDiezmoMensual");
+
+    if (!tablaCierreNoDisponible) {
+      throw error;
+    }
+  }
+
+  const estado =
+    (cierreActual?.estado as EstadoCierreDiezmo | undefined) || "NO_REALIZADO";
+  const transferido =
+    estado === "REALIZADO" ? Number(cierreActual?.montoDiezmo || 0) : 0;
+
+  return {
+    anio: periodo.anio,
+    mes: periodo.mes,
+    monedaId: monedaUsd.id,
+    monedaCodigo: monedaUsd.codigo,
+    monedaSimbolo: monedaUsd.simbolo,
+    cajaOrigenId: cajaGeneral.id,
+    cajaOrigenNombre: cajaGeneral.nombre,
+    totalOfrendas: base.totalOfrendas,
+    totalEgresos: base.totalEgresos,
+    baseLiquida: base.baseLiquida,
+    porcentaje: 10,
+    montoDiezmo: base.montoCalculado,
+    estado,
+    transferido,
+    cajaDestinoId: cierreActual?.cajaDestinoId || null,
+    cajaDestinoNombre: cierreActual?.cajaDestino?.nombre || null,
+    realizadoEn: cierreActual?.realizadoEn || null,
+    puedeAplicar:
+      periodo.esMesCompleto &&
+      base.montoCalculado > 0 &&
+      estado !== "REALIZADO",
+    nota: cierreActual?.nota || null,
+  };
 }
 
 export async function obtenerDatosReporte(filtros: FiltrosReporte) {
@@ -1691,6 +1908,11 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     ],
   }));
 
+  const cierreDiezmo =
+    fechaInicio && fechaFin
+      ? await calcularResumenDiezmoUSD(fechaInicio, fechaFin)
+      : null;
+
   return {
     ingresos: [
       ...ingresosSerializados,
@@ -1701,6 +1923,7 @@ export async function obtenerDatosReporte(filtros: FiltrosReporte) {
     sociedades,
     cajas,
     monedas: monedasRaw.map(serializarMoneda),
+    cierreDiezmo,
   };
 }
 
@@ -2299,4 +2522,304 @@ export async function obtenerEstadisticasAuditoria() {
     })),
     usuariosActivos: usuariosActivos.length,
   };
+}
+
+// =====================
+// CIERRE MENSUAL DIEZMO 10% (USD)
+// =====================
+
+async function obtenerCatalogosTransferencia(
+  tx: Prisma.TransactionClient,
+  usuarioId: string,
+) {
+  const [tipoGasto, tipoIngreso, sociedad, servicio] = await Promise.all([
+    tx.tipoGasto.upsert({
+      where: { nombre: "Transferencia Diezmo 10%" },
+      update: {},
+      create: {
+        nombre: "Transferencia Diezmo 10%",
+        descripcion: "Salida por cierre mensual de diezmo (10%)",
+        orden: 997,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+    tx.tipoIngreso.upsert({
+      where: { nombre: "Transferencia Diezmo 10%" },
+      update: {},
+      create: {
+        nombre: "Transferencia Diezmo 10%",
+        descripcion: "Ingreso por transferencia interna de cierre mensual",
+        orden: 997,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+    tx.sociedad.upsert({
+      where: { nombre: "Sistema" },
+      update: {},
+      create: {
+        nombre: "Sistema",
+        descripcion: "Entidad técnica para operaciones automáticas",
+        orden: 998,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+    tx.tipoServicio.upsert({
+      where: { nombre: "Sistema" },
+      update: {},
+      create: {
+        nombre: "Sistema",
+        descripcion: "Servicio técnico para operaciones automáticas",
+        orden: 998,
+        creadoPorId: usuarioId,
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    tipoGastoId: tipoGasto.id,
+    tipoIngresoId: tipoIngreso.id,
+    sociedadId: sociedad.id,
+    servicioId: servicio.id,
+  };
+}
+
+export async function obtenerEstadoCierreDiezmoMensual(
+  anio: number,
+  mes: number,
+) {
+  const inicio = new Date(anio, mes - 1, 1, 0, 0, 0, 0);
+  const fin = new Date(anio, mes, 0, 23, 59, 59, 999);
+  return calcularResumenDiezmoUSD(inicio, fin);
+}
+
+export async function aplicarTransferenciaDiezmoMensual(params: {
+  anio: number;
+  mes: number;
+  cajaDestinoId: string;
+  nota?: string;
+}) {
+  await validarPermisoActual("reportes", "editar");
+  const usuario = await getUsuarioActual();
+  if (!usuario) {
+    return { success: false, error: "No autenticado" };
+  }
+
+  const inicioMes = new Date(params.anio, params.mes - 1, 1, 0, 0, 0, 0);
+  const finMes = new Date(params.anio, params.mes, 0, 23, 59, 59, 999);
+
+  try {
+    const resultado = await withRetry(async () =>
+      prisma.$transaction(
+        async (tx) => {
+          const [monedaUsd, cajaGeneral, cajaDestino] = await Promise.all([
+            tx.moneda.findFirst({
+              where: { codigo: "USD", activa: true },
+              select: { id: true, simbolo: true, codigo: true },
+            }),
+            tx.caja.findFirst({
+              where: { esGeneral: true, activa: true },
+              select: { id: true, nombre: true },
+            }),
+            tx.caja.findFirst({
+              where: { id: params.cajaDestinoId, activa: true },
+              select: { id: true, nombre: true },
+            }),
+          ]);
+
+          if (!monedaUsd) throw new Error("No existe moneda USD activa");
+          if (!cajaGeneral) throw new Error("No existe Caja General activa");
+          if (!cajaDestino) throw new Error("Caja destino inválida o inactiva");
+          if (cajaDestino.id === cajaGeneral.id) {
+            throw new Error("La caja destino debe ser distinta a Caja General");
+          }
+
+          const resumen = await calcularBaseDiezmoUSDConCliente(tx, {
+            monedaUsdId: monedaUsd.id,
+            cajaGeneralId: cajaGeneral.id,
+            fechaInicio: inicioMes,
+            fechaFin: finMes,
+          });
+
+          if (resumen.montoCalculado <= 0) {
+            throw new Error(
+              "No aplica transferencia: la base líquida es menor o igual a 0",
+            );
+          }
+
+          const cierreExistente = await tx.cierreDiezmoMensual.findUnique({
+            where: {
+              anio_mes_monedaId: {
+                anio: params.anio,
+                mes: params.mes,
+                monedaId: monedaUsd.id,
+              },
+            },
+          });
+
+          if (cierreExistente?.estado === "REALIZADO") {
+            throw new Error("Este mes ya fue cerrado y transferido");
+          }
+
+          const catalogos = await obtenerCatalogosTransferencia(tx, usuario.id);
+
+          const comentarioTransferencia = `${CIERRE_DIEZMO_COMENTARIO} ${params.anio}-${String(params.mes).padStart(2, "0")}`;
+
+          const egreso = await tx.egreso.create({
+            data: {
+              fechaSalida: new Date(),
+              solicitante: "Sistema - Cierre Mensual",
+              monto: resumen.montoCalculado,
+              descripcionGasto: "Transferencia diezmo mensual 10%",
+              comentario: comentarioTransferencia,
+              tipoGastoId: catalogos.tipoGastoId,
+              monedaId: monedaUsd.id,
+              cajaId: cajaGeneral.id,
+              usuarioId: usuario.id,
+              creadoPorId: usuario.id,
+            },
+            select: { id: true },
+          });
+
+          const ingreso = await tx.ingreso.create({
+            data: {
+              fechaRecaudacion: new Date(),
+              comentario: comentarioTransferencia,
+              sociedadId: catalogos.sociedadId,
+              servicioId: catalogos.servicioId,
+              tipoIngresoId: catalogos.tipoIngresoId,
+              cajaId: cajaDestino.id,
+              cajaSecundariaId: null,
+              usuarioId: usuario.id,
+              creadoPorId: usuario.id,
+              montos: {
+                create: {
+                  monedaId: monedaUsd.id,
+                  monto: resumen.montoCalculado,
+                },
+              },
+            },
+            select: { id: true },
+          });
+
+          const cierre = await tx.cierreDiezmoMensual.upsert({
+            where: {
+              anio_mes_monedaId: {
+                anio: params.anio,
+                mes: params.mes,
+                monedaId: monedaUsd.id,
+              },
+            },
+            update: {
+              fechaInicio: inicioMes,
+              fechaFin: finMes,
+              totalOfrendas: resumen.totalOfrendas,
+              totalEgresos: resumen.totalEgresos,
+              baseLiquida: resumen.baseLiquida,
+              porcentaje: 0.1,
+              montoDiezmo: resumen.montoCalculado,
+              estado: "REALIZADO",
+              cajaOrigenId: cajaGeneral.id,
+              cajaDestinoId: cajaDestino.id,
+              transferenciaEgresoId: egreso.id,
+              transferenciaIngresoId: ingreso.id,
+              nota: params.nota || null,
+              realizadoEn: new Date(),
+              realizadoPorId: usuario.id,
+            },
+            create: {
+              anio: params.anio,
+              mes: params.mes,
+              monedaId: monedaUsd.id,
+              fechaInicio: inicioMes,
+              fechaFin: finMes,
+              totalOfrendas: resumen.totalOfrendas,
+              totalEgresos: resumen.totalEgresos,
+              baseLiquida: resumen.baseLiquida,
+              porcentaje: 0.1,
+              montoDiezmo: resumen.montoCalculado,
+              estado: "REALIZADO",
+              cajaOrigenId: cajaGeneral.id,
+              cajaDestinoId: cajaDestino.id,
+              transferenciaEgresoId: egreso.id,
+              transferenciaIngresoId: ingreso.id,
+              nota: params.nota || null,
+              realizadoEn: new Date(),
+              creadoPorId: usuario.id,
+              realizadoPorId: usuario.id,
+            },
+          });
+
+          return {
+            success: true,
+            cierreId: cierre.id,
+            montoTransferido: resumen.montoCalculado,
+            moneda: monedaUsd.codigo,
+            cajaOrigen: cajaGeneral.nombre,
+            cajaDestino: cajaDestino.nombre,
+            cajaOrigenId: cajaGeneral.id,
+            cajaDestinoId: cajaDestino.id,
+            transferenciaEgresoId: egreso.id,
+            transferenciaIngresoId: ingreso.id,
+          };
+        },
+        {
+          maxWait: 10000,
+          timeout: 20000,
+        },
+      ),
+    );
+
+    if (resultado.success) {
+      await registrarAuditoria({
+        tabla: "CierreDiezmoMensual",
+        registroId: resultado.cierreId,
+        operacion: "UPDATE",
+        usuarioId: usuario.id,
+        datoNuevo: {
+          anio: params.anio,
+          mes: params.mes,
+          montoDiezmo: resultado.montoTransferido,
+          cajaOrigenId: resultado.cajaOrigenId,
+          cajaDestinoId: resultado.cajaDestinoId,
+          transferenciaEgresoId: resultado.transferenciaEgresoId,
+          transferenciaIngresoId: resultado.transferenciaIngresoId,
+          estado: "REALIZADO",
+        },
+        descripcion: `Cierre mensual ${params.mes}/${params.anio} aplicado con transferencia de 10%`,
+      });
+    }
+
+    return resultado;
+  } catch (error) {
+    const prismaError = error as { code?: string; message?: string };
+    const mensaje = prismaError?.message || "Error al aplicar transferencia";
+    const tablaCierreNoDisponible =
+      prismaError?.code === "P2021" ||
+      mensaje.includes("cierres_diezmo_mensual") ||
+      mensaje.includes("cierreDiezmoMensual");
+
+    if (tablaCierreNoDisponible) {
+      return {
+        success: false,
+        error:
+          "No se puede aplicar transferencia porque la base de datos no tiene la tabla de cierre mensual. Ejecuta migraciones pendientes.",
+      };
+    }
+
+    return {
+      success: false,
+      error: mensaje,
+    };
+  }
+}
+
+export async function obtenerCierreDiezmoPendienteAnterior() {
+  const hoy = new Date();
+  const anio = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+  const mes = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+  return obtenerEstadoCierreDiezmoMensual(anio, mes);
 }

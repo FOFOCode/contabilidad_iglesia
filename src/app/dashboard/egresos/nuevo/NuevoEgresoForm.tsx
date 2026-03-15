@@ -71,12 +71,12 @@ export function NuevoEgresoForm({
   // Memoizar opciones de selects para evitar recálculos
   const tipoGastoOptions = useMemo(
     () => tiposGasto.map((t) => ({ value: t.id, label: t.nombre })),
-    [tiposGasto]
+    [tiposGasto],
   );
 
   const cajaOptions = useMemo(
     () => cajas.map((c) => ({ value: c.id, label: c.nombre })),
-    [cajas]
+    [cajas],
   );
 
   const monedaOptions = useMemo(
@@ -85,7 +85,7 @@ export function NuevoEgresoForm({
         value: m.id,
         label: `${m.simbolo} ${m.codigo} - ${m.nombre}`,
       })),
-    [monedas]
+    [monedas],
   );
 
   // Cargar saldo de la caja seleccionada
@@ -105,7 +105,7 @@ export function NuevoEgresoForm({
 
   // Obtener saldo actual de la moneda seleccionada
   const saldoMonedaActual = saldoCaja.find(
-    (s) => s.monedaId === formData.monedaId
+    (s) => s.monedaId === formData.monedaId,
   );
   const montoNumerico = parseFloat(formData.monto) || 0;
   const saldoProyectado = saldoMonedaActual
@@ -115,7 +115,7 @@ export function NuevoEgresoForm({
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    >,
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -150,7 +150,7 @@ export function NuevoEgresoForm({
       const simbolo = saldoMonedaActual?.monedaSimbolo || "";
       newErrors.monto = `Saldo insuficiente. Disponible: ${simbolo}${saldoMonedaActual?.saldo.toLocaleString(
         "es-GT",
-        { minimumFractionDigits: 2 }
+        { minimumFractionDigits: 2 },
       )}`;
     }
 
@@ -199,7 +199,7 @@ export function NuevoEgresoForm({
       {showSuccess && (
         <div className="mb-6 p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center gap-3">
           <svg
-            className="w-5 h-5 text-[#2ba193]"
+            className="w-5 h-5 text-[#2ba193] shrink-0"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -209,15 +209,42 @@ export function NuevoEgresoForm({
               clipRule="evenodd"
             />
           </svg>
-          <span className="text-[#15514a] font-medium">
-            ¡Egreso registrado correctamente!
-          </span>
+          <div>
+            <p className="text-[#15514a] font-semibold">
+              ✓ Egreso de {monedaSeleccionada?.simbolo}
+              {parseFloat(formData.monto).toLocaleString("es-GT", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              registrado correctamente
+            </p>
+            <p className="text-[#2ba193] text-xs mt-0.5">Redirigiendo...</p>
+          </div>
         </div>
       )}
 
       {errors.general && (
-        <div className="mb-6 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
-          {errors.general}
+        <div className="mb-6 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{errors.general}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrors((prev) => ({ ...prev, general: "" }))}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 

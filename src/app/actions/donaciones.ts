@@ -3,6 +3,7 @@
 import { prisma, withRetry } from "@/lib/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
+import { crearDonacionSchema, validarSchema } from "@/lib/schemas";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
@@ -47,6 +48,8 @@ interface CrearDonacionData {
 }
 
 export async function crearDonacion(data: CrearDonacionData) {
+  // Validar schema antes de cualquier query a BD
+  validarSchema(crearDonacionSchema, data);
   await validarPermisoActual("donaciones", "crear");
   const usuario = await getUsuarioActual();
   if (!usuario) throw new Error("No autenticado");

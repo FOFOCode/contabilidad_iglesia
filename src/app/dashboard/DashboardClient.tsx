@@ -140,55 +140,62 @@ export function DashboardClient({
     return ((actual - anterior) / anterior) * 100;
   };
 
-  // Calcular resúmenes por moneda - memoizado para evitar recálculos
-  const resumenPorMoneda = useMemo(
-    () =>
-      monedas
-        .map((moneda) => {
-          const ingresos =
-            ingresosMes.find((i) => i.monedaId === moneda.id)?.total || 0;
-          const egresos =
-            egresosMes.find((e) => e.monedaId === moneda.id)?.total || 0;
-          const ingresosAnt =
-            ingresosMesAnterior.find((i) => i.monedaId === moneda.id)?.total ||
-            0;
-          const egresosAnt =
-            egresosMesAnterior.find((e) => e.monedaId === moneda.id)?.total ||
-            0;
-          const ingresosAnual =
-            ingresosAnio.find((i) => i.monedaId === moneda.id)?.total || 0;
-          const egresosAnual =
-            egresosAnio.find((e) => e.monedaId === moneda.id)?.total || 0;
-          return {
-            moneda,
-            ingresos,
-            egresos,
-            balance: ingresos - egresos,
-            ingresosAnt,
-            egresosAnt,
-            balanceAnt: ingresosAnt - egresosAnt,
-            ingresosAnual,
-            egresosAnual,
-            balanceAnual: ingresosAnual - egresosAnual,
-          };
-        })
-        .filter(
-          (r) =>
-            r.ingresos > 0 ||
-            r.egresos > 0 ||
-            r.ingresosAnual > 0 ||
-            r.egresosAnual > 0,
-        ),
-    [
-      monedas,
-      ingresosMes,
-      egresosMes,
-      ingresosMesAnterior,
-      egresosMesAnterior,
-      ingresosAnio,
-      egresosAnio,
-    ],
-  );
+  // Calcular resúmenes por moneda - memoizado con Maps para lookups O(1)
+  const resumenPorMoneda = useMemo(() => {
+    const mapIngresosMes = new Map(
+      ingresosMes.map((i) => [i.monedaId, i.total]),
+    );
+    const mapEgresosMes = new Map(egresosMes.map((e) => [e.monedaId, e.total]));
+    const mapIngresosAnt = new Map(
+      ingresosMesAnterior.map((i) => [i.monedaId, i.total]),
+    );
+    const mapEgresosAnt = new Map(
+      egresosMesAnterior.map((e) => [e.monedaId, e.total]),
+    );
+    const mapIngresosAnio = new Map(
+      ingresosAnio.map((i) => [i.monedaId, i.total]),
+    );
+    const mapEgresosAnio = new Map(
+      egresosAnio.map((e) => [e.monedaId, e.total]),
+    );
+
+    return monedas
+      .map((moneda) => {
+        const ingresos = mapIngresosMes.get(moneda.id) ?? 0;
+        const egresos = mapEgresosMes.get(moneda.id) ?? 0;
+        const ingresosAnt = mapIngresosAnt.get(moneda.id) ?? 0;
+        const egresosAnt = mapEgresosAnt.get(moneda.id) ?? 0;
+        const ingresosAnual = mapIngresosAnio.get(moneda.id) ?? 0;
+        const egresosAnual = mapEgresosAnio.get(moneda.id) ?? 0;
+        return {
+          moneda,
+          ingresos,
+          egresos,
+          balance: ingresos - egresos,
+          ingresosAnt,
+          egresosAnt,
+          balanceAnt: ingresosAnt - egresosAnt,
+          ingresosAnual,
+          egresosAnual,
+          balanceAnual: ingresosAnual - egresosAnual,
+        };
+      })
+      .filter(
+        (r) =>
+          r.ingresos > 0 ||
+          r.egresos > 0 ||
+          r.ingresosAnual > 0 ||
+          r.egresosAnual > 0,
+      );
+  }, [
+    monedas,
+    ingresosMes,
+    egresosMes,
+    ingresosMesAnterior,
+    egresosMesAnterior,
+    ingresosAnio,
+    egresosAnio,
+  ]);
 
   if (!configurado) {
     return (

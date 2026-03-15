@@ -35,6 +35,7 @@ export function NuevaDonacionForm({
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successDetails, setSuccessDetails] = useState("");
 
   // Moneda principal por defecto
   const monedaPrincipal = monedas.find((m) => m.esPrincipal) || monedas[0];
@@ -122,6 +123,15 @@ export function NuevaDonacionForm({
           comentario: formData.comentario.trim() || undefined,
         });
 
+        const _monedaActual = monedas.find((m) => m.id === formData.monedaId);
+        setSuccessDetails(
+          (_monedaActual?.simbolo || "") +
+            parseFloat(formData.monto).toLocaleString("es-GT", {
+              minimumFractionDigits: 2,
+            }) +
+            " de " +
+            formData.nombre.trim(),
+        );
         setShowSuccess(true);
 
         // Limpiar formulario
@@ -150,23 +160,54 @@ export function NuevaDonacionForm({
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {/* Mensaje de éxito */}
       {showSuccess && (
-        <Card className="p-4 mb-6 bg-green-50 border-green-200">
-          <div className="flex items-center gap-2 text-green-700">
-            <span className="text-xl">✅</span>
-            <span className="font-medium">
-              Donación registrada correctamente
-            </span>
+        <div className="mb-6 p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center gap-3">
+          <svg
+            className="w-5 h-5 text-[#2ba193] shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <div>
+            <p className="text-[#15514a] font-semibold">
+              ✓ Donación de {successDetails} registrada correctamente
+            </p>
+            <p className="text-[#2ba193] text-xs mt-0.5">
+              Formulario listo para un nuevo registro
+            </p>
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Error de envío */}
       {errors.submit && (
-        <Card className="p-4 mb-6 bg-red-50 border-red-200">
-          <p className="text-red-700">{errors.submit}</p>
-        </Card>
+        <div className="mb-6 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{errors.submit}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrors((prev) => ({ ...prev, submit: "" }))}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       <Card className="p-6">

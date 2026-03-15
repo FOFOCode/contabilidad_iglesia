@@ -3,12 +3,13 @@
 import { prisma, withRetry } from "@/lib/prisma";
 import { getUsuarioActual } from "./auth";
 import { validarPermiso } from "@/lib/permisos";
+import { unstable_cache, revalidateTag } from "next/cache";
 import bcrypt from "bcryptjs";
 
 // Helper para validar permisos del usuario actual
 async function validarPermisoActual(
   modulo: string,
-  accion: "crear" | "editar" | "eliminar"
+  accion: "crear" | "editar" | "eliminar",
 ) {
   const usuario = await getUsuarioActual();
   if (!usuario) {
@@ -21,12 +22,27 @@ async function validarPermisoActual(
 // MONEDAS
 // =====================
 
+// Catálogo cacheado: monedas cambian muy raramente.
+// revalidate: 300s (5 min) | invalidar con revalidateTag('catalogo-monedas')
+const _getMonedasCached = unstable_cache(
+  async () => {
+    const rows = await withRetry(() =>
+      prisma.moneda.findMany({
+        orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }, { nombre: "asc" }],
+      }),
+    );
+    // Serializar Decimal a number para compatibilidad con JSON cache
+    return rows.map((m) => ({ ...m, tasaCambio: Number(m.tasaCambio) }));
+  },
+  ["catalogo-monedas"],
+  { revalidate: 300, tags: ["catalogo-monedas"] },
+);
+
 export async function getMonedas() {
-  return withRetry(() =>
-    prisma.moneda.findMany({
-      orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }, { nombre: "asc" }],
-    })
-  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return _getMonedasCached() as unknown as ReturnType<
+    typeof prisma.moneda.findMany
+  >;
 }
 
 export async function createMoneda(data: {
@@ -38,14 +54,16 @@ export async function createMoneda(data: {
   orden?: number;
 }) {
   await validarPermisoActual("configuracion", "crear");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.moneda.create({
       data: {
         ...data,
         tasaCambio: data.tasaCambio ?? 1,
       },
-    })
+    }),
   );
+  revalidateTag("catalogo-monedas", {});
+  return result;
 }
 
 export async function updateMoneda(
@@ -58,36 +76,47 @@ export async function updateMoneda(
     esPrincipal?: boolean;
     activa?: boolean;
     orden?: number;
-  }
+  },
 ) {
   await validarPermisoActual("configuracion", "editar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.moneda.update({
       where: { id },
       data,
-    })
+    }),
   );
+  revalidateTag("catalogo-monedas", {});
+  return result;
 }
 
 export async function deleteMoneda(id: string) {
   await validarPermisoActual("configuracion", "eliminar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.moneda.delete({
       where: { id },
-    })
+    }),
   );
+  revalidateTag("catalogo-monedas", {});
+  return result;
 }
 
 // =====================
 // SOCIEDADES
 // =====================
 
+const _getSociedadesCached = unstable_cache(
+  async () =>
+    withRetry(() =>
+      prisma.sociedad.findMany({
+        orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+      }),
+    ),
+  ["catalogo-sociedades"],
+  { revalidate: 300, tags: ["catalogo-sociedades"] },
+);
+
 export async function getSociedades() {
-  return withRetry(() =>
-    prisma.sociedad.findMany({
-      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-    })
-  );
+  return _getSociedadesCached();
 }
 
 export async function createSociedad(data: {
@@ -96,7 +125,9 @@ export async function createSociedad(data: {
   orden?: number;
 }) {
   await validarPermisoActual("configuracion", "crear");
-  return withRetry(() => prisma.sociedad.create({ data }));
+  const result = await withRetry(() => prisma.sociedad.create({ data }));
+  revalidateTag("catalogo-sociedades", {});
+  return result;
 }
 
 export async function updateSociedad(
@@ -106,36 +137,47 @@ export async function updateSociedad(
     descripcion?: string;
     activa?: boolean;
     orden?: number;
-  }
+  },
 ) {
   await validarPermisoActual("configuracion", "editar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.sociedad.update({
       where: { id },
       data,
-    })
+    }),
   );
+  revalidateTag("catalogo-sociedades", {});
+  return result;
 }
 
 export async function deleteSociedad(id: string) {
   await validarPermisoActual("configuracion", "eliminar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.sociedad.delete({
       where: { id },
-    })
+    }),
   );
+  revalidateTag("catalogo-sociedades", {});
+  return result;
 }
 
 // =====================
 // TIPOS DE SERVICIO
 // =====================
 
+const _getTiposServicioCached = unstable_cache(
+  async () =>
+    withRetry(() =>
+      prisma.tipoServicio.findMany({
+        orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+      }),
+    ),
+  ["catalogo-tipos-servicio"],
+  { revalidate: 300, tags: ["catalogo-tipos-servicio"] },
+);
+
 export async function getTiposServicio() {
-  return withRetry(() =>
-    prisma.tipoServicio.findMany({
-      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-    })
-  );
+  return _getTiposServicioCached();
 }
 
 export async function createTipoServicio(data: {
@@ -144,7 +186,9 @@ export async function createTipoServicio(data: {
   orden?: number;
 }) {
   await validarPermisoActual("configuracion", "crear");
-  return withRetry(() => prisma.tipoServicio.create({ data }));
+  const result = await withRetry(() => prisma.tipoServicio.create({ data }));
+  revalidateTag("catalogo-tipos-servicio", {});
+  return result;
 }
 
 export async function updateTipoServicio(
@@ -154,36 +198,47 @@ export async function updateTipoServicio(
     descripcion?: string;
     activo?: boolean;
     orden?: number;
-  }
+  },
 ) {
   await validarPermisoActual("configuracion", "editar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.tipoServicio.update({
       where: { id },
       data,
-    })
+    }),
   );
+  revalidateTag("catalogo-tipos-servicio", {});
+  return result;
 }
 
 export async function deleteTipoServicio(id: string) {
   await validarPermisoActual("configuracion", "eliminar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.tipoServicio.delete({
       where: { id },
-    })
+    }),
   );
+  revalidateTag("catalogo-tipos-servicio", {});
+  return result;
 }
 
 // =====================
 // TIPOS DE INGRESO
 // =====================
 
+const _getTiposIngresoCached = unstable_cache(
+  async () =>
+    withRetry(() =>
+      prisma.tipoIngreso.findMany({
+        orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+      }),
+    ),
+  ["catalogo-tipos-ingreso"],
+  { revalidate: 300, tags: ["catalogo-tipos-ingreso"] },
+);
+
 export async function getTiposIngreso() {
-  return withRetry(() =>
-    prisma.tipoIngreso.findMany({
-      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-    })
-  );
+  return _getTiposIngresoCached();
 }
 
 export async function createTipoIngreso(data: {
@@ -192,7 +247,9 @@ export async function createTipoIngreso(data: {
   orden?: number;
 }) {
   await validarPermisoActual("configuracion", "crear");
-  return withRetry(() => prisma.tipoIngreso.create({ data }));
+  const result = await withRetry(() => prisma.tipoIngreso.create({ data }));
+  revalidateTag("catalogo-tipos-ingreso", {});
+  return result;
 }
 
 export async function updateTipoIngreso(
@@ -202,36 +259,47 @@ export async function updateTipoIngreso(
     descripcion?: string;
     activo?: boolean;
     orden?: number;
-  }
+  },
 ) {
   await validarPermisoActual("configuracion", "editar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.tipoIngreso.update({
       where: { id },
       data,
-    })
+    }),
   );
+  revalidateTag("catalogo-tipos-ingreso", {});
+  return result;
 }
 
 export async function deleteTipoIngreso(id: string) {
   await validarPermisoActual("configuracion", "eliminar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.tipoIngreso.delete({
       where: { id },
-    })
+    }),
   );
+  revalidateTag("catalogo-tipos-ingreso", {});
+  return result;
 }
 
 // =====================
 // TIPOS DE GASTO
 // =====================
 
+const _getTiposGastoCached = unstable_cache(
+  async () =>
+    withRetry(() =>
+      prisma.tipoGasto.findMany({
+        orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+      }),
+    ),
+  ["catalogo-tipos-gasto"],
+  { revalidate: 300, tags: ["catalogo-tipos-gasto"] },
+);
+
 export async function getTiposGasto() {
-  return withRetry(() =>
-    prisma.tipoGasto.findMany({
-      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-    })
-  );
+  return _getTiposGastoCached();
 }
 
 export async function createTipoGasto(data: {
@@ -240,7 +308,9 @@ export async function createTipoGasto(data: {
   orden?: number;
 }) {
   await validarPermisoActual("configuracion", "crear");
-  return withRetry(() => prisma.tipoGasto.create({ data }));
+  const result = await withRetry(() => prisma.tipoGasto.create({ data }));
+  revalidateTag("catalogo-tipos-gasto", {});
+  return result;
 }
 
 export async function updateTipoGasto(
@@ -250,40 +320,51 @@ export async function updateTipoGasto(
     descripcion?: string;
     activo?: boolean;
     orden?: number;
-  }
+  },
 ) {
   await validarPermisoActual("configuracion", "editar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.tipoGasto.update({
       where: { id },
       data,
-    })
+    }),
   );
+  revalidateTag("catalogo-tipos-gasto", {});
+  return result;
 }
 
 export async function deleteTipoGasto(id: string) {
   await validarPermisoActual("configuracion", "eliminar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.tipoGasto.delete({
       where: { id },
-    })
+    }),
   );
+  revalidateTag("catalogo-tipos-gasto", {});
+  return result;
 }
 
 // =====================
 // CAJAS
 // =====================
 
+const _getCajasCached = unstable_cache(
+  async () =>
+    withRetry(() =>
+      prisma.caja.findMany({
+        include: {
+          sociedad: true,
+          tipoIngreso: true,
+        },
+        orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+      }),
+    ),
+  ["catalogo-cajas"],
+  { revalidate: 120, tags: ["catalogo-cajas"] }, // 2 min (cajas cambian algo más seguido)
+);
+
 export async function getCajas() {
-  return withRetry(() =>
-    prisma.caja.findMany({
-      include: {
-        sociedad: true,
-        tipoIngreso: true,
-      },
-      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
-    })
-  );
+  return _getCajasCached();
 }
 
 export async function createCaja(data: {
@@ -295,7 +376,9 @@ export async function createCaja(data: {
   tipoIngresoId?: string;
 }) {
   await validarPermisoActual("configuracion", "crear");
-  return withRetry(() => prisma.caja.create({ data }));
+  const result = await withRetry(() => prisma.caja.create({ data }));
+  revalidateTag("catalogo-cajas", {});
+  return result;
 }
 
 export async function updateCaja(
@@ -308,24 +391,28 @@ export async function updateCaja(
     orden?: number;
     sociedadId?: string | null;
     tipoIngresoId?: string | null;
-  }
+  },
 ) {
   await validarPermisoActual("configuracion", "editar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.caja.update({
       where: { id },
       data,
-    })
+    }),
   );
+  revalidateTag("catalogo-cajas", {});
+  return result;
 }
 
 export async function deleteCaja(id: string) {
   await validarPermisoActual("configuracion", "eliminar");
-  return withRetry(() =>
+  const result = await withRetry(() =>
     prisma.caja.delete({
       where: { id },
-    })
+    }),
   );
+  revalidateTag("catalogo-cajas", {});
+  return result;
 }
 
 // =====================
@@ -352,7 +439,7 @@ export async function getUsuarios() {
           },
         },
       },
-    })
+    }),
   );
 }
 
@@ -384,7 +471,7 @@ export async function createUsuario(data: {
           activo: true,
           rolId: true,
         },
-      })
+      }),
     );
     console.log("[Usuarios] Usuario creado exitosamente:", resultado.correo);
     return resultado;
@@ -403,7 +490,7 @@ export async function updateUsuario(
     contrasena?: string;
     activo?: boolean;
     rolId?: string | null;
-  }
+  },
 ) {
   try {
     console.log("[Usuarios] Intentando actualizar usuario:", id);
@@ -426,7 +513,7 @@ export async function updateUsuario(
           activo: true,
           rolId: true,
         },
-      })
+      }),
     );
     console.log("[Usuarios] Usuario actualizado:", resultado.correo);
     return resultado;
@@ -441,7 +528,7 @@ export async function deleteUsuario(id: string) {
   return withRetry(() =>
     prisma.usuario.delete({
       where: { id },
-    })
+    }),
   );
 }
 
@@ -459,7 +546,7 @@ export async function getCajasActivas() {
         nombre: true,
         esGeneral: true,
       },
-    })
+    }),
   );
 }
 
@@ -474,7 +561,7 @@ export async function getMonedasActivas() {
         simbolo: true,
         esPrincipal: true,
       },
-    })
+    }),
   );
 }
 

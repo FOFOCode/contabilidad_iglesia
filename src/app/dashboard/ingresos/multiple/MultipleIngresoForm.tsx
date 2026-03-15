@@ -183,6 +183,7 @@ export function MultipleIngresoForm({
   };
 
   const addRow = () => {
+    if (rows.length >= 100) return; // límite de filas por envío
     setRows([...rows, createEmptyRow(nextId)]);
     setNextId(nextId + 1);
   };
@@ -320,7 +321,11 @@ export function MultipleIngresoForm({
         }, 1500);
       } catch (err) {
         console.error(err);
-        setError("Error al guardar los ingresos. Intente nuevamente.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Error al guardar los ingresos. Intente nuevamente.",
+        );
       }
     });
   };
@@ -329,9 +334,9 @@ export function MultipleIngresoForm({
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
         <Card className="text-center p-8 max-w-md">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-[#ebfaf8] rounded-full flex items-center justify-center mx-auto mb-4">
             <svg
-              className="w-8 h-8 text-green-600"
+              className="w-8 h-8 text-[#2ba193]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -344,10 +349,10 @@ export function MultipleIngresoForm({
               />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-800 mb-2">
+          <h3 className="text-xl font-semibold text-[#15514a] mb-2">
             ¡Ingresos Guardados!
           </h3>
-          <p className="text-gray-600">Redirigiendo al listado...</p>
+          <p className="text-[#2ba193]">Redirigiendo al listado...</p>
         </Card>
       </div>
     );
@@ -356,8 +361,28 @@ export function MultipleIngresoForm({
   return (
     <form onSubmit={handleSubmit} className="p-4 md:p-6">
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+        <div className="mb-4 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -467,6 +492,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Sociedad"
+                id={`row-${row.id}-sociedad`}
                 options={sociedadOptions}
                 value={row.sociedadId}
                 onChange={(value) => updateRow(row.id, "sociedadId", value)}
@@ -476,6 +502,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Tipo de Servicio"
+                id={`row-${row.id}-servicio`}
                 options={servicioOptions}
                 value={row.servicioId}
                 onChange={(value) => updateRow(row.id, "servicioId", value)}
@@ -485,6 +512,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Tipo de Ingreso"
+                id={`row-${row.id}-tipo-ingreso`}
                 options={tipoIngresoOptions}
                 value={row.tipoIngresoId}
                 onChange={(value) => updateRow(row.id, "tipoIngresoId", value)}
@@ -494,6 +522,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Caja"
+                id={`row-${row.id}-caja`}
                 options={cajaOptions}
                 value={row.cajaId}
                 onChange={(value) => updateRow(row.id, "cajaId", value)}
@@ -528,6 +557,7 @@ export function MultipleIngresoForm({
               />
               <Combobox
                 label="Moneda"
+                id={`row-${row.id}-moneda`}
                 options={monedaOptions}
                 value={row.monedaId}
                 onChange={(value) => updateRow(row.id, "monedaId", value)}

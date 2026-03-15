@@ -268,17 +268,24 @@ export function NuevoIngresoForm({
         }, 1500);
       } catch (error) {
         console.error(error);
-        setErrors({ general: "Error al guardar el ingreso" });
+        setErrors({
+          general:
+            error instanceof Error
+              ? error.message
+              : "Error al guardar el ingreso. Intente nuevamente.",
+        });
       }
     });
   };
+
+  const monedaSeleccionada = monedas.find((m) => m.id === formData.monedaId);
 
   return (
     <div className="p-4 md:p-5 lg:p-6 max-w-3xl mx-auto lg:mx-0">
       {showSuccess && (
         <div className="mb-6 p-4 bg-[#ebfaf8] border border-[#aeeae3] rounded-lg flex items-center gap-3">
           <svg
-            className="w-5 h-5 text-[#2ba193]"
+            className="w-5 h-5 text-[#2ba193] shrink-0"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -288,15 +295,42 @@ export function NuevoIngresoForm({
               clipRule="evenodd"
             />
           </svg>
-          <span className="text-[#15514a] font-medium">
-            ¡Ingreso registrado correctamente!
-          </span>
+          <div>
+            <p className="text-[#15514a] font-semibold">
+              ✓ Ingreso de {monedaSeleccionada?.simbolo}
+              {parseFloat(formData.monto).toLocaleString("es-GT", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              registrado correctamente
+            </p>
+            <p className="text-[#2ba193] text-xs mt-0.5">Redirigiendo...</p>
+          </div>
         </div>
       )}
 
       {errors.general && (
-        <div className="mb-6 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg text-[#b43718]">
-          {errors.general}
+        <div className="mb-6 p-4 bg-[#fcece9] border border-[#e0451f] rounded-lg flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 text-[#b43718]">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{errors.general}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrors((prev) => ({ ...prev, general: "" }))}
+            className="text-[#b43718] hover:text-[#8a2c16] text-lg leading-none shrink-0"
+          >
+            ×
+          </button>
         </div>
       )}
 

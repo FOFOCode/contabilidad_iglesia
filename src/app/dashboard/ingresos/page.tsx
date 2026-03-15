@@ -1,5 +1,11 @@
 import { Header } from "@/components/layout";
-import { ListadoIngresosClient } from "./ListadoIngresosClient";
+import dynamic from "next/dynamic";
+
+const ListadoIngresosClient = dynamic(() =>
+  import("./ListadoIngresosClient").then((m) => ({
+    default: m.ListadoIngresosClient,
+  })),
+);
 import {
   obtenerIngresos,
   obtenerDatosFormularioIngreso,

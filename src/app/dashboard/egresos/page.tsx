@@ -1,5 +1,11 @@
 import { Header } from "@/components/layout";
-import { ListadoEgresosClient } from "./ListadoEgresosClient";
+import dynamic from "next/dynamic";
+
+const ListadoEgresosClient = dynamic(() =>
+  import("./ListadoEgresosClient").then((m) => ({
+    default: m.ListadoEgresosClient,
+  })),
+);
 import {
   obtenerEgresos,
   obtenerDatosFormularioEgreso,
