@@ -677,6 +677,11 @@ export function ReportesClient({
     return result;
   }, [resultados]);
 
+  const disponibleDiezmo = useMemo(() => {
+    if (!cierreDiezmo) return null;
+    return cierreDiezmo.baseLiquida - cierreDiezmo.montoDiezmo;
+  }, [cierreDiezmo]);
+
   // Función para exportar a Excel (CSV)
   const exportarExcel = () => {
     const detalleHeaders = [
@@ -764,6 +769,11 @@ export function ReportesClient({
       const tiposMoneda = ingresosPorTipo[monedaId];
       const totalOfrendas = tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
       const balance = totalOfrendas - data.egresos;
+      const aplicaDiezmoMoneda = cierreDiezmo?.monedaId === monedaId;
+      const montoDiezmoMoneda = aplicaDiezmoMoneda
+        ? cierreDiezmo.montoDiezmo
+        : 0;
+      const disponibleMoneda = balance - montoDiezmoMoneda;
       exportRows.push([`${data.codigo} — Resumen`, "", "", "", "", "", ""]);
       exportRows.push([
         "  Ofrendas",
@@ -784,14 +794,25 @@ export function ReportesClient({
         "",
       ]);
       exportRows.push([
-        "  BALANCE",
-        `${data.simbolo}${balance.toFixed(2)}`,
+        aplicaDiezmoMoneda ? "  (-) Diezmo 10%" : "  BALANCE",
+        `${data.simbolo}${(aplicaDiezmoMoneda ? montoDiezmoMoneda : balance).toFixed(2)}`,
         "",
         "",
         "",
         "",
         "",
       ]);
+      if (aplicaDiezmoMoneda) {
+        exportRows.push([
+          "  DISPONIBLE",
+          `${data.simbolo}${disponibleMoneda.toFixed(2)}`,
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
+      }
       exportRows.push(["", "", "", "", "", "", ""]);
     });
 
@@ -820,7 +841,7 @@ export function ReportesClient({
         `Egresos USD: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.totalEgresos.toFixed(2)}`,
         `Base líquida: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.baseLiquida.toFixed(2)}`,
         `10% mensual: ${cierreDiezmo.monedaSimbolo}${cierreDiezmo.montoDiezmo.toFixed(2)}`,
-        "",
+        `Disponible: ${cierreDiezmo.monedaSimbolo}${(cierreDiezmo.baseLiquida - cierreDiezmo.montoDiezmo).toFixed(2)}`,
         "",
         "",
       ]);
@@ -887,6 +908,11 @@ export function ReportesClient({
         const tiposMoneda = ingresosPorTipo[monedaId];
         const totalOfrendas = tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
         const balance = totalOfrendas - data.egresos;
+        const aplicaDiezmoMoneda = cierreDiezmo?.monedaId === monedaId;
+        const montoDiezmoMoneda = aplicaDiezmoMoneda
+          ? cierreDiezmo.montoDiezmo
+          : 0;
+        const disponibleMoneda = balance - montoDiezmoMoneda;
         return `
           <table style="width:100%;border-collapse:collapse;border:1px solid #dceaef;border-left:4px solid #40768c;margin-bottom:10px;font-size:${bodyFontSize}px;">
             <tr>
@@ -902,9 +928,17 @@ export function ReportesClient({
               <td style="padding:${tdPad};color:#305969;">(-) Egresos</td>
               <td style="padding:${tdPad};text-align:right;color:#e0451f;font-weight:bold;">${data.simbolo}${data.egresos.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
             </tr>
+            ${
+              aplicaDiezmoMoneda
+                ? `<tr style="border-top:1px solid #dceaef;">
+              <td style="padding:${tdPad};color:#305969;">(-) Diezmo 10%</td>
+              <td style="padding:${tdPad};text-align:right;color:#305969;font-weight:bold;">${data.simbolo}${montoDiezmoMoneda.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+            </tr>`
+                : ""
+            }
             <tr style="border-top:2px solid #203b46;background:#eef4f7;">
-              <td style="padding:${tdPad};font-size:9px;font-weight:bold;color:#203b46;text-transform:uppercase;letter-spacing:0.06em;">Balance</td>
-              <td style="padding:${tdPad};text-align:right;font-weight:bold;font-size:${bodyFontSize + 2}px;color:${balance >= 0 ? "#2ba193" : "#e0451f"};">${data.simbolo}${balance.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
+              <td style="padding:${tdPad};font-size:9px;font-weight:bold;color:#203b46;text-transform:uppercase;letter-spacing:0.06em;">${aplicaDiezmoMoneda ? "Disponible" : "Balance"}</td>
+              <td style="padding:${tdPad};text-align:right;font-weight:bold;font-size:${bodyFontSize + 2}px;color:${(aplicaDiezmoMoneda ? disponibleMoneda : balance) >= 0 ? "#2ba193" : "#e0451f"};">${data.simbolo}${(aplicaDiezmoMoneda ? disponibleMoneda : balance).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
             </tr>
           </table>
         `;
@@ -995,6 +1029,10 @@ export function ReportesClient({
           <tr>
             <td style="padding:${tdPad};color:#305969;">Transferido</td>
             <td style="padding:${tdPad};text-align:right;color:#203b46;">${cierreDiezmo.monedaSimbolo}${cierreDiezmo.transferido.toLocaleString("es-GT", { minimumFractionDigits: 2 })}${cierreDiezmo.cajaDestinoNombre ? ` a ${cierreDiezmo.cajaDestinoNombre}` : ""}</td>
+          </tr>
+          <tr>
+            <td style="padding:${tdPad};color:#305969;">Disponible</td>
+            <td style="padding:${tdPad};text-align:right;color:#203b46;">${cierreDiezmo.monedaSimbolo}${(cierreDiezmo.baseLiquida - cierreDiezmo.montoDiezmo).toLocaleString("es-GT", { minimumFractionDigits: 2 })}</td>
           </tr>
         </table>
       `
@@ -2586,6 +2624,11 @@ export function ReportesClient({
                 const totalOfrendas =
                   tiposMoneda?.tipos["Ofrenda"] ?? data.ingresos;
                 const balance = totalOfrendas - data.egresos;
+                const aplicaDiezmoMoneda = cierreDiezmo?.monedaId === monedaId;
+                const montoDiezmoMoneda = aplicaDiezmoMoneda
+                  ? cierreDiezmo.montoDiezmo
+                  : 0;
+                const disponibleMoneda = balance - montoDiezmoMoneda;
                 return (
                   <div
                     key={monedaId}
@@ -2613,17 +2656,34 @@ export function ReportesClient({
                           })}
                         </span>
                       </div>
+                      {aplicaDiezmoMoneda && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-[#305969]">(-) Diezmo 10%</span>
+                          <span className="text-[#305969] font-semibold">
+                            {data.simbolo}
+                            {montoDiezmoMoneda.toLocaleString("es-GT", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      )}
                       <div className="border-t border-[#305969]/30 pt-1 mt-1 flex justify-between items-center">
                         <span className="text-[#203b46] font-bold font-sans text-xs uppercase tracking-wide">
-                          Balance
+                          {aplicaDiezmoMoneda ? "Disponible" : "Balance"}
                         </span>
                         <span
                           className={`font-bold text-base ${
-                            balance >= 0 ? "text-[#2ba193]" : "text-[#e0451f]"
+                            (aplicaDiezmoMoneda ? disponibleMoneda : balance) >=
+                            0
+                              ? "text-[#2ba193]"
+                              : "text-[#e0451f]"
                           }`}
                         >
                           {data.simbolo}
-                          {balance.toLocaleString("es-GT", {
+                          {(aplicaDiezmoMoneda
+                            ? disponibleMoneda
+                            : balance
+                          ).toLocaleString("es-GT", {
                             minimumFractionDigits: 2,
                           })}
                         </span>
@@ -2658,7 +2718,7 @@ export function ReportesClient({
                 </Badge>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
                 <div className="bg-white rounded-lg border border-[#dceaef] p-3">
                   <p className="text-xs text-[#73a9bf]">Ofrendas USD</p>
                   <p className="text-sm font-bold text-[#2ba193]">
@@ -2701,6 +2761,21 @@ export function ReportesClient({
                     })}
                   </p>
                 </div>
+                <div className="bg-white rounded-lg border border-[#dceaef] p-3">
+                  <p className="text-xs text-[#73a9bf]">Disponible</p>
+                  <p
+                    className={`text-sm font-bold ${
+                      (disponibleDiezmo || 0) >= 0
+                        ? "text-[#2ba193]"
+                        : "text-[#e0451f]"
+                    }`}
+                  >
+                    {cierreDiezmo.monedaSimbolo}
+                    {(disponibleDiezmo || 0).toLocaleString("es-GT", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
@@ -2734,6 +2809,12 @@ export function ReportesClient({
               </div>
 
               <div className="mt-3 text-xs text-[#73a9bf]">
+                <p>
+                  Disponible: {cierreDiezmo.monedaSimbolo}
+                  {(disponibleDiezmo || 0).toLocaleString("es-GT", {
+                    minimumFractionDigits: 2,
+                  })}
+                </p>
                 <p>
                   Transferido: {cierreDiezmo.monedaSimbolo}
                   {cierreDiezmo.transferido.toLocaleString("es-GT", {
