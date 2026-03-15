@@ -2610,6 +2610,11 @@ export async function aplicarTransferenciaDiezmoMensual(params: {
 
   const inicioMes = new Date(params.anio, params.mes - 1, 1, 0, 0, 0, 0);
   const finMes = new Date(params.anio, params.mes, 0, 23, 59, 59, 999);
+  const ultimoDiaMes = new Date(params.anio, params.mes, 0).getDate();
+  // Fecha contable estable dentro del mes cerrado para evitar corrimientos por zona horaria.
+  const fechaContableCierre = new Date(
+    Date.UTC(params.anio, params.mes - 1, ultimoDiaMes, 12, 0, 0, 0),
+  );
 
   try {
     const resultado = await withRetry(async () =>
@@ -2670,7 +2675,7 @@ export async function aplicarTransferenciaDiezmoMensual(params: {
 
           const egreso = await tx.egreso.create({
             data: {
-              fechaSalida: new Date(),
+              fechaSalida: fechaContableCierre,
               solicitante: "Sistema - Cierre Mensual",
               monto: resumen.montoCalculado,
               descripcionGasto: "Transferencia diezmo mensual 10%",
@@ -2686,7 +2691,7 @@ export async function aplicarTransferenciaDiezmoMensual(params: {
 
           const ingreso = await tx.ingreso.create({
             data: {
-              fechaRecaudacion: new Date(),
+              fechaRecaudacion: fechaContableCierre,
               comentario: comentarioTransferencia,
               sociedadId: catalogos.sociedadId,
               servicioId: catalogos.servicioId,
